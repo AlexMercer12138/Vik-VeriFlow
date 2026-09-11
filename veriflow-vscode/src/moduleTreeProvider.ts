@@ -65,6 +65,8 @@ class ModuleTreeItem extends vscode.TreeItem {
             this.iconPath = new vscode.ThemeIcon('folder-library');
             this.contextValue = 'libSection';
         } else if (itemType === 'libModule') {
+            this.contextValue = 'designModule';
+            this.resourceUri = fileUri ? vscode.Uri.parse(fileUri) : filePath ? vscode.Uri.file(filePath) : undefined;
             this.iconPath = new vscode.ThemeIcon('symbol-module');
             this.tooltip = fileUri || filePath || moduleName;
             this.description = itemDescription
@@ -304,7 +306,7 @@ export class ModuleTreeProvider implements vscode.TreeDataProvider<ModuleTreeIte
         }
 
         return new ModuleTreeItem(
-            `All Modules (${result.totalModules})`,
+            `Module library (${result.totalModules})`,
             vscode.TreeItemCollapsibleState.Collapsed,
             'libSection',
             undefined,

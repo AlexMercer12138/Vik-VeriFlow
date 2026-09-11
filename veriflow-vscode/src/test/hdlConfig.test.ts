@@ -129,6 +129,7 @@ async function testExtensionLifecycle(): Promise<void> {
         show(): void {},
     };
     const dependencyStubs: Record<string, unknown> = {
+        './hdlFormatting': { registerHdlFormatting: () => disposable },
         './config': configStub,
         './core': coreStub,
         './moduleTreeProvider': {
@@ -144,6 +145,7 @@ async function testExtensionLifecycle(): Promise<void> {
                 static readonly viewType = 'veriflow.testbench';
                 setBeforeGenerate(): void {}
                 setOnVisible(): void {}
+                setOnGenerated(): void {}
                 refreshModules(): void {}
                 dispose(): void {}
             },
@@ -151,6 +153,26 @@ async function testExtensionLifecycle(): Promise<void> {
         './waveformEditorProvider': {
             WaveformEditorProvider: class {
                 static readonly viewType = 'veriflow.waveformEditor';
+            },
+        },
+        './workflowController': {
+            WorkflowController: class {
+                readonly state = { activeTask: undefined };
+                readonly designView = {};
+                readonly simulationView = {};
+                readonly resultsView = {};
+                constructor(_context: unknown, private readonly services: {
+                    run(): Promise<void>;
+                    settings(): unknown;
+                }) {}
+                runTask(): Promise<void> { return this.services.run(); }
+                settings(): unknown { return this.services.settings(); }
+                entrySelected(): void {}
+                assertIdle(): void {}
+                beginRun(): undefined { return undefined; }
+                async finishRun(): Promise<void> {}
+                refresh(): void {}
+                dispose(): void {}
             },
         },
         './archDesign/archDesignEditorProvider': {

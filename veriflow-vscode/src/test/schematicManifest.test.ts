@@ -46,7 +46,7 @@ assert.ok(
     'Arch Design custom editor activation is missing'
 );
 for (const activation of [
-    'onView:veriflow.archDesigns',
+    'onView:veriflow.design',
     'onCommand:veriflow.createArchDesign',
 ]) {
     assert.ok(
@@ -62,12 +62,12 @@ assert.deepStrictEqual(archDesignLanguage.extensions, ['.ad']);
 const workflowViews = manifest.contributes.views.veriflow;
 assert.deepStrictEqual(
     workflowViews.map((item: any) => item.id),
-    ['veriflow.modules', 'veriflow.archDesigns', 'veriflow.testbench']
+    ['veriflow.design', 'veriflow.modules', 'veriflow.results']
 );
-assert.strictEqual(workflowViews[0].name, 'Simulation');
-assert.strictEqual(workflowViews[0].contextualTitle, 'Simulation');
-assert.strictEqual(workflowViews[1].name, 'Arch Designs');
-assert.strictEqual(workflowViews[1].contextualTitle, 'Arch Designs');
+assert.strictEqual(workflowViews[0].name, 'Design');
+assert.strictEqual(workflowViews[0].contextualTitle, 'Design');
+assert.strictEqual(workflowViews[1].name, 'Simulation');
+assert.strictEqual(workflowViews[1].contextualTitle, 'Simulation');
 
 for (const id of [
     'veriflow.createArchDesign',
@@ -80,18 +80,18 @@ for (const id of [
     );
 }
 const archDesignWelcome = (manifest.contributes.viewsWelcome ?? []).find(
-    (item: any) => item.view === 'veriflow.archDesigns'
+    (item: any) => item.view === 'veriflow.design'
 );
 assert.ok(archDesignWelcome, 'Arch Designs empty-state contribution is missing');
 assert.match(
     archDesignWelcome.contents,
-    /\[Create Arch Design\]\(command:veriflow\.createArchDesign\)/
+    /\[Create Graphical Design\]\(command:veriflow\.createArchDesign\)/
 );
-for (const id of ['veriflow.createArchDesign', 'veriflow.refreshArchDesigns']) {
+for (const id of ['veriflow.createArchDesign', 'veriflow.scanModules']) {
     assert.ok(
         (manifest.contributes.menus['view/title'] ?? []).some(
             (item: any) => item.command === id
-                && /view\s*==\s*veriflow\.archDesigns\b/.test(item.when)
+                && /view\s*==\s*veriflow\.design\b/.test(item.when)
         ),
         `${id} Arch Designs title action is missing`
     );

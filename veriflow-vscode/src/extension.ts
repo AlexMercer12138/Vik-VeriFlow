@@ -16,6 +16,7 @@ import {
 import type { TopModuleSelection } from './config';
 import { ModuleTreeProvider } from './moduleTreeProvider';
 import { showModuleInstantiationPicker } from './moduleInstantiationCommand';
+import { registerHdlFormatting } from './hdlFormatting';
 import { TestbenchPanelProvider } from './testbenchPanel';
 import { WaveformEditorProvider } from './waveformEditorProvider';
 import { ArchDesignEditorProvider } from './archDesign/archDesignEditorProvider';
@@ -50,6 +51,8 @@ import {
 } from './core/hdl/preprocessor';
 import { WorkspaceIndexStore } from './core/hdl/workspaceIndexStore';
 import { relativeDisplayPath } from './core/pathStyle';
+import { WorkflowController } from './workflowController';
+import { isFreshWaveform, waveIdentity } from './workflowArtifact';
 
 const DEFAULT_VIEWERS: Record<string, WaveViewerConfig> = {
     builtin: { name: 'builtin', launchCmd: '' },
@@ -83,6 +86,7 @@ let hdlTopPersistenceTail: Promise<void> = Promise.resolve();
 let hdlTopPersistencePending = 0;
 let hdlTopSelectionPersistenceChain: HdlTopSelectionPersistenceChain | undefined;
 let hdlDependencyPersistenceTail: Promise<void> = Promise.resolve();
+let workflowController: WorkflowController | undefined;
 type HdlIndexPreparation = {
     analyzer: DependencyAnalyzer;
     index: WorkspaceHdlIndex;
@@ -231,27 +235,13 @@ export function activate(context: vscode.ExtensionContext): void {
         () => hdlStopping ? undefined : hdlIndex
     );
 
-    const treeView = vscode.window.createTreeView('veriflow.modules', {
-        treeDataProvider: treeProvider,
-        showCollapseAll: true,
-    });
-    treeView.onDidChangeVisibility((e) => {
-        if (e.visible) { cmdScanModules(context); }
-    });
-    context.subscriptions.push(treeView);
-
     const archDesignTreeProvider = new ArchDesignTreeProvider();
-    const archDesignTreeView = vscode.window.createTreeView(
-        'veriflow.archDesigns',
-        { treeDataProvider: archDesignTreeProvider }
-    );
     const archDesignWatcher = vscode.workspace.createFileSystemWatcher('**/*.ad');
     archDesignWatcher.onDidCreate(() => archDesignTreeProvider.refresh());
     archDesignWatcher.onDidChange(() => archDesignTreeProvider.refresh());
     archDesignWatcher.onDidDelete(() => archDesignTreeProvider.refresh());
     context.subscriptions.push(
         archDesignTreeProvider,
-        archDesignTreeView,
         archDesignWatcher
     );
     tbPanelProvider.setBeforeGenerate(async () => {
@@ -261,13 +251,6 @@ export function activate(context: vscode.ExtensionContext): void {
         await cmdScanModules(context);
     });
 
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(
-            TestbenchPanelProvider.viewType,
-            tbPanelProvider,
-            { webviewOptions: { retainContextWhenHidden: true } }
-        )
-    );
     context.subscriptions.push(
         vscode.window.registerCustomEditorProvider(
             WaveformEditorProvider.viewType,
@@ -316,6 +299,36 @@ export function activate(context: vscode.ExtensionContext): void {
         },
     });
     context.subscriptions.push(interfaceProtocolLoader);
+    workflowController = new WorkflowController(context, {
+        scan: async () => { await cmdScanModules(context); },
+        definitions: () => hdlIndex?.getAllDefinitions('module') ?? [],
+        entryDefinitions: () => {
+            const keys = new Set(treeProvider.getWorkspaceDefinitions().map(item => item.key));
+            return hdlIndex?.getAllDefinitions('module').filter(item => keys.has(item.key)) ?? [];
+        },
+        settings: () => getSettings(),
+        selectEntry: entry => cmdSelectTop(context, entry),
+        run: () => cmdSimulate(context),
+        analyze: () => cmdAnalyze(context),
+        analyzeDesign: (key, settings) => _resolveDependencies(context, getWorkspaceRoot()!, settings ?? getSettings(), key),
+        openWave: filepath => _openWaveFile(filepath, getSettings(), () => !hdlStopping && workflowController === activeWorkflowController),
+        openGenerator: key => tbPanelProvider.open(key),
+        protocols: interfaceProtocolLoader,
+    }, treeProvider, archDesignTreeProvider);
+    context.subscriptions.push(workflowController);
+    const activeWorkflowController: WorkflowController = workflowController;
+    tbPanelProvider.setOnGenerated(result => activeWorkflowController.generated(result));
+    for (const [id, provider] of [
+        ['veriflow.design', workflowController.designView],
+        ['veriflow.modules', workflowController.simulationView],
+        ['veriflow.results', workflowController.resultsView],
+    ] as const) {
+        const view = vscode.window.createTreeView(id, { treeDataProvider: provider, showCollapseAll: true });
+        context.subscriptions.push(view);
+        view.onDidChangeVisibility(event => {
+            if (event.visible) void cmdScanModules(context);
+        });
+    }
     const archDesignEditorProvider = new ArchDesignEditorProvider(context, {
         getIndex: (document, owner) => _getSchematicIndex(
             context,
@@ -378,13 +391,16 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     statusBarItem.text = '$(circuit-board) VeriFlow';
     hdlLastNonScanningStatusText = statusBarItem.text;
-    statusBarItem.tooltip = 'VeriFlow: Verilog Simulation Manager';
+    statusBarItem.tooltip = 'VeriFlow: Design / Simulation / Results';
     statusBarItem.command = 'veriflow.showOutput';
     statusBarItem.show();
     context.subscriptions.push(statusBarItem);
 
-    const commandUri = (value: unknown): vscode.Uri | undefined =>
-        value instanceof vscode.Uri ? value : undefined;
+    const commandUri = (value: unknown): vscode.Uri | undefined => {
+        if (value instanceof vscode.Uri) return value;
+        const resource = (value as { resourceUri?: unknown } | undefined)?.resourceUri;
+        return resource instanceof vscode.Uri ? resource : undefined;
+    };
     const openArchDesign = async (uri: vscode.Uri): Promise<void> => {
         await vscode.commands.executeCommand(
             'vscode.openWith',
@@ -399,10 +415,14 @@ export function activate(context: vscode.ExtensionContext): void {
         exportRtl: uri => archDesignEditorProvider.exportRtl(uri),
     });
     const cmds: Array<[string, (...args: unknown[]) => unknown]> = [
-        ['veriflow.selectTop', () => cmdSelectTop(context)],
-        ['veriflow.analyze', () => cmdAnalyze(context)],
-        ['veriflow.simulate', () => cmdSimulate(context)],
-        ['veriflow.openWave', () => cmdOpenWave(context)],
+        ['veriflow.selectTop', () => {
+            workflowController?.assertIdle();
+            if (workflowController?.state.activeTask) return workflowController.selectSimulationEntry();
+            return cmdSelectTop(context);
+        }],
+        ['veriflow.analyze', () => workflowController?.state.activeTask ? workflowController.analyzeTask() : cmdAnalyze(context)],
+        ['veriflow.simulate', () => workflowController?.runTask()],
+        ['veriflow.openWave', () => workflowController?.state.activeTask ? workflowController.openLatestWave() : cmdOpenWave(context)],
         ['veriflow.openVcdViewer', (uri?: unknown) => cmdOpenVcdViewer(
             commandUri(uri)
         )],
@@ -460,6 +480,7 @@ export function activate(context: vscode.ExtensionContext): void {
     for (const [name, fn] of cmds) {
         context.subscriptions.push(vscode.commands.registerCommand(name, fn));
     }
+    context.subscriptions.push(registerHdlFormatting(context));
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(async (e) => {
@@ -1551,6 +1572,8 @@ export async function deactivate(): Promise<void> {
     hdlTopPersistencePending = 0;
     hdlTopSelectionPersistenceChain = undefined;
     hdlDependencyPersistenceTail = Promise.resolve();
+    workflowController?.dispose();
+    workflowController = undefined;
     const parser = hdlParser;
     hdlParser = undefined;
     hdlParserExtensionPath = undefined;
@@ -1602,6 +1625,7 @@ function _setSimulateStatus(context: vscode.ExtensionContext, status: string): v
     if (hdlStopping) { return; }
     _simulateStatus = status;
     setSimulateStatus(context, status);
+    workflowController?.refresh();
     _updateStatusBar();
 }
 
@@ -2654,7 +2678,7 @@ async function cmdInstantiateModule(context: vscode.ExtensionContext): Promise<v
     );
 }
 
-async function cmdSelectTop(context: vscode.ExtensionContext): Promise<void> {
+async function cmdSelectTop(context: vscode.ExtensionContext, requested?: TopModuleSelection): Promise<void> {
     if (hdlStopping) { return; }
     const lifecycleGeneration = hdlLifecycleGeneration;
     const rootGeneration = hdlRootGeneration;
@@ -2693,8 +2717,8 @@ async function cmdSelectTop(context: vscode.ExtensionContext): Promise<void> {
         definitionKey: definition.key,
         name: definition.name,
     }));
-    const selected = await vscode.window.showQuickPick(choices, {
-        placeHolder: 'Select top module for simulation (workspace only)',
+    const selected = requested ? choices.find(item => item.definitionKey === requested.definitionKey) : await vscode.window.showQuickPick(choices, {
+        placeHolder: 'Select simulation entry / Testbench (workspace only)',
         matchOnDescription: true,
     });
     if (!_isCurrentTopPresentation(
@@ -2707,6 +2731,7 @@ async function cmdSelectTop(context: vscode.ExtensionContext): Promise<void> {
         return;
     }
     if (!selected) {
+        if (requested) throw new Error(`Simulation entry ${requested.name} is no longer available.`);
         if (!hadPendingTopSelectionAtEntry) {
             return;
         }
@@ -2822,7 +2847,12 @@ async function cmdSelectTop(context: vscode.ExtensionContext): Promise<void> {
         return;
     }
     treeProvider.topModule = selection;
-    output.appendInfo(`Top module: ${selection.name}`);
+    if (workflowController && !_sameTopSelection(selection, persistedSelectionAtEntry)) {
+        _invalidateDependencyPresentation(context);
+        _setAnalyzeStatus(context, 'idle');
+    }
+    workflowController?.entrySelected(selection);
+    output.appendInfo(`Simulation entry: ${selection.name}`);
 }
 
 async function cmdAnalyze(
@@ -2847,7 +2877,7 @@ async function cmdAnalyze(
     // 检查文件变动
     _checkDepFilesChanged(context);
 
-    const settings = getSettings();
+    const settings = workflowController?.settings() ?? getSettings();
 
     output.clear();
     output.show();
@@ -2897,6 +2927,14 @@ async function cmdAnalyze(
     if (continuation) {
         if (result.missingModules.length === 0 && ambiguousNames.length === 0) {
             await cmdSimulate(context, continuation.waveIntent);
+        } else {
+            const controller = workflowController;
+            const id = controller?.beginRun(topModule, result.files, settings);
+            if (id) await controller?.finishRun(id, 'failed', [
+                'Dependency analysis failed.',
+                ...result.missingModules.map(name => `Missing module: ${name}`),
+                ...ambiguousNames.map(name => `Ambiguous module ${name}: ${result.ambiguousModules[name].join(', ')}`),
+            ].join('\n'));
         }
         return;
     }
@@ -2928,6 +2966,9 @@ async function cmdSimulate(
         output.show(true);
         output.appendError(`Simulation configuration error: ${message}`);
         _setSimulateStatus(context, 'error');
+        const controller = workflowController;
+        const id = controller?.beginRun(treeProvider.topModule?.name ?? 'Simulation', [], controller.settings());
+        if (id) await controller?.finishRun(id, 'failed', `Simulation configuration error: ${message}`);
         await vscode.window.showErrorMessage(`VeriFlow simulation configuration error: ${message}`);
     };
 
@@ -2952,7 +2993,7 @@ async function cmdSimulate(
         return;
     }
 
-    const settings = getSettings();
+    const settings = workflowController?.settings() ?? getSettings();
     let backendId: SimulationBackendId;
     try {
         backendId = _resolveSimulator(settings);
@@ -3021,6 +3062,13 @@ async function cmdSimulate(
         return;
     }
 
+    const runController = workflowController;
+    const waveBeforeRun = waveIdentity(waveFile);
+    const workflowRunId = runController?.beginRun(topModule, depResult.files, settings);
+    const finishWorkflowRun = async (status: 'completed' | 'failed' | 'cancelled', log: string, freshWave = false): Promise<void> => {
+        if (workflowRunId) await runController?.finishRun(workflowRunId, status, log,
+            status === 'completed' && freshWave ? waveFile : undefined);
+    };
     output.appendInfo(`Resolved ${depResult.files.length} file(s)`);
     output.appendInfo('Running compile -> simulate.');
     output.appendLine('');
@@ -3045,16 +3093,21 @@ async function cmdSimulate(
         }, token));
         serviceRunId = outcome.runId;
     } catch (error) {
-        if (!isCurrent()) { return; }
         const message = error instanceof Error ? error.message : String(error);
+        await finishWorkflowRun('failed', message);
+        if (!isCurrent()) { return; }
         output.appendError(`Simulation backend failed: ${message}`);
         _setSimulateStatus(context, 'error');
         await vscode.window.showErrorMessage(`VeriFlow simulation failed: ${message}`);
         return;
     }
-    if (!isCurrent()) { return; }
+    if (!isCurrent()) {
+        await finishWorkflowRun('cancelled', 'Run superseded by a workspace or input change.');
+        return;
+    }
     const result = outcome.execution;
     if (result.cause?.code === 'ABORTED') {
+        await finishWorkflowRun('cancelled', 'Simulation cancelled.');
         output.appendInfo('Simulation cancelled.');
         _setSimulateStatus(context, 'idle');
         output.show();
@@ -3083,6 +3136,13 @@ async function cmdSimulate(
         }
     }
 
+    await finishWorkflowRun(result.success ? 'completed' : 'failed', [
+        `Simulator: ${backendId}`, `Exit code: ${result.exitCode}`,
+        ...Object.entries(result.commands).map(([stage, command]) => `${stage}: ${command}`),
+        result.stdout, result.stderr,
+        ...result.logEntries.map(entry => [entry.fileRef, entry.lineNo, entry.message].filter(value => value !== undefined).join(':')),
+    ].filter(Boolean).join('\n'), isFreshWaveform(backendId, result.artifacts ?? [], waveFile, waveBeforeRun, waveIdentity(waveFile)));
+    if (!isCurrent()) { return; }
     if (result.success) {
         output.appendSuccess(`Simulation OK (${result.elapsedTime.toFixed(2)}s)`);
         _setSimulateStatus(context, 'completed');
@@ -3225,6 +3285,11 @@ async function _doOpenWave(
 ): Promise<void> {
     if (!isCurrent()) { return; }
     const waveFile = _resolveWaveFile(root, topModule, settings);
+    await _openWaveFile(waveFile, settings, isCurrent);
+}
+
+async function _openWaveFile(waveFile: string, settings: ExtensionSettings, isCurrent: () => boolean): Promise<void> {
+    if (!isCurrent()) { return; }
     const viewer = _resolveViewer(settings);
 
     let wavePathIsFile: boolean;

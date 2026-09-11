@@ -1,6 +1,8 @@
 import * as assert from 'assert';
 import Module = require('module');
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 
 import type { HdlDefinitionSummary } from '../core/hdl/workspaceIndexTypes';
 
@@ -72,11 +74,12 @@ function indexOf(definitions: HdlDefinitionSummary[]): FakeIndex {
 
 type PostedMessage = { type: string; [key: string]: any };
 
-function createHarness(initialDefinitions: HdlDefinitionSummary[]) {
+function createHarness(initialDefinitions: HdlDefinitionSummary[], workspaceRoot = path.join('C:', 'workspace')) {
     const posted: PostedMessage[] = [];
     const warnings: string[] = [];
     const errors: string[] = [];
     const generatedConfigs: any[] = [];
+    const panels: any[] = [];
     let currentIndex: FakeIndex | undefined = indexOf(initialDefinitions);
     const disposable = { dispose(): void {} };
     type HarnessView = {
@@ -92,12 +95,24 @@ function createHarness(initialDefinitions: HdlDefinitionSummary[]) {
         }
     }
     const vscodeStub = {
+        ViewColumn: { Active: -1 },
         Uri: { file: (filepath: string) => ({ fsPath: filepath }) },
         workspace: {
-            workspaceFolders: [{ uri: { fsPath: path.join('C:', 'workspace') } }],
+            workspaceFolders: [{ uri: { fsPath: workspaceRoot } }],
             openTextDocument: async (uri: unknown) => uri,
         },
         window: {
+            createWebviewPanel(viewType: string, title: string, column: number, options: unknown) {
+                currentView = makeView();
+                const panel = currentView.view;
+                panel.title = title;
+                panel.reveals = 0;
+                panel.reveal = () => { panel.reveals++; };
+                panel.onDidChangeViewState = () => disposable;
+                panel.dispose = () => currentView.disposeView?.();
+                panels.push(panel);
+                return panel;
+            },
             showWarningMessage(message: string): void { warnings.push(message); },
             showErrorMessage(message: string): void { errors.push(message); },
             showInformationMessage(): void {},
@@ -118,13 +133,16 @@ function createHarness(initialDefinitions: HdlDefinitionSummary[]) {
             resolveWebviewView(view: unknown, context: unknown, token: unknown): void;
             refreshModules(): void;
             dispose(): void;
+            open(definitionKey?: string): void;
+            setBeforeGenerate(callback: () => Promise<void>): void;
+            setOnGenerated(callback: (result: any) => Promise<void>): void;
         };
     });
     const provider = new panelModule.TestbenchPanelProvider(
         { extensionUri: { value: 'file:///extension' } },
         () => currentIndex
     );
-    const resolveView = (): HarnessView => {
+    const makeView = (): HarnessView => {
         const state: HarnessView = { posted: [], view: undefined };
         const webview = {
             options: {},
@@ -148,6 +166,10 @@ function createHarness(initialDefinitions: HdlDefinitionSummary[]) {
                 return disposable;
             },
         };
+        return state;
+    };
+    const resolveView = (): HarnessView => {
+        const state = makeView();
         provider.resolveWebviewView(state.view, {}, {});
         return state;
     };
@@ -158,6 +180,7 @@ function createHarness(initialDefinitions: HdlDefinitionSummary[]) {
         warnings,
         errors,
         generatedConfigs,
+        panels,
         setIndex(index: FakeIndex | undefined): void { currentIndex = index; },
         get view() { return currentView; },
         resolveView(): HarnessView {
@@ -531,6 +554,10 @@ async function testMalformedWebviewMessagesHaveNoSideEffects(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+    await testEditorPreselectsDutAndReusesPanel();
+    await testGeneratedTaskWaitsForScan();
+    await testExistingTestbenchIsPreserved();
+    await testClosingEditorCancelsPendingGeneration();
     await testExactChoicesAndResolvedAdd();
     await testLiveResolutionAndFingerprintRejection();
     await testDisposedPanelIgnoresOldMessages();
@@ -543,6 +570,77 @@ async function main(): Promise<void> {
     await testGeneratePreservesDefaultsForEmptyConfigValues();
     await testMalformedWebviewMessagesHaveNoSideEffects();
     console.log('testbench panel tests passed');
+}
+
+async function testEditorPreselectsDutAndReusesPanel(): Promise<void> {
+    const dut = definition('alu', 'alu', 'file:///C:/workspace/alu.v', 1, 'fp-alu');
+    const harness = createHarness([dut]);
+    harness.provider.open(dut.key);
+    assert.strictEqual(harness.panels.length, 1);
+    assert.strictEqual(harness.view.posted.length, 0, 'initial selection waits for webview readiness');
+    await harness.send({ type: 'getModules' });
+    assert.strictEqual(latest(harness.posted, 'moduleAdded').entry.definitionKey, 'alu');
+    harness.provider.open(dut.key);
+    assert.strictEqual(harness.panels.length, 1);
+    assert.strictEqual(harness.panels[0].reveals, 1);
+    harness.provider.refreshModules();
+    assert.strictEqual(latest(harness.posted, 'syncEntries').entries.length, 1, 'reopening does not duplicate DUT');
+    harness.disposeView();
+    harness.provider.open();
+    assert.strictEqual(harness.panels.length, 2);
+    await harness.send({ type: 'getModules' });
+    assert.strictEqual(latest(harness.posted, 'syncEntries').entries.length, 1);
+}
+
+async function testGeneratedTaskWaitsForScan(): Promise<void> {
+    const dut = definition('alu', 'alu', 'file:///C:/workspace/alu.v', 1, 'fp-alu');
+    const harness = createHarness([dut]);
+    const events: string[] = [];
+    let generated: any;
+    harness.provider.setBeforeGenerate(async () => { events.push('scan'); });
+    harness.provider.setOnGenerated(async result => { generated = result; events.push('task'); });
+    harness.provider.open(dut.key);
+    await harness.send({ type: 'getModules' });
+    await harness.send({ type: 'generate', config: { name: 'tb_alu', run_after_generate: true } });
+    assert.deepStrictEqual(events, ['scan', 'scan', 'task']);
+    assert.deepStrictEqual(generated, {
+        name: 'tb_alu', filepath: path.join('C:', 'workspace', 'tb_alu.v'),
+        waveFile: 'tb_alu.vcd', definitionKeys: ['alu'], runAfterGenerate: true,
+    });
+}
+
+async function testExistingTestbenchIsPreserved(): Promise<void> {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'veriflow-tb-panel-'));
+    const filepath = path.join(root, 'tb_alu.v');
+    fs.writeFileSync(filepath, '// user-authored testbench');
+    try {
+        const dut = definition('alu', 'alu', 'file:///C:/workspace/alu.v', 1, 'fp-alu');
+        const harness = createHarness([dut], root);
+        await harness.send({ type: 'addModule', definitionKey: dut.key });
+        await harness.send({ type: 'generate', config: { name: 'tb_alu' } });
+        assert.strictEqual(harness.generatedConfigs.length, 0, 'existing file must not reach the overwriting generator');
+        assert.match(latest(harness.posted, 'error').message, /exists.*new name/i);
+        assert.strictEqual(fs.readFileSync(filepath, 'utf8'), '// user-authored testbench');
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+}
+
+async function testClosingEditorCancelsPendingGeneration(): Promise<void> {
+    const dut = definition('alu', 'alu', 'file:///C:/workspace/alu.v', 1, 'fp-alu');
+    const harness = createHarness([dut]);
+    let finishScan: (() => void) | undefined;
+    harness.provider.setBeforeGenerate(() => new Promise(resolve => { finishScan = resolve; }));
+    harness.provider.open(dut.key);
+    await harness.send({ type: 'getModules' });
+    const oldView = harness.view;
+    const pending = harness.send({ type: 'generate', config: { name: 'tb_alu' } });
+    harness.disposeView();
+    harness.provider.open();
+    finishScan!();
+    await pending;
+    await harness.send({ type: 'generate', config: { name: 'tb_old' } }, oldView);
+    assert.strictEqual(harness.generatedConfigs.length, 0);
 }
 
 void main().catch(error => {

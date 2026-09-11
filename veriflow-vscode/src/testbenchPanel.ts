@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { TestbenchGenerator, TbConfig, TbModuleConfig } from './core/testbenchGenerator';
 import { Port, Parameter } from './core/types';
 import { toModuleInfo } from './core/hdl/legacyModelAdapter';
@@ -13,6 +14,15 @@ import {
 import { getSettings } from './config';
 
 type TestbenchModuleIndex = Pick<WorkspaceHdlIndex, 'getAllDefinitions' | 'getDefinition'>;
+type TestbenchView = vscode.WebviewView | vscode.WebviewPanel;
+
+export interface GeneratedTestbench {
+    name: string;
+    filepath: string;
+    waveFile: string;
+    definitionKeys: string[];
+    runAfterGenerate: boolean;
+}
 
 function copyStringRecord(value: unknown): Record<string, string> {
     const copy = Object.create(null) as Record<string, string>;
@@ -29,11 +39,14 @@ function copyStringRecord(value: unknown): Record<string, string> {
 export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'veriflow.testbench';
 
-    private _view?: vscode.WebviewView;
+    private _view?: TestbenchView;
     private _moduleEntries: TbModuleEntry[] = [];
     private _generator = new TestbenchGenerator();
     private _beforeGenerate?: () => Promise<void>;
     private _onVisible?: () => Promise<void>;
+    private _onGenerated?: (result: GeneratedTestbench) => Promise<void>;
+    private _pendingDefinitionKey?: string;
+    private _ready = false;
     private _viewDisposables: vscode.Disposable[] = [];
     private _messageGeneration = 0;
     private _disposed = false;
@@ -51,12 +64,37 @@ export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
         this._onVisible = callback;
     }
 
+    setOnGenerated(callback: (result: GeneratedTestbench) => Promise<void>): void {
+        this._onGenerated = callback;
+    }
+
+    open(definitionKey?: string): void {
+        if (this._disposed) { return; }
+        if (definitionKey) { this._pendingDefinitionKey = definitionKey; }
+        if (this._view && 'reveal' in this._view) {
+            this._view.reveal(vscode.ViewColumn.Active);
+            if (this._ready) { this._applyPendingSelection(); }
+            return;
+        }
+        const panel = vscode.window.createWebviewPanel(
+            TestbenchPanelProvider.viewType,
+            'New Simulation Task',
+            vscode.ViewColumn.Active,
+            { enableScripts: true, retainContextWhenHidden: true }
+        );
+        this._attachView(panel);
+    }
+
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken
     ): void {
         if (this._disposed) { return; }
+        this._attachView(webviewView);
+    }
+
+    private _attachView(webviewView: TestbenchView): void {
         this._detachView();
         this._view = webviewView;
         const generation = ++this._messageGeneration;
@@ -67,20 +105,25 @@ export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
         };
 
         webviewView.webview.html = this._getHtml();
-        const visibilityDisposable = webviewView.onDidChangeVisibility(() => {
+        const onVisibilityChanged = () => {
             if (this._isCurrentMessageSource(webviewView, generation)
                 && webviewView.visible
                 && this._onVisible) {
                 void this._onVisible();
             }
-        });
+        };
+        const visibilityDisposable = 'onDidChangeVisibility' in webviewView
+            ? webviewView.onDidChangeVisibility(onVisibilityChanged)
+            : webviewView.onDidChangeViewState(onVisibilityChanged);
 
         const messageDisposable = webviewView.webview.onDidReceiveMessage(async (message) => {
             if (!this._isCurrentMessageSource(webviewView, generation)) { return; }
             if (!message || typeof message !== 'object' || Array.isArray(message)) { return; }
             switch (message.type) {
                 case 'getModules':
+                    this._ready = true;
                     this.refreshModules();
+                    this._applyPendingSelection();
                     break;
                 case 'addModule':
                     this._addModule(message.definitionKey);
@@ -132,7 +175,25 @@ export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
     dispose(): void {
         if (this._disposed) { return; }
         this._disposed = true;
+        const panel = this._view && 'reveal' in this._view ? this._view : undefined;
         this._detachView();
+        panel?.dispose();
+    }
+
+    private _applyPendingSelection(): void {
+        const definitionKey = this._pendingDefinitionKey;
+        this._pendingDefinitionKey = undefined;
+        if (!definitionKey) { return; }
+        const existingIndex = this._moduleEntries.findIndex(entry => entry.definitionKey === definitionKey);
+        if (existingIndex >= 0) {
+            this._selectModule(existingIndex);
+        } else {
+            this._addModule(definitionKey);
+        }
+        const definition = this._getIndex()?.getDefinition(definitionKey);
+        if (definition) {
+            this._postMessage({ type: 'suggestName', name: `tb_${definition.name.replace(/[^A-Za-z0-9_$]/g, '_')}` });
+        }
     }
 
     private _postModules(): void {
@@ -232,7 +293,7 @@ export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
 
     private async _generate(
         config: unknown,
-        sourceView: vscode.WebviewView,
+        sourceView: TestbenchView,
         generation: number
     ): Promise<void> {
         if (!this._isCurrentMessageSource(sourceView, generation)) { return; }
@@ -279,6 +340,12 @@ export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
             ? outputDirSetting
             : path.join(root, outputDirSetting);
 
+        const targetPath = path.join(outputDir, `${name}.v`);
+        if (fs.existsSync(targetPath)) {
+            this._reportError(`A file already exists at ${targetPath}. Choose a new name to preserve the existing testbench.`);
+            return;
+        }
+
         const tbConfig: TbConfig = {
             name,
             time_unit: stringValue('time_unit', '1ns'),
@@ -304,7 +371,16 @@ export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
             if (this._beforeGenerate) {
                 await this._beforeGenerate();
             }
+            if (!this._isCurrentMessageSource(sourceView, generation)) { return; }
+            await this._onGenerated?.({
+                name,
+                filepath,
+                waveFile: tbConfig.wave_file,
+                definitionKeys: modules.map(module => module.definitionKey),
+                runAfterGenerate: values.run_after_generate === true,
+            });
         } catch (error: unknown) {
+            if (!this._isCurrentMessageSource(sourceView, generation)) { return; }
             const message = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`Failed to generate testbench: ${message}`);
             this._postMessage({ type: 'error', message });
@@ -398,7 +474,7 @@ export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private _isCurrentMessageSource(
-        view: vscode.WebviewView,
+        view: TestbenchView,
         generation: number
     ): boolean {
         return !this._disposed
@@ -408,6 +484,7 @@ export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
 
     private _detachView(): void {
         this._messageGeneration++;
+        this._ready = false;
         this._view = undefined;
         const disposables = this._viewDisposables;
         this._viewDisposables = [];
@@ -422,7 +499,7 @@ export class TestbenchPanelProvider implements vscode.WebviewViewProvider {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Testbench Generator</title>
+<title>New Simulation Task</title>
 <style>
 * { box-sizing: border-box; }
 html, body {
@@ -432,18 +509,23 @@ body {
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
     color: var(--vscode-foreground);
-    background: var(--vscode-sideBar-background);
-    margin: 0; padding: 8px;
+    background: var(--vscode-editor-background);
+    margin: 0 auto; padding: 24px;
     overflow-y: auto;
     min-width: 0;
     width: 100%;
+    max-width: 1080px;
 }
+h1 { font-size: 1.8em; font-weight: 500; margin: 0 0 8px; }
+.intro { color: var(--vscode-descriptionForeground); margin: 0 0 24px; line-height: 1.5; }
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.settings-grid .section { margin-bottom: 0; }
 .section {
     background: var(--vscode-editor-background);
     border: 1px solid var(--vscode-panel-border);
     border-radius: 4px;
-    margin-bottom: 8px;
-    padding: 8px;
+    margin-bottom: 12px;
+    padding: 16px;
     min-width: 0;
 }
 .section-title {
@@ -689,12 +771,19 @@ button.secondary:hover {
         flex-wrap: nowrap;
     }
 }
+@media (max-width: 640px) {
+    body { padding: 12px; }
+    .settings-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
 
+<h1>New Simulation Task</h1>
+<p class="intro">Choose the design to verify, configure its testbench, then create a task to run and inspect its results.</p>
+
 <div class="section">
-    <div class="section-title">Properties</div>
+    <div class="section-title">Testbench</div>
     <div class="row">
         <label>Name</label>
         <input type="text" id="tbName" placeholder="e.g. tb_top" />
@@ -713,6 +802,7 @@ button.secondary:hover {
     </div>
 </div>
 
+<div class="settings-grid">
 <div class="section">
     <div class="section-title">Clocks <span class="hint">(MHz)</span></div>
     <div id="clockContainer"></div>
@@ -737,6 +827,7 @@ button.secondary:hover {
     </div>
 </div>
 
+</div>
 <div class="section" style="display:flex;flex-direction:column;flex:1;min-height:280px;">
     <div class="section-title">DUT Modules</div>
     <div class="row module-picker">
@@ -755,6 +846,7 @@ button.secondary:hover {
     </div>
 </div>
 
+<div class="settings-grid">
 <div class="section">
     <div class="section-title">Waveform</div>
     <div class="row">
@@ -771,7 +863,12 @@ button.secondary:hover {
     </div>
 </div>
 
-<button class="generate-btn" id="btnGenerate">Generate Testbench</button>
+</div>
+<div class="section">
+    <label><input type="checkbox" id="runAfterGenerate" /> Run simulation after generation</label>
+</div>
+
+<button class="generate-btn" id="btnGenerate">Create Simulation Task</button>
 <div class="validation-message" id="validationMessage"></div>
 
 <script>
@@ -975,6 +1072,7 @@ button.secondary:hover {
             reset_duration: document.getElementById('resetDuration').value.trim(),
             wave_file: document.getElementById('waveFile').value.trim(),
             timeout: document.getElementById('timeout').value.trim(),
+            run_after_generate: document.getElementById('runAfterGenerate').checked,
         };
         post({ type: 'generate', config });
     };
@@ -991,6 +1089,11 @@ button.secondary:hover {
                 }
                 updateModuleControls();
                 renderModuleList();
+                break;
+            case 'suggestName':
+                if (msg.name && !document.getElementById('tbName').value.trim()) {
+                    document.getElementById('tbName').value = msg.name;
+                }
                 break;
             case 'moduleAdded':
                 setValidation('');

@@ -541,7 +541,7 @@ function testDependencyAnalyzerProductionWiring(): void {
     );
 
     assert.strictEqual(
-        analyzerShimSource,
+        analyzerShimSource.replace(/\r\n/g, '\n'),
         "export * from '@veriflow/hdl-runtime/dependencyAnalyzer';\n"
     );
     assert.match(analyzerSource, /constructor\(private readonly index: WorkspaceHdlIndex\)/);
@@ -825,10 +825,17 @@ async function testSimulationServiceRejectsDirectoryArtifactPathsBeforeBackend()
     }
     const service = new SimulationService({
         registryFactory: () => registry,
-        artifactLstat: async targetPath => targetPath === symlinkDirectoryWaveFile ? {
-            isFile: () => false,
-            isSymbolicLink: () => true,
-        } : fs.promises.lstat(targetPath),
+        artifactLstat: async targetPath => {
+            // Logical Windows path fixtures must not access real drives or network shares.
+            if (targetPath === 'E:\\waves\\uart_tb.vcd'
+                || targetPath === '\\\\server\\other-share\\uart_tb.vcd') {
+                throw Object.assign(new Error('Fixture artifact does not exist'), { code: 'ENOENT' });
+            }
+            return targetPath === symlinkDirectoryWaveFile ? {
+                isFile: () => false,
+                isSymbolicLink: () => true,
+            } : fs.promises.lstat(targetPath);
+        },
     });
     const input = {
         workspaceRoot,

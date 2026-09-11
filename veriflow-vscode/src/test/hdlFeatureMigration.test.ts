@@ -276,7 +276,7 @@ function testModuleTreeKeepsEveryExactDefinition(): void {
     });
 
     const roots = provider.getChildren();
-    const allModules = roots.find(item => String((item as { label: unknown }).label).startsWith('All Modules')) as {
+    const allModules = roots.find(item => String((item as { label: unknown }).label).startsWith('Module library')) as {
         children: unknown[];
     };
     const visit = (items: unknown[]): Array<Record<string, unknown>> => items.flatMap(item => {
@@ -963,6 +963,7 @@ async function testScanWatcherAndConfigUseOneExactIndex(): Promise<void> {
         ) {}
         setBeforeGenerate(): void {}
         setOnVisible(): void {}
+        setOnGenerated(): void {}
         refreshModules(): void {
             testbenchRefreshCount++;
             testbenchDefinitions = this.getIndex()?.getAllDefinitions('module') ?? [];
@@ -1416,6 +1417,7 @@ async function testScanWatcherAndConfigUseOneExactIndex(): Promise<void> {
         }),
     };
     const stubs: Record<string, unknown> = {
+        './hdlFormatting': { registerHdlFormatting: () => disposable },
         vscode: vscodeStub,
         './config': configStub,
         './core': coreStub,
@@ -1437,6 +1439,26 @@ async function testScanWatcherAndConfigUseOneExactIndex(): Promise<void> {
             },
         },
         './testbenchPanel': { TestbenchPanelProvider: FakeTestbenchPanel },
+        './workflowController': {
+            WorkflowController: class {
+                readonly state = { activeTask: undefined };
+                readonly designView = {};
+                readonly simulationView = {};
+                readonly resultsView = {};
+                constructor(_context: unknown, private readonly services: {
+                    run(): Promise<void>;
+                    settings(): unknown;
+                }) {}
+                runTask(): Promise<void> { return this.services.run(); }
+                settings(): unknown { return this.services.settings(); }
+                entrySelected(): void {}
+                assertIdle(): void {}
+                beginRun(): undefined { return undefined; }
+                async finishRun(): Promise<void> {}
+                refresh(): void {}
+                dispose(): void {}
+            },
+        },
         './waveformEditorProvider': {
             WaveformEditorProvider: class { static readonly viewType = 'veriflow.waveformEditor'; },
         },
@@ -2094,7 +2116,7 @@ async function testScanWatcherAndConfigUseOneExactIndex(): Promise<void> {
         const aluItems = quickPickItems.filter(item => item.label === 'alu');
         assert.deepStrictEqual(
             aluItems.map(item => item.description).sort(),
-            [path.join('ip', 'alu.sv'), path.join('rtl', 'alu.sv')]
+            ['ip/alu.sv', 'rtl/alu.sv']
         );
         await withTimeout(
             Promise.resolve(commands.get('veriflow.analyze')!()),
@@ -2300,7 +2322,7 @@ async function testScanWatcherAndConfigUseOneExactIndex(): Promise<void> {
         );
         assert.strictEqual(viewerLaunchCalls, viewerCallsBefore + 1);
         assert.ok(errors.slice(errorsBeforeViewer).some(message =>
-            /Failed to open custom: Wave viewer exited with code 127/i.test(message)
+            /Failed to open custom: Wave viewer exited with code [1-9]\d*/i.test(message)
         ));
         assert.ok(!successes.slice(successesBeforeViewer).some(message =>
             message.startsWith('Opened custom:')

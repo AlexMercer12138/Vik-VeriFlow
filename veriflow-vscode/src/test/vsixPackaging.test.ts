@@ -276,14 +276,14 @@ function run(): void {
             packagedManifest.contributes.views.veriflow.map(
                 (item: { id?: string }) => item.id
             ),
-            ['veriflow.modules', 'veriflow.archDesigns', 'veriflow.testbench']
+            ['veriflow.design', 'veriflow.modules', 'veriflow.results']
         );
         assert.strictEqual(
             packagedManifest.contributes.views.veriflow[0].name,
-            'Simulation'
+            'Design'
         );
         assert.ok(
-            packagedManifest.activationEvents.includes('onView:veriflow.archDesigns'),
+            packagedManifest.activationEvents.includes('onView:veriflow.design'),
             'VSIX manifest does not activate the Arch Designs view'
         );
         assert.ok(
@@ -295,9 +295,9 @@ function run(): void {
         assert.ok(
             packagedManifest.contributes.viewsWelcome.some(
                 (item: { view?: string; contents?: string }) =>
-                    item.view === 'veriflow.archDesigns'
+                    item.view === 'veriflow.design'
                     && item.contents?.includes(
-                        '[Create Arch Design](command:veriflow.createArchDesign)'
+                        '[Create Graphical Design](command:veriflow.createArchDesign)'
                     )
             ),
             'VSIX manifest is missing the Arch Designs empty state'

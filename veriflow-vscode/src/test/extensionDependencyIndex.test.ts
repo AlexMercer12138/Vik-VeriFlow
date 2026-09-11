@@ -332,6 +332,7 @@ function createExtensionHarness(
         static readonly viewType = 'veriflow.testbench';
         setBeforeGenerate(): void {}
         setOnVisible(): void {}
+        setOnGenerated(): void {}
         refreshModules(): void {}
         dispose(): void {}
     }
@@ -639,6 +640,7 @@ function createExtensionHarness(
         );
     }
     const dependencyStubs: Record<string, unknown> = {
+        './hdlFormatting': { registerHdlFormatting: () => disposable },
         './config': configStub,
         './core': coreStub,
         './core/hdl/workspaceIndexStore': {
@@ -647,6 +649,26 @@ function createExtensionHarness(
         './moduleTreeProvider': { ModuleTreeProvider: FakeModuleTreeProvider },
         './moduleInstantiationCommand': { showModuleInstantiationPicker: async () => undefined },
         './testbenchPanel': { TestbenchPanelProvider: FakeTestbenchPanelProvider },
+        './workflowController': {
+            WorkflowController: class {
+                readonly state = { activeTask: undefined };
+                readonly designView = {};
+                readonly simulationView = {};
+                readonly resultsView = {};
+                constructor(_context: unknown, private readonly services: {
+                    run(): Promise<void>;
+                    settings(): unknown;
+                }) {}
+                runTask(): Promise<void> { return this.services.run(); }
+                settings(): unknown { return this.services.settings(); }
+                entrySelected(): void {}
+                assertIdle(): void {}
+                beginRun(): undefined { return undefined; }
+                async finishRun(): Promise<void> {}
+                refresh(): void {}
+                dispose(): void {}
+            },
+        },
         './waveformEditorProvider': {
             WaveformEditorProvider: class { static readonly viewType = 'veriflow.waveformEditor'; },
         },

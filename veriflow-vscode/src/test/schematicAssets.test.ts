@@ -448,7 +448,12 @@ async function testRuntimePackageSafety(support: BuildSupport): Promise<void> {
         );
 
         writeFixture(['dist', 'LICENSE']);
-        fs.symlinkSync('../LICENSE', path.join(fixtureRoot, 'dist', 'linked-license'));
+        // Junctions exercise the same link rejection without Windows symlink privileges.
+        fs.symlinkSync(
+            process.platform === 'win32' ? fixtureRoot : '../LICENSE',
+            path.join(fixtureRoot, 'dist', 'linked-license'),
+            process.platform === 'win32' ? 'junction' : 'file'
+        );
         await assert.rejects(
             support.collectRuntimePackage(fixtureRoot, expectations),
             /symbolic link/i
@@ -474,6 +479,11 @@ async function testRuntimePackageSafety(support: BuildSupport): Promise<void> {
     } finally {
         fs.rmSync(fixtureRoot, { recursive: true, force: true });
     }
+}
+
+// Windows reports only the writable/read-only flag, replicated across permission groups.
+function portableMode(posixMode: number): number {
+    return process.platform === 'win32' ? ((posixMode & 0o200) ? 0o666 : 0o444) : posixMode;
 }
 
 async function testRuntimePackageRootMode(support: BuildSupport): Promise<void> {
@@ -507,9 +517,9 @@ async function testRuntimePackageRootMode(support: BuildSupport): Promise<void> 
             provenanceFile: 'dist/SOURCE.md',
         });
 
-        assert.strictEqual(runtimePackage.mode, expectedMode);
+        assert.strictEqual(runtimePackage.mode, portableMode(expectedMode));
         await support.copyRuntimePackage(runtimePackage, destination);
-        assert.strictEqual(fs.statSync(destination).mode & 0o777, expectedMode);
+        assert.strictEqual(fs.statSync(destination).mode & 0o777, portableMode(expectedMode));
     } finally {
         fs.rmSync(fixtureRoot, { recursive: true, force: true });
     }
@@ -558,14 +568,14 @@ async function testRuntimePackageDirectoryModes(support: BuildSupport): Promise<
         }
 
         assert.deepStrictEqual(runtimePackage.directories, [
-            { relativePath: 'dist', mode: 0o755 },
-            { relativePath: 'dist/runtime', mode: 0o711 },
+            { relativePath: 'dist', mode: portableMode(0o755) },
+            { relativePath: 'dist/runtime', mode: portableMode(0o711) },
         ]);
-        assert.strictEqual(fs.statSync(destination).mode & 0o777, 0o755);
-        assert.strictEqual(fs.statSync(path.join(destination, 'dist')).mode & 0o777, 0o755);
+        assert.strictEqual(fs.statSync(destination).mode & 0o777, portableMode(0o755));
+        assert.strictEqual(fs.statSync(path.join(destination, 'dist')).mode & 0o777, portableMode(0o755));
         assert.strictEqual(
             fs.statSync(path.join(destination, 'dist', 'runtime')).mode & 0o777,
-            0o711
+            portableMode(0o711)
         );
     } finally {
         makeTreeWritableForCleanup(fixtureRoot);
@@ -608,11 +618,11 @@ async function testRuntimePackageReplacement(support: BuildSupport): Promise<voi
             path.join(destination, 'dist', 'index.js'),
             'utf8'
         ), 'export {};\n');
-        assert.strictEqual(fs.statSync(destination).mode & 0o777, 0o555);
+        assert.strictEqual(fs.statSync(destination).mode & 0o777, portableMode(0o555));
         assert.deepStrictEqual(ownedEntries(), []);
 
         await support.copyRuntimePackage(runtimePackage, destination);
-        assert.strictEqual(fs.statSync(destination).mode & 0o777, 0o555);
+        assert.strictEqual(fs.statSync(destination).mode & 0o777, portableMode(0o555));
         assert.strictEqual(fs.readFileSync(
             path.join(destination, 'dist', 'index.js'),
             'utf8'
@@ -633,7 +643,7 @@ async function testRuntimePackageReplacement(support: BuildSupport): Promise<voi
             }),
             /injected backup rename failure/
         );
-        assert.strictEqual(fs.statSync(destination).mode & 0o777, 0o555);
+        assert.strictEqual(fs.statSync(destination).mode & 0o777, portableMode(0o555));
         assert.strictEqual(
             fs.readFileSync(path.join(destination, 'old.txt'), 'utf8'),
             'trusted old content\n'
@@ -659,7 +669,7 @@ async function testRuntimePackageReplacement(support: BuildSupport): Promise<voi
             /injected backup temp failure/
         );
         assert.strictEqual(mkdtempCalls, 2);
-        assert.strictEqual(fs.statSync(destination).mode & 0o777, 0o555);
+        assert.strictEqual(fs.statSync(destination).mode & 0o777, portableMode(0o555));
         assert.strictEqual(
             fs.readFileSync(path.join(destination, 'old.txt'), 'utf8'),
             'backup temp failure content\n'
@@ -679,7 +689,7 @@ async function testRuntimePackageReplacement(support: BuildSupport): Promise<voi
             /injected publish rename failure/
         );
         assert.strictEqual(renameCalls, 3, 'failed publish must restore the backup');
-        assert.strictEqual(fs.statSync(destination).mode & 0o777, 0o555);
+        assert.strictEqual(fs.statSync(destination).mode & 0o777, portableMode(0o555));
         assert.strictEqual(
             fs.readFileSync(path.join(destination, 'old.txt'), 'utf8'),
             'trusted old content\n'
@@ -724,12 +734,12 @@ async function testRuntimePackageReplacement(support: BuildSupport): Promise<voi
         const retainedPrevious = path.join(fixtureRoot, retainedBackup, 'previous');
         assert.strictEqual(
             fs.statSync(retainedPrevious).mode & 0o777,
-            0o555
+            portableMode(0o555)
         );
-        assert.strictEqual(fs.statSync(path.join(retainedPrevious, 'dist')).mode & 0o777, 0o511);
+        assert.strictEqual(fs.statSync(path.join(retainedPrevious, 'dist')).mode & 0o777, portableMode(0o511));
         assert.strictEqual(
             fs.statSync(path.join(retainedPrevious, 'dist', 'runtime')).mode & 0o777,
-            0o501
+            portableMode(0o501)
         );
         makeTreeWritableForCleanup(path.join(fixtureRoot, retainedBackup));
         fs.rmSync(path.join(fixtureRoot, retainedBackup), { recursive: true, force: true });
@@ -775,7 +785,7 @@ async function testRuntimePackageReplacement(support: BuildSupport): Promise<voi
         );
         assert.strictEqual(ownedEntries().length, 1);
         const retainedStaging = path.join(fixtureRoot, ownedEntries()[0]);
-        assert.strictEqual(fs.statSync(retainedStaging).mode & 0o777, 0o555);
+        assert.strictEqual(fs.statSync(retainedStaging).mode & 0o777, portableMode(0o555));
         assert.strictEqual(fs.existsSync(path.join(retainedStaging, 'dist')), false);
         makeTreeWritableForCleanup(retainedStaging);
         fs.rmSync(retainedStaging, {
@@ -820,7 +830,7 @@ async function testRuntimePackageReplacement(support: BuildSupport): Promise<voi
         assert.strictEqual(recoveryEntries.length, 1);
         assert.match(recoveryEntries[0], /^\.runtime-package-backup-/);
         const recoverable = path.join(fixtureRoot, recoveryEntries[0], 'previous');
-        assert.strictEqual(fs.statSync(recoverable).mode & 0o777, 0o555);
+        assert.strictEqual(fs.statSync(recoverable).mode & 0o777, portableMode(0o555));
         assert.strictEqual(
             fs.readFileSync(path.join(recoverable, 'old.txt'), 'utf8'),
             'only recoverable copy\n'

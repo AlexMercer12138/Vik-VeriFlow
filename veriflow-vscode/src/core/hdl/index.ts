@@ -22,6 +22,8 @@ export * from './workspaceIndexTypes';
 export { computeTreeEdit } from './treeEdit';
 export type { ParserTreeEdit } from './treeEdit';
 export { toModuleInfo } from './legacyModelAdapter';
+export { formatHdl } from '@veriflow/hdl-runtime';
+export type { HdlFormatOptions } from '@veriflow/hdl-runtime';
 
 export type HdlParserExtensionContext = {
     extensionPath: string;

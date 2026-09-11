@@ -839,7 +839,7 @@ async function testExportUsesLatestSnapshotAndReportsAfterPublication(): Promise
         await waitFor(() => harness.exportRequests.length === 1, 'webview export request');
         assert.deepStrictEqual(harness.exportEvents, ['save', 'export']);
         assert.deepStrictEqual(harness.informationMessages, []);
-        assert.strictEqual(harness.exportRequests[0].designPath, '/workspace/soc.ad');
+        assert.strictEqual(harness.exportRequests[0].designPath, path.normalize('/workspace/soc.ad'));
         assert.strictEqual(harness.exportRequests[0].design.module, 'latest_soc');
         assert.deepStrictEqual(
             harness.exportRequests[0].definitions.map(item => item.modelFingerprint),

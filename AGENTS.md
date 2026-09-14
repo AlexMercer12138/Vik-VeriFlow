@@ -34,17 +34,15 @@
 
 ## Manual Publication
 
-The CLI has exact-version dependencies on the other public `@veriflow` packages, so publish the npm tarballs in this dependency-safe order and publish the CLI last:
+The CLI has exact-version dependencies on the other public `@veriflow` packages. Provide the owner with this single Bash command, replacing `<version>` with the prepared release version. Run it from the repository root. The loop publishes sequentially in dependency-safe order, with the CLI last; any failure stops the loop and returns the failing exit code without closing the owner's shell.
 
 ```bash
-npm publish dist/npm/veriflow-flow-core-<version>.tgz --access public
-npm publish dist/npm/veriflow-hdl-core-<version>.tgz --access public
-npm publish dist/npm/veriflow-schematic-core-<version>.tgz --access public
-npm publish dist/npm/veriflow-hdl-runtime-<version>.tgz --access public
-npm publish dist/npm/veriflow-waveform-runtime-<version>.tgz --access public
-npm publish dist/npm/veriflow-simulator-iverilog-wasm-<version>.tgz --access public
-npm publish dist/npm/veriflow-waveform-desktop-<version>.tgz --access public
-npm publish dist/npm/veriflow-cli-<version>.tgz --access public
+(
+  release_version='<version>'
+  for release_package in flow-core hdl-core schematic-core hdl-runtime waveform-runtime simulator-iverilog-wasm waveform-desktop cli; do
+    npm publish "dist/npm/veriflow-${release_package}-${release_version}.tgz" --access public || exit $?
+  done
+)
 ```
 
 Publish the already-built VSIX instead of repackaging during the authenticated step:

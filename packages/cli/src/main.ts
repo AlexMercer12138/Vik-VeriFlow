@@ -17,6 +17,7 @@ import {
 import { topGet, topSet } from './commands/top';
 import { simulate } from './commands/sim';
 import type { CliDependencySessionFactory } from './commands/sim';
+import { runTask, validateTask } from './commands/task';
 import { openWaveform, type WaveViewerLauncher } from './commands/wave';
 import { NodeWaveViewerLauncher } from './runtime/nodeWaveViewerLauncher';
 import type { CliSimulationBackendOptions } from './runtime/simulationBackends';
@@ -43,6 +44,8 @@ interface OptionDefinition {
     aliases: string[];
     requiredName?: string;
     choices?: readonly string[];
+    takesValue?: boolean;
+    validate?: (value: string) => string | undefined;
 }
 
 interface LeafCommand {
@@ -67,6 +70,7 @@ positional arguments:
     sim          compile and simulate
     wave         open waveform viewer
     ad           create, validate, and export Arch Designs
+    task         validate and run Simulation Tasks
 
 options:
   -h, --help     show this help message and exit
@@ -115,6 +119,17 @@ positional arguments:
     new       create an Arch Design
     validate  validate an Arch Design
     export    export an Arch Design to RTL
+
+options:
+  -h, --help  show this help message and exit
+`;
+
+const TASK_HELP = `usage: veriflow task [-h] ACTION ...
+
+positional arguments:
+  ACTION
+    validate  validate a Simulation Task and its HDL dependencies
+    run       run one generated testbench
 
 options:
   -h, --help  show this help message and exit
@@ -263,6 +278,30 @@ options:
                         output language
 `;
 
+const TASK_VALIDATE_HELP = `usage: veriflow task validate [-h] [--project PROJECT] TASK
+
+positional arguments:
+  TASK                  .st Simulation Task file
+
+options:
+  -h, --help            show this help message and exit
+  -p, --project PROJECT use execution tools from this project (default: builtin)
+`;
+
+const TASK_RUN_HELP = `usage: veriflow task run [-h] [--project PROJECT] TASK
+
+positional arguments:
+  TASK                  .st Simulation Task file
+
+options:
+  -h, --help            show this help message and exit
+  -p, --project PROJECT use execution tools from this project (default: builtin)
+`;
+
+const taskRunOptions: OptionDefinition[] = [
+    { key: 'project', aliases: ['--project', '-p'] },
+];
+
 const LEAF_COMMANDS: Record<string, LeafCommand> = {
     'project new': {
         help: PROJECT_NEW_HELP,
@@ -357,6 +396,18 @@ const LEAF_COMMANDS: Record<string, LeafCommand> = {
         ],
         handler: adExport,
     },
+    'task validate': {
+        help: TASK_VALIDATE_HELP,
+        positionals: [{ key: 'task', requiredName: 'TASK' }],
+        options: [{ key: 'project', aliases: ['--project', '-p'] }],
+        handler: validateTask,
+    },
+    'task run': {
+        help: TASK_RUN_HELP,
+        positionals: [{ key: 'task', requiredName: 'TASK' }],
+        options: taskRunOptions,
+        handler: runTask,
+    },
 };
 
 const PARENT_HELP: Record<string, string> = {
@@ -364,6 +415,7 @@ const PARENT_HELP: Record<string, string> = {
     lib: LIB_HELP,
     top: TOP_HELP,
     ad: AD_HELP,
+    task: TASK_HELP,
 };
 
 const PARENT_ACTIONS: Record<string, string[]> = {
@@ -371,6 +423,7 @@ const PARENT_ACTIONS: Record<string, string[]> = {
     lib: ['add', 'remove', 'list'],
     top: ['set', 'get'],
     ad: ['new', 'validate', 'export'],
+    task: ['validate', 'run'],
 };
 
 const TOP_LEVEL_COMMANDS: Record<string, LeafCommand> = {
@@ -494,6 +547,19 @@ function parseOptions(
             );
         }
 
+        if (option.takesValue === false) {
+            if (inlineValue !== undefined) {
+                return parseError(
+                    environment,
+                    command,
+                    definition.help,
+                    `argument ${option.aliases.join('/')}: does not take a value`,
+                );
+            }
+            values[option.key] = 'true';
+            continue;
+        }
+
         const value = inlineValue ?? argv[index + 1];
         if (
             value === undefined
@@ -515,6 +581,10 @@ function parseOptions(
                 `argument ${option.aliases.join('/')}: invalid choice: '${value}' `
                 + `(choose from ${option.choices.join(', ')})`
             );
+        }
+        const validationError = option.validate?.(value);
+        if (validationError) {
+            return parseError(environment, command, definition.help, validationError);
         }
         if (inlineValue === undefined) index += 1;
     }
@@ -568,7 +638,7 @@ export async function runCli(argv: string[], environment: CliEnvironment): Promi
     if (!(parent in PARENT_HELP)) {
         environment.stderr(
             `${usage(ROOT_HELP)}veriflow: error: argument COMMAND: invalid choice: '${parent}' `
-            + `(choose from project, lib, top, analyze, sim, wave, ad)\n`
+            + `(choose from project, lib, top, analyze, sim, wave, ad, task)\n`
         );
         return 2;
     }

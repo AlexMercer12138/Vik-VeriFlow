@@ -52,7 +52,7 @@ test('keeps long node text and many pin labels inside their module body', () => 
     const result = rendered();
     const wide = result.nodes.get('instance:wide-source')!;
     assert.equal(wide.pins.length, 12);
-    for (const label of [wide.title, wide.renderedSubtitle!, ...wide.pins.map(pin => ({
+    for (const label of [wide.title, ...wide.pins.map(pin => ({
         bounds: pin.clipBounds,
     }))]) {
         assert.equal(

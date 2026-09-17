@@ -6,6 +6,7 @@ export interface VirtualWorkspaceInput {
     cwd: string;
     files: readonly string[];
     runtimeFiles: readonly string[];
+    includeFiles?: readonly string[];
     includeDirs: readonly string[];
     writableFiles?: readonly string[];
 }
@@ -63,8 +64,9 @@ export async function buildVirtualWorkspace(
     const runtimeHostPaths = input.runtimeFiles.map(hostPath => (
         normalizeHostPath(hostPath, context, cwdHostPath)
     ));
+    const includeFileHostPaths = (input.includeFiles ?? []).map(hostPath => normalizeHostPath(hostPath, context, cwdHostPath));
     assertUniqueNormalizedHostPaths(
-        [...sourceHostPaths, ...runtimeHostPaths],
+        [...sourceHostPaths, ...runtimeHostPaths, ...includeFileHostPaths],
         context,
     );
     const includeHostPaths = input.includeDirs.map(includeDir => (
@@ -72,7 +74,7 @@ export async function buildVirtualWorkspace(
     ));
     const canonicalize = cachedCanonicalizer(canonicalizeHostPath, context);
     const cwd = await resolveHostPath(cwdHostPath, canonicalize);
-    const [includeDirs, sourceFiles, runtimeFiles] = await Promise.all([
+    const [includeDirs, sourceFiles, runtimeFiles, includeFiles] = await Promise.all([
         Promise.all(includeHostPaths.map(hostPath => (
             resolveHostPath(hostPath, canonicalize)
         ))),
@@ -82,6 +84,7 @@ export async function buildVirtualWorkspace(
         Promise.all(runtimeHostPaths.map(hostPath => (
             resolveHostPath(hostPath, canonicalize)
         ))),
+        Promise.all(includeFileHostPaths.map(hostPath => resolveHostPath(hostPath, canonicalize))),
     ]);
     const writableFiles = (input.writableFiles ?? []).map(logicalPath => ({
         logicalPath,
@@ -104,19 +107,22 @@ export async function buildVirtualWorkspace(
         context.implementation.relative(workspaceRoot, cwd.mappingPath),
         context,
     );
-    const roots = configuredRoots(cwd, includeDirs, runCwd, context);
+    const roots = includeFiles.length
+        ? includeTopologyRoots(cwd, includeDirs, [...sourceFiles, ...includeFiles], runCwd, context)
+        : configuredRoots(cwd, includeDirs, runCwd, context);
     const sources = sourceFiles.map(
         hostPath => mapHostFile(hostPath, roots, context),
     );
     const mappedRuntimeFiles = runtimeFiles.map(
         hostPath => mapWorkspaceFile(hostPath, workspaceRoot, context),
     );
+    const mappedIncludeFiles = includeFiles.map(hostPath => mapHostFile(hostPath, roots, context));
     const mappedWritableFiles = writableFiles.map(file => joinVirtualPath(
         'workspace',
         context.implementation.relative(workspaceRoot, file.mappingPath),
         context,
     ));
-    const mappedFiles = [...sources, ...mappedRuntimeFiles];
+    const mappedFiles = [...sources, ...mappedRuntimeFiles, ...mappedIncludeFiles];
 
     assertUniqueVirtualPaths(mappedFiles);
     assertUniqueHostFiles(mappedFiles, context);
@@ -234,6 +240,32 @@ function configuredRoots(
         ...root,
         comparisonPath: comparable(root.mappingPath, context),
     }));
+}
+
+/** Include-only inputs need one coherent tree per volume, so ../ resolves identically
+ * on the host and in Icarus. Keep the generated source cwd in its runtime namespace.
+ */
+function includeTopologyRoots(
+    cwd: ResolvedHostPath,
+    includeDirs: readonly ResolvedHostPath[],
+    files: readonly ResolvedHostPath[],
+    runCwd: string,
+    context: PathContext,
+): ConfiguredRoot[] {
+    const groups = new Map<string, string[]>();
+    for (const directory of [cwd.mappingPath, ...includeDirs.map(dir => dir.mappingPath),
+        ...files.map(file => context.implementation.dirname(file.mappingPath))]) {
+        const volume = comparable(context.implementation.parse(directory).root, context);
+        const group = groups.get(volume) ?? [];
+        group.push(directory);
+        groups.set(volume, group);
+    }
+    return [
+        { mappingPath: cwd.mappingPath, virtualPath: runCwd, order: -1 },
+        ...[...groups.values()].map((directories, index) => ({
+            mappingPath: commonAncestor(directories, context), virtualPath: `libraries/${index}`, order: index,
+        })),
+    ].map(root => ({ ...root, comparisonPath: comparable(root.mappingPath, context) }));
 }
 
 function mapHostFile(

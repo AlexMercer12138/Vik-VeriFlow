@@ -18,26 +18,23 @@ Verilog Design Flow 将模块扫描、依赖分析、编译仿真、波形查看
 ## HDL 工作流
 
 1. 打开包含 `.v` 或 `.sv` 文件的工作区。
-2. 从活动栏进入 **VeriFlow**。在 **Design（设计）** 中选择设计顶层、浏览模块库和设计层次，或创建、编辑图形设计。
-3. 在 **Simulation（仿真）** 点击 **New Simulation Task**，选择已有 Testbench，或为当前设计生成 Testbench。生成器在主编辑区打开，支持端口、参数、时钟和复位配置，并可勾选生成后立即运行。
-4. 确认任务的 **Design under test（验证对象）** 与 **Simulation entry（仿真入口）**，点击 **Run Simulation Task**。例如验证对象为 `soc_top`，运行入口为 `tb_soc`；二者独立保存。
-5. 在 **Results（结果）** 查看最近一次运行的状态、波形副本和编译／运行日志。
+2. 从活动栏进入 **VeriFlow**。**Module Browser** 按工作区、外部库和子目录组织模块，顶部固定过滤框实时筛选；点击跳到声明，右键“Add to Canvas”只作用于当前活动的 AD/ST 图形编辑器。
+3. **Architecture Design** 和 **Simulation Task** 分别列出各自文件，使用相同电路板图标和创建按钮。展开文件可查看依赖与实际导出路径。
+4. 新建 `.st` 只选择一次保存位置。通过与 AD 相同的添加实例对话框加入 HDL/AD，通过 Simulation Utility 加入 Clock、Reset、Stimulus 或 UART、SPI、I2C、APB、AXI-STREAM、AXI-Lite、AXI-Full、RGB 接口激励，在画布接线并在右侧配置属性。总线事务逐条填写读写、地址和数据；RGB888 时序使用 H/V total、active、syncstart、syncend。
+5. Generate Testbench 导出可读 Verilog-2005；运行使用同一生成器，运行期间按钮变成停止，完成后可打开最新 VCD。
 
-仿真任务保存在当前工作区的扩展状态中，支持切换、重命名、配置仿真器和波形路径；无需修改工程文件格式。已有工程的仿真顶层仍可继续使用。对图形设计创建任务和执行任务时，会先校验并导出 RTL；设计端口或参数变化时会提示检查 Testbench，已有 Testbench 文件不会被生成器覆盖。
-
-结果记录保留运行时的任务名称与仿真入口，切换任务不会改变其归属。源码变化后显示 **Results are outdated**。**Run completed** 仅表示仿真正常结束，不代表功能验证通过；验证通过需要 Testbench 的检查逻辑支持。当前提供最近一次运行，尚未提供历史运行列表。
+`.st` 保存来源、预设、连接和任务时间设置。点击空白处编辑 timescale、结束时间及波形选项。运行完成表示仿真进程结束。传统 HDL Testbench 仍可直接运行，无需先创建 `.st`。
 
 `.vcd` 文件可直接使用 **VeriFlow Waveform Viewer** 打开。对 `.v` 或 `.sv` 文件执行 **Open as VeriFlow Schematic**，可查看支持稳定列布局、正交布线、搜索、缩放、minimap、整网选择和布局调整的只读原理图。
-
 ## 架构设计编辑器
 
-在 **Design** 区域点击 **Create Graphical Design**，输入顶层模块名并选择 `.ad` 文件保存位置，新设计会直接在可视化编辑器中打开。右键该设计可将其设为设计顶层或创建仿真任务。
+在 **Architecture Design** 点击加号，选择 `.ad` 文件保存位置，空白设计会直接在可视化编辑器中打开。
 
 使用工具栏添加模块实例、顶层端口和 Logic Utility（逻辑工具）。Logic Utility 包含显式常量、非、与/或/异或及其反相形式、MUX、拼接、切片、复制、零/符号扩展，以及与/或/异或归约。它们作为 Arch Design schema v2 的一等节点保存，并以连续 `assign` 逻辑导出。连线时先单击任意一侧端点，再单击另一侧端点；两次单击之间可以平移画布。选中模块、逻辑工具、端口、引脚、网络或识别出的接口，可在右侧属性栏查看和修改对应内容。
 
 模块和 Logic Utility 的未驱动输入仅在验证与 RTL 导出时采用等效常量 `0`；未连接的 inout `t` 采用 `1`。这些等效默认值会显示在属性栏中，但不会在画布上生成常量框或分支。需要可见、可复用的常量源时，应显式添加 Constant Logic Utility。
 
-错误和警告会实时显示在 E/W 计数与 Problems 面板中。编辑器内只保留画布工具栏的 **Export RTL** 导出入口；每个文件的 **Design** 右键菜单和命令面板也可执行验证与导出。默认导出同目录、同名的 `.v` 文件；可在属性栏选择 SystemVerilog 和相对 `.sv` 输出路径。扩展不会覆盖手写 RTL。
+错误和警告会实时显示在 E/W 计数与 Problems 面板中。编辑器内只保留画布工具栏的 **Export RTL** 导出入口；每个文件的 **Architecture Design** 右键菜单和命令面板也可执行验证与导出。默认导出同目录、同名的 `.v` 文件；可在属性栏选择 SystemVerilog 和相对 `.sv` 输出路径。扩展不会覆盖手写 RTL。
 
 `.ad` 是 VeriFlow 的 Arch Design 格式，不表示兼容 Vivado Block Design。schema v1 文件仍可读取，并会在编辑时迁移到 schema v2 模型。
 
@@ -57,11 +54,11 @@ Verilog Design Flow 将模块扫描、依赖分析、编译仿真、波形查看
 
 ## 其他命令
 
-- **Select Simulation Entry (Testbench)**
+- **Run Current Testbench**
 - **Scan Modules**
 - **Instantiate Module**
 - **Open VCD in VeriFlow Viewer**
-- **Generate Testbench**（在主编辑区配置新仿真任务）
+- **Insert HDL Template**（在当前光标处插入时钟、复位、波形和结束时间模板）
 
 ## 常用设置
 
@@ -92,3 +89,13 @@ GTKWave：           gtkwave "{wave_file}"
 VeriFlow 扩展主体代码采用 MIT 许可证。内置 Icarus Verilog WASM 运行时采用
 `GPL-2.0-or-later`，许可证与对应源码获取方式见
 [Icarus Verilog WASM 说明](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/licenses/iverilog-wasm.md)。
+
+## 图形仿真任务
+
+Clock 提供 `clk` 输出，配置 MHz 频率和初值；Reset 提供 `reset` 输出，配置有效电平及持续时间；Stimulus 提供可设位宽的 `out` 输出，配置初始 Verilog 数值和严格递增的绝对时间/数值表。预设使用右侧类型化属性表，添加后手工接线。Logic Utility、接口连线和撤销重做沿用 AD，ST 没有外部顶层端口。
+
+生成和运行共用一个生成器，输出包含预设辅助模块与 AD 包装，DUT HDL 保留为工程依赖。运行不覆盖已导出的文件。VS Code 设置选择仿真器与波形工具；CLI 用 `--project` 指定项目配置。
+
+Module Browser 标题只有刷新和新建文件图标；AD/ST 标题只有相同的加号，空状态使用相同样式的创建按钮。添加模块必须有当前活动的 AD/ST 图形编辑器，不使用记忆目标或目标选择器，不提供侧栏过滤弹窗或跨视图模块拖放。
+
+详见[仿真任务指南](../docs/simulation-tasks.md)与[basic.st](../examples/simulation-task/basic.st)。旧的用例矩阵、内嵌源码资产和验证绑定格式不受支持。

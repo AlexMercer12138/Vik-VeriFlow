@@ -3,7 +3,7 @@
   "displayName": "Verilog Design Flow",
   "description": "Verilog design workflow for VS Code: analyze, compile, simulate, edit schematics, view waveforms, and generate testbenches",
   "icon": "media/icon.png",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "publisher": "Vikai-mercer",
   "license": "MIT",
   "engines": {
@@ -37,7 +37,9 @@
     "onCustomEditor:veriflow.schematicEditor",
     "onCustomEditor:veriflow.archDesignEditor",
     "onView:veriflow.design",
-    "onCommand:veriflow.createArchDesign"
+    "onCommand:veriflow.createArchDesign",
+    "workspaceContains:**/*.st",
+    "onCustomEditor:veriflow.simulationTask"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -74,6 +76,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "veriflow.simulationTask",
+        "displayName": "VeriFlow Simulation Task",
+        "selector": [
+          {
+            "filenamePattern": "*.st"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "languages": [
@@ -85,34 +97,69 @@
         "extensions": [
           ".ad"
         ]
+      },
+      {
+        "id": "json",
+        "extensions": [
+          ".st"
+        ]
+      },
+      {
+        "id": "verilog",
+        "aliases": [
+          "Verilog",
+          "verilog"
+        ],
+        "extensions": [
+          ".v",
+          ".vh"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "systemverilog",
+        "aliases": [
+          "SystemVerilog",
+          "systemverilog"
+        ],
+        "extensions": [
+          ".sv",
+          ".svh"
+        ],
+        "configuration": "./language-configuration.json"
       }
     ],
     "views": {
       "veriflow": [
         {
+          "id": "veriflow.files",
+          "type": "webview",
+          "name": "Module Browser",
+          "icon": "$(files)",
+          "contextualTitle": "Module Browser"
+        },
+        {
           "id": "veriflow.design",
-          "name": "Design",
+          "name": "Architecture Design",
           "icon": "$(circuit-board)",
-          "contextualTitle": "Design"
+          "contextualTitle": "Architecture Design"
         },
         {
           "id": "veriflow.modules",
-          "name": "Simulation",
-          "icon": "$(beaker)",
-          "contextualTitle": "Simulation"
-        },
-        {
-          "id": "veriflow.results",
-          "name": "Results",
-          "icon": "$(pulse)",
-          "contextualTitle": "Results"
+          "name": "Simulation Task",
+          "icon": "$(circuit-board)",
+          "contextualTitle": "Simulation Task"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "veriflow.design",
-        "contents": "[Create Graphical Design](command:veriflow.createArchDesign)"
+        "contents": "[Create Architecture Design](command:veriflow.createArchDesign)"
+      },
+      {
+        "view": "veriflow.modules",
+        "contents": "[Create Simulation Task](command:veriflow.newSimulationTask)"
       }
     ],
     "viewsContainers": {
@@ -125,11 +172,6 @@
       ]
     },
     "commands": [
-      {
-        "command": "veriflow.selectTop",
-        "title": "Select Simulation Entry (Testbench)",
-        "icon": "$(list-selection)"
-      },
       {
         "command": "veriflow.analyze",
         "title": "Analyze Dependencies",
@@ -186,9 +228,9 @@
       },
       {
         "command": "veriflow.createArchDesign",
-        "title": "Create Graphical Design",
+        "title": "Create Architecture Design",
         "category": "VeriFlow",
-        "icon": "$(new-file)"
+        "icon": "$(add)"
       },
       {
         "command": "veriflow.refreshArchDesigns",
@@ -215,20 +257,8 @@
         "icon": "$(export)"
       },
       {
-        "command": "veriflow.selectDesign",
-        "title": "Select Design Top",
-        "category": "VeriFlow",
-        "icon": "$(symbol-module)"
-      },
-      {
-        "command": "veriflow.analyzeDesign",
-        "title": "Analyze Design Hierarchy",
-        "category": "VeriFlow",
-        "icon": "$(type-hierarchy)"
-      },
-      {
         "command": "veriflow.newSimulationTask",
-        "title": "New Simulation Task",
+        "title": "Create Simulation Task",
         "category": "VeriFlow",
         "icon": "$(add)"
       },
@@ -239,65 +269,107 @@
         "icon": "$(file-code)"
       },
       {
-        "command": "veriflow.selectSimulationTask",
-        "title": "Select Simulation Task",
-        "category": "VeriFlow",
-        "icon": "$(list-selection)"
-      },
-      {
-        "command": "veriflow.configureSimulationTask",
-        "title": "Configure Simulation Task",
-        "category": "VeriFlow",
-        "icon": "$(settings-gear)"
-      },
-      {
-        "command": "veriflow.setTaskDesign",
-        "title": "Select Design Under Test",
-        "category": "VeriFlow",
-        "icon": "$(symbol-module)"
-      },
-      {
-        "command": "veriflow.removeSimulationTask",
-        "title": "Remove Task from List",
-        "category": "VeriFlow",
-        "icon": "$(remove)"
-      },
-      {
         "command": "veriflow.runSimulationTask",
         "title": "Run Simulation Task",
         "category": "VeriFlow",
         "icon": "$(run)"
       },
       {
-        "command": "veriflow.analyzeSimulationTask",
-        "title": "Analyze Compilation Dependencies",
-        "category": "VeriFlow",
-        "icon": "$(search)"
+        "command": "veriflow.openSimulationTask",
+        "title": "Open Current Simulation Task",
+        "category": "VeriFlow"
       },
       {
-        "command": "veriflow.openRunWave",
-        "title": "Open Recorded Waveform",
+        "command": "veriflow.cancelSimulationTask",
+        "title": "Cancel Simulation Task",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.insertHdlTemplate",
+        "title": "Insert HDL Template",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.insertHdlTemplate.clock",
+        "title": "HDL: Insert Clock",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.insertHdlTemplate.reset",
+        "title": "HDL: Insert Reset",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.insertHdlTemplate.timeout",
+        "title": "HDL: Insert Timeout",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.insertHdlTemplate.waveform",
+        "title": "HDL: Insert Waveform",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.runTraditionalTestbench",
+        "title": "Run Current Testbench",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.selectTraditionalTestbench",
+        "title": "Run Existing Testbench",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.cancelTraditionalTestbench",
+        "title": "Stop Traditional Testbench",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.previewArchDesignRtl",
+        "title": "View AD RTL",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.openModuleBrowserModule",
+        "title": "Open Module Declaration",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.copyInstantiation",
+        "title": "Copy Module Instantiation",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.newHdlFile",
+        "title": "New HDL File",
+        "category": "VeriFlow",
+        "icon": "$(add)"
+      },
+      {
+        "command": "veriflow.addModuleToCanvas",
+        "title": "Add to Canvas",
+        "category": "VeriFlow",
+        "enablement": "veriflow.activeCanvas"
+      },
+      {
+        "command": "veriflow.exportSimulationTestbench",
+        "title": "Generate Testbench",
+        "category": "VeriFlow",
+        "icon": "$(export)"
+      },
+      {
+        "command": "veriflow.openSimulationTaskWave",
+        "title": "Open Simulation Waveform",
         "category": "VeriFlow",
         "icon": "$(pulse)"
-      },
-      {
-        "command": "veriflow.openRunLog",
-        "title": "Open Recorded Run Log",
-        "category": "VeriFlow",
-        "icon": "$(output)"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "veriflow.instantiateModule",
+          "submenu": "veriflow.hdl",
           "when": "editorLangId == verilog || editorLangId == systemverilog",
-          "group": "navigation@10"
-        },
-        {
-          "command": "veriflow.formatHdl",
-          "when": "editorLangId == verilog || editorLangId == systemverilog",
-          "group": "navigation@11"
+          "group": "navigation@90"
         }
       ],
       "explorer/context": [
@@ -321,44 +393,24 @@
       ],
       "view/title": [
         {
-          "command": "veriflow.selectDesign",
-          "when": "view == veriflow.design",
+          "command": "veriflow.scanModules",
+          "when": "view == veriflow.files",
           "group": "navigation@1"
+        },
+        {
+          "command": "veriflow.newHdlFile",
+          "when": "view == veriflow.files",
+          "group": "navigation@3"
         },
         {
           "command": "veriflow.createArchDesign",
           "when": "view == veriflow.design",
-          "group": "navigation@2"
-        },
-        {
-          "command": "veriflow.analyzeDesign",
-          "when": "view == veriflow.design",
-          "group": "navigation@3"
-        },
-        {
-          "command": "veriflow.scanModules",
-          "when": "view == veriflow.design",
-          "group": "navigation@4"
+          "group": "navigation@1"
         },
         {
           "command": "veriflow.newSimulationTask",
           "when": "view == veriflow.modules",
           "group": "navigation@1"
-        },
-        {
-          "command": "veriflow.runSimulationTask",
-          "when": "view == veriflow.modules",
-          "group": "navigation@2"
-        },
-        {
-          "command": "veriflow.analyzeSimulationTask",
-          "when": "view == veriflow.modules",
-          "group": "navigation@3"
-        },
-        {
-          "command": "veriflow.configureSimulationTask",
-          "when": "view == veriflow.modules",
-          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -376,26 +428,41 @@
           "command": "veriflow.exportArchDesign",
           "when": "view == veriflow.design && viewItem == archDesignFile",
           "group": "navigation@3"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "veriflow.addModuleToCanvas",
+          "when": "webviewId == veriflow.files && webviewSection == hdlModule",
+          "group": "navigation@1"
         },
         {
-          "command": "veriflow.selectDesign",
-          "when": "view == veriflow.design && viewItem =~ /^(archDesignFile|designModule)$/",
-          "group": "navigation@4"
+          "command": "veriflow.openModuleBrowserModule",
+          "when": "webviewId == veriflow.files && webviewSection == hdlModule",
+          "group": "navigation@2"
         },
         {
-          "command": "veriflow.newSimulationTask",
-          "when": "view == veriflow.design && viewItem =~ /^(archDesignFile|designModule)$/",
-          "group": "navigation@5"
+          "command": "veriflow.copyInstantiation",
+          "when": "webviewId == veriflow.files && webviewSection == hdlModule",
+          "group": "navigation@3"
+        }
+      ],
+      "veriflow.hdl": [
+        {
+          "command": "veriflow.insertHdlTemplate",
+          "group": "1_edit@1"
         },
         {
-          "command": "veriflow.openSchematicFromExplorer",
-          "when": "view == veriflow.design && viewItem == designModule",
-          "group": "navigation@6"
+          "command": "veriflow.instantiateModule",
+          "group": "1_edit@2"
         },
         {
-          "command": "veriflow.removeSimulationTask",
-          "when": "view == veriflow.modules && viewItem == simulationTask",
-          "group": "navigation@7"
+          "command": "veriflow.formatHdl",
+          "group": "1_edit@3"
+        },
+        {
+          "command": "veriflow.runTraditionalTestbench",
+          "group": "2_simulation@1"
         }
       ]
     },
@@ -465,7 +532,31 @@
           "description": "Directory where generated testbench files are written. Relative paths are resolved from the workspace root."
         }
       }
-    }
+    },
+    "jsonValidation": [
+      {
+        "fileMatch": "*.st",
+        "url": "./schemas/simulation-task.schema.json"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "veriflow.hdl",
+        "label": "VeriFlow"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "verilog",
+        "scopeName": "source.verilog",
+        "path": "./syntaxes/verilog.tmLanguage.json"
+      },
+      {
+        "language": "systemverilog",
+        "scopeName": "source.systemverilog",
+        "path": "./syntaxes/systemverilog.tmLanguage.json"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "node ../scripts/build-vscode.mjs",
@@ -475,7 +566,7 @@
     "test": "npm run vscode:prepublish && node ./scripts/run-tests.mjs",
     "test:vsix": "npm run vscode:prepublish && node ./out/test/vsixPackaging.test.js",
     "test:schematic-integration": "npm run compile && node out/test/schematicIntegration.test.js",
-    "test:task6": "npm run compile:ts && node out/test/core.test.js && node out/test/hdlFeatureMigration.test.js && node out/test/testbenchPanel.test.js",
+    "test:task6": "npm run vscode:prepublish && node out/test/core.test.js && node out/test/hdlFeatureMigration.test.js && node out/test/testbenchTemplateCommands.test.js && node out/test/testbenchGeneratorNative.test.js",
     "watch": "node ../scripts/watch-vscode.mjs",
     "lint": "eslint src --ext ts",
     "package": "vsce package --no-dependencies",
@@ -483,12 +574,12 @@
   },
   "dependencies": {
     "@antv/x6": "3.1.7",
-    "@veriflow/flow-core": "1.5.0",
-    "@veriflow/hdl-core": "1.5.0",
-    "@veriflow/hdl-runtime": "1.5.0",
-    "@veriflow/schematic-core": "1.5.0",
-    "@veriflow/simulator-iverilog-wasm": "1.5.0",
-    "@veriflow/waveform-runtime": "1.5.0",
+    "@veriflow/flow-core": "1.5.1",
+    "@veriflow/hdl-core": "1.5.1",
+    "@veriflow/hdl-runtime": "1.5.1",
+    "@veriflow/schematic-core": "1.5.1",
+    "@veriflow/simulator-iverilog-wasm": "1.5.1",
+    "@veriflow/waveform-runtime": "1.5.1",
     "lucide": "1.28.0",
     "web-tree-sitter": "0.26.11"
   },

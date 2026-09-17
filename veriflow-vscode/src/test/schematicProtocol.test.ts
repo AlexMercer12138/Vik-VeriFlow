@@ -10,6 +10,22 @@ import { parseWebviewCommand } from '../schematic/protocol';
 
 const TEST_REVISION = 'snapshot:test';
 
+for (const inoutMode of ['direct', 'tristate']) {
+    const command = {
+        type: 'editArchDesign', revision: TEST_REVISION,
+        edit: { type: 'addPort', port: { name: 'pad', direction: 'inout', inoutMode } },
+    };
+    assert.deepStrictEqual(parseWebviewCommand(command), command);
+}
+assertRejected({
+    type: 'editArchDesign', revision: TEST_REVISION,
+    edit: { type: 'addPort', port: { name: 'pad', direction: 'input', inoutMode: 'direct' } },
+});
+assertRejected({
+    type: 'editArchDesign', revision: TEST_REVISION,
+    edit: { type: 'addPort', port: { name: 'pad', direction: 'inout', inoutMode: 'invalid' } },
+});
+
 function assertRejected(value: unknown): void {
     let result: ReturnType<typeof parseWebviewCommand>;
     assert.doesNotThrow(() => {
@@ -535,3 +551,16 @@ void main().catch(error => {
     console.error(error);
     process.exitCode = 1;
 });
+
+// Shared semantic edits retain the same normalization and revision boundary.
+const sharedEdit = { type: 'editSchematic', revision: TEST_REVISION,
+    edit: { type: 'removeInstance', name: 'u_dut' } };
+assert.deepStrictEqual(parseWebviewCommand(sharedEdit), sharedEdit);
+assertRejected({ ...sharedEdit, revision: '' });
+assertRejected({ ...sharedEdit, edit: { type: 'execute', script: 'anything' } });
+const taskRun = { type: 'simulationTaskCommand', revision: TEST_REVISION,
+    command: 'run' };
+assertRejected({ ...taskRun, payload: { caseId: 'default' } });
+assert.deepStrictEqual(parseWebviewCommand(taskRun), taskRun);
+assertRejected({ ...taskRun, command: 'exportArchDesign' });
+assertRejected({ ...taskRun, revision: undefined });

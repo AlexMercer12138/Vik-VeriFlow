@@ -3,12 +3,14 @@ import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
 const testRoot = path.join(process.cwd(), 'out', 'test');
-const registeredTests = ['pathStyle.test.js', 'rootBuild.test.js', 'webDistAssets.test.js'];
+const sourceRoot = path.join(process.cwd(), 'src', 'test');
 const finalTests = ['vsixPackaging.test.js'];
-const regularFiles = [...new Set([
-    ...(await readdir(testRoot)).filter(name => name.endsWith('.test.js')),
-    ...registeredTests,
-])].filter(name => !finalTests.includes(name)).sort();
+// TypeScript leaves old output behind when source tests are deleted or renamed.
+// Discover current tests from source; a missing compiled test still fails below.
+const regularFiles = (await readdir(sourceRoot))
+    .filter(name => name.endsWith('.test.ts'))
+    .map(name => name.replace(/\.ts$/, '.js'))
+    .filter(name => !finalTests.includes(name)).sort();
 const files = [...regularFiles, ...finalTests];
 
 for (const file of files) {

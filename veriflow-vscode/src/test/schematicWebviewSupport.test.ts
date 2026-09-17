@@ -11,6 +11,8 @@ import type {
 import type { SchematicLayout } from '../schematic/layoutStore';
 import {
     buildSchematicWebviewHtml,
+    canConnectScalarPins,
+    archDesignEndpointForPin,
     DebouncedLayoutSaveScheduler,
     formatSchematicDiagnosticDetails,
     mergeSchematicWebviewLayouts,
@@ -456,6 +458,21 @@ function testArchDesignInspectorProjection(): void {
         fieldById(inoutModel, 'default-shared.t').placeholder,
         "Implicit default: 1'b1"
     );
+
+    const directDesign: ArchDesign = { ...design, connections: [], ports: [{
+        name: 'shared', direction: 'inout', inoutMode: 'direct', width: 8,
+    }] };
+    const direct = projectArchDesignInspector({ ...snapshot, design: directDesign },
+        graph, ['port:shared'], undefined);
+    assert.strictEqual(direct.fields.some(field => field.id.startsWith('default-')), false);
+    assert.strictEqual(fieldById(direct, 'port-inout-mode').value, 'direct');
+    assert.deepStrictEqual(fieldById(direct, 'port-width').commit?.('16'), {
+        type: 'updatePort', name: 'shared',
+        port: { name: 'shared', direction: 'inout', inoutMode: 'direct', width: 16 },
+    });
+    const directNode = graph.nodes.find(node => node.id === 'port:shared')!;
+    assert.deepStrictEqual(archDesignEndpointForPin(directDesign, directNode, directNode.pins[0]),
+        { kind: 'port', port: 'shared' });
 
     const networkModel = projectArchDesignInspector(
         snapshot,
@@ -1270,6 +1287,19 @@ function testSelectionStatusSummary(): void {
 }
 
 void Promise.resolve()
+    .then(() => {
+        const base = inspectorGraph();
+        const pin = (id: string) => base.nodes.flatMap(node => node.pins).find(item => item.id === id)!;
+        const firstLoad = pin('instance:u_core:clk');
+        const secondLoad = pin('instance:u_sink:data');
+        assert.strictEqual(canConnectScalarPins({ ...base, networks: [] }, firstLoad, secondLoad), true);
+        // Each load is already attached to a different driver: joining them would short the drivers.
+        assert.strictEqual(canConnectScalarPins(base, firstLoad, secondLoad), false);
+        assert.strictEqual(canConnectScalarPins({ ...base, networks: base.networks.slice(0, 1) },
+            firstLoad, secondLoad), true);
+        assert.strictEqual(canConnectScalarPins(base, firstLoad, firstLoad), false);
+        assert.strictEqual(canConnectScalarPins(base, pin('port:clk:clk'), firstLoad), true);
+    })
     .then(testSecureSchematicWebviewHtml)
     .then(testDiagnosticDetailFormatting)
     .then(testSchematicInspectorProjection)

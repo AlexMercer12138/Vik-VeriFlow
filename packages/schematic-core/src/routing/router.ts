@@ -1897,7 +1897,6 @@ type ShortcutVariant = Readonly<{
 }>;
 
 function shortcutVariants(
-    enabled: boolean,
     reuse: NetworkTrackReuse,
     fromNode: RoutingGridNodeInput,
     toNode: RoutingGridNodeInput,
@@ -1907,8 +1906,7 @@ function shortcutVariants(
 ): readonly ShortcutVariant[] {
     const startColumn = Math.min(fromNode.column, toNode.column);
     const endColumn = Math.max(fromNode.column, toNode.column);
-    if (!enabled
-        || endColumn - startColumn <= 1
+    if (endColumn - startColumn <= 1
         || realizedPinPoint(geometry, from).y
             === realizedPinPoint(geometry, to).y) {
         return Object.freeze([]);
@@ -1930,7 +1928,7 @@ function shortcutVariants(
 }
 
 function ordinaryVariantUsesFreshTracks(
-    allowShortcuts: boolean,
+    hasExistingTree: boolean,
     reuse: NetworkTrackReuse,
     networkId: string,
     from: RoutingTerminalRequest,
@@ -1950,7 +1948,7 @@ function ordinaryVariantUsesFreshTracks(
     ) === 1 && sourceChannel === targetChannel;
     const sharedChannel = adjacentSharedChannel
         || (sourceChannel === targetChannel
-            && reuse.channels.has(sourceChannel));
+            && (hasExistingTree || reuse.channels.has(sourceChannel)));
     const forced = adjacentSharedChannel
         && forcedConnections.has(connectionKey(networkId, from, to));
     if (forced) return false;
@@ -1958,13 +1956,12 @@ function ordinaryVariantUsesFreshTracks(
         === realizedPinPoint(geometry, to).y;
     const topologyOffset = sharedChannel
         ? aligned ? 1 : 2
-        : allowShortcuts && aligned
+        : aligned
             && Math.abs(fromNode.column - toNode.column) > 1 ? 1 : 0;
     if (variantIndex < topologyOffset) {
         return sharedChannel && !aligned && variantIndex === 1;
     }
     const shortcuts = shortcutVariants(
-        allowShortcuts,
         reuse,
         fromNode,
         toNode,
@@ -1981,7 +1978,7 @@ function ordinaryVariantUsesFreshTracks(
 
 function planOrdinaryConnection(
     allocator: RoutingAllocationJournal,
-    allowShortcuts: boolean,
+    hasExistingTree: boolean,
     reuse: NetworkTrackReuse,
     networkId: string,
     from: RoutingTerminalRequest,
@@ -2003,9 +2000,11 @@ function planOrdinaryConnection(
     const adjacentSharedChannel = Math.abs(
         fromNode.column - toNode.column
     ) === 1 && sourceChannel === targetChannel;
-    const reusableSharedChannel = sourceChannel === targetChannel
-        && reuse.channels.has(sourceChannel);
-    const sharedChannel = adjacentSharedChannel || reusableSharedChannel;
+    // A straight first path has no allocated track yet, but a later branch
+    // can still leave that tree through a single shared channel leg.
+    const sharedChannel = adjacentSharedChannel
+        || (sourceChannel === targetChannel
+            && (hasExistingTree || reuse.channels.has(sourceChannel)));
     const aligned = realizedPinPoint(geometry, from).y
         === realizedPinPoint(geometry, to).y;
     const forced = adjacentSharedChannel
@@ -2042,7 +2041,7 @@ function planOrdinaryConnection(
         )
     );
 
-    const crossColumnAligned = allowShortcuts && !sharedChannel
+    const crossColumnAligned = !sharedChannel
         && Math.abs(fromNode.column - toNode.column) > 1
         && aligned;
     if ((sharedChannel || crossColumnAligned)
@@ -2081,7 +2080,6 @@ function planOrdinaryConnection(
         ? aligned ? 1 : 2
         : crossColumnAligned && !forced ? 1 : 0;
     const shortcuts = shortcutVariants(
-        allowShortcuts,
         reuse,
         fromNode,
         toNode,
@@ -2258,6 +2256,26 @@ export function orderedPathSegments(
             segments.push(vertical(networkId, start.x, start.y, end.y));
         } else {
             throw new RangeError('routed path points must be orthogonal');
+        }
+    }
+    // Independent endpoint escapes can cross an earlier leg of this path.
+    // Remove the closed walk before candidate scoring and reservation; tree
+    // trimming alone cannot remove a loop already present in the first path.
+    for (let earlier = 0; earlier < segments.length; earlier += 1) {
+        for (let later = earlier + 2; later < segments.length; later += 1) {
+            const intersection = farthestSegmentIntersection(
+                segments[later],
+                points[later],
+                points[later + 1],
+                segments[earlier]
+            );
+            if (intersection) {
+                return orderedPathSegments(networkId, [
+                    ...points.slice(0, earlier + 1),
+                    intersection,
+                    ...points.slice(later + 1),
+                ]);
+            }
         }
     }
     return freezeSegments(segments);
@@ -3434,7 +3452,7 @@ function routeNetworksInternal(
                     variantIndex <= maximumVariant;
                     variantIndex += 1) {
                     const freshTracks = ordinaryVariantUsesFreshTracks(
-                        terminals.length === 2,
+                        pending.length < context.remaining.length,
                         reuse,
                         network.id,
                         from,
@@ -3457,7 +3475,7 @@ function routeNetworksInternal(
                     try {
                         plan = planOrdinaryConnection(
                             branch.allocator,
-                            terminals.length === 2,
+                            pending.length < context.remaining.length,
                             candidateReuse,
                             network.id,
                             from,

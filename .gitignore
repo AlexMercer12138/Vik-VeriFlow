@@ -39,3 +39,15 @@ Thumbs.db
 .worktrees/
 .superpowers/
 superpowers/
+!docs/superpowers/
+docs/superpowers/**
+!docs/superpowers/plans/
+!docs/superpowers/specs/
+!docs/superpowers/plans/2026-09-15-simulation-tasks.md
+!docs/superpowers/specs/2026-09-15-simulation-tasks.md
+!docs/superpowers/plans/2026-09-15-ad-st-unified-workbench.md
+!docs/superpowers/specs/2026-09-15-ad-st-unified-workbench-design.md
+!docs/superpowers/plans/2026-09-16-ad-st-core-unified.md
+!docs/superpowers/specs/2026-09-16-ad-st-core-unified-design.md
+.veriflow/runs/
+.veriflow/cache/

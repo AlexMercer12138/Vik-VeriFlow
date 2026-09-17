@@ -9,7 +9,7 @@ import {
 import { DependencyAnalyzer } from '@veriflow/hdl-runtime/dependencyAnalyzer';
 
 import { type CommandEnvironment, type CommandOptions } from './project';
-import { NodeWorkspaceHost } from '../runtime/nodeWorkspaceHost';
+import { NodeWorkspaceHost } from '@veriflow/hdl-runtime/nodeWorkspaceHost';
 
 type AnalysisInput = {
     topModule: string;

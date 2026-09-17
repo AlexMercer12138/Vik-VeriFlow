@@ -10,7 +10,8 @@ Vik-VeriFlow 是面向 Verilog/SystemVerilog 工程的一键分析、仿真、�
 - 浏览带列布局、正交布线和搜索功能的 HDL 原理图
 - 可视化编辑 `.ad` 架构设计并导出 Verilog/SystemVerilog 顶层
 - 自动识别 AXI4、AXI-Stream、APB、AHB-Lite 及项目自定义接口
-- 在 VS Code 中选择顶层、例化模块和生成 Testbench
+- 在 VS Code 中例化模块、就地插入 HDL 模板，并直接运行传统 Testbench
+- 使用 `.st` 图形仿真任务组合 HDL/AD、Clock/Reset/Stimulus 预设，生成并运行 Testbench
 
 ## 安装
 
@@ -59,11 +60,15 @@ Custom 模板中的 `{files}`、`{output}`、`{top_module}` 和 `{wave_file}` �
 
 ## VS Code
 
-打开 HDL 工作区后，从活动栏进入 **VeriFlow**。**Simulation** 区域用于选择顶层、分析依赖、仿真和查看波形；`.vcd` 可直接用内置查看器打开，对 `.v`、`.sv` 执行 **Open as VeriFlow Schematic** 可查看只读原理图。
+打开 HDL 工作区后，从活动栏进入 **VeriFlow**。左侧 **Module Browser** 浏览模块，**Architecture Design** 和 **Simulation Task** 分别列出 `.ad`、`.st` 文件及其依赖和导出文件；中间是共享 AD/ST 画布，右侧属性栏编辑选中节点或任务配置。`.vcd` 可直接用内置查看器打开，对 `.v`、`.sv` 执行 **Open as VeriFlow Schematic** 可查看只读原理图。
 
-在 **Arch Designs** 区域点击 **Create Arch Design**，依次输入顶层模块名和保存位置，扩展会创建并打开规范的 `.ad` 文件。编辑器支持添加实例和顶层端口、编辑参数与默认值，以及连接标量或协议接口。连线时依次单击两个端点即可，起点方向不限，两次单击之间可平移画布。
+在 **Architecture Design** 点击加号，选择 `.ad` 保存位置，扩展会创建并打开空白图形设计。编辑器支持添加实例和顶层端口、编辑参数与默认值，以及连接标量或协议接口。连线时依次单击两个端点即可，起点方向不限，两次单击之间可平移画布。
 
-设计错误和警告会实时显示在 E/W 计数与 Problems 面板中。编辑器内只保留画布工具栏的 **Export RTL** 按钮；验证和导出也可从 **Arch Designs** 文件右键菜单或命令面板执行。默认导出同目录、同名的 `.v`，也可在属性栏选择 SystemVerilog 和相对 `.sv` 输出路径。
+设计错误和警告会实时显示在 E/W 计数与 Problems 面板中，点击 E 或 W 可查看具体诊断。输入端口之间也可连线，连接后整个网络最多允许一个确定驱动、多个负载。编辑器内只保留画布工具栏的 **Export RTL** 按钮；验证和导出也可从 **Architecture Design** 文件右键菜单或命令面板执行。默认导出同目录、同名的 `.v`，也可在属性栏选择 SystemVerilog 和相对 `.sv` 输出路径。
+
+顶层 inout 支持 **Direct**（单个双向引脚）和 **Tri-state**（i/o/t）两种模式。模块 inout 暴露到顶层时自动使用 Direct；手动添加默认使用 Tri-state，旧文件的三态行为保持不变。切换模式前需断开该端口的连接。Direct 网络与对应顶层端口同名，导出时直接连接模块 inout；新建直通连接和重命名直通端口会自动同步网络名。
+
+导出的标量网络使用 AD 中的名称，接口成员使用 `连接名_成员名`，不添加 `__vf_net_` 或 `__vf_if_` 前缀。同名且相连的顶层端口会直接复用；无法保留原名的冲突会明确报错。
 
 接口按端口名称和方向自动识别，可折叠为一条连接，也可展开后单独操作成员。角色无法推断时可在属性栏指定 Master 或 Slave；协议接口固定一对一连接，一对多应使用专门的互联模块。实例接口可整体提升为顶层接口，展开后的成员也可按普通端口单独提升。
 
@@ -79,6 +84,20 @@ Custom 模板中的 `{files}`、`{output}`、`{top_module}` 和 `{wave_file}` �
 
 协议 JSON 定义成员、方向、识别特征和缺失输入的默认表达式，不定义位宽。位宽来自实际 HDL 端口；Master 与 Slave 位宽不一致时显示警告，但不会阻止 RTL 导出。已有输出找不到对端输入时保持悬空；已有输入找不到对端输出时使用连接自定义值或协议默认值。
 
+## 图形仿真任务
+
+Module Browser 按工作区、外部库和子目录组织模块，顶部固定过滤框实时筛选。右键“Add to Canvas”只作用于当前活动的 AD/ST 图形编辑器。AD/ST 两栏使用相同图标和创建按钮，展开文件可查看依赖与实际导出路径。
+
+新建 `.st` 只选择一次保存位置，得到空白画布。用与 AD 相同的添加实例对话框加入 HDL/AD，用 Simulation Utility 加入 Clock、Reset、Stimulus 或 UART、SPI、I2C、APB、AXI-STREAM、AXI-Lite、AXI-Full、RGB 接口激励；在画布连线，在右侧配置时序、角色、参数与数值表。总线事务逐条配置读写、地址和数据，RGB 采用 H/V total、active、syncstart、syncend。任务属性提供 timescale、结束时间和波形选项。
+
+Generate Testbench 导出可读 Verilog-2005；运行使用同一生成器，完成后可打开最新波形。一次任务运行一个 TB，完成表示仿真结束。传统 `.v/.sv` TB 仍可直接运行；HDL 右键 VeriFlow 菜单保留光标处模板插入。
+
+```bash
+veriflow task validate examples/simulation-task/basic.st
+veriflow task run examples/simulation-task/basic.st --project project.json
+```
+
+默认使用 builtin；custom 外部工具由 VS Code 设置或显式项目配置提供。详见[仿真任务指南](docs/simulation-tasks.md)和[基础示例](examples/simulation-task/basic.st)。
 ## 开发
 
 ```bash

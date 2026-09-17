@@ -1202,8 +1202,8 @@ test('exports scanned module ports with a portable source comment and named mapp
         assert.ok(rtl.includes('// vik-veriflow:source "../../design/soc.ad"'));
         assert.ok(rtl.includes([
             'leaf u_leaf (',
-            '    .data_i(__vf_net_request),',
-            '    .data_o(__vf_net_response)',
+            '    .data_i(request),',
+            '    .data_o(response)',
             ');',
         ].join('\n')));
     });

@@ -154,12 +154,10 @@ test('exports ordered ports, collision-safe nets, and boundary assignments', () 
         '    output wire [7:0] result',
         ');',
         '',
-        'wire __vf_net_clock;',
-        'wire [7:0] __vf_net_result;',
+        'wire clock;',
         '',
-        'assign __vf_net_clock = clk;',
-        'assign __vf_net_result = data;',
-        'assign result = __vf_net_result;',
+        'assign clock = clk;',
+        'assign result = data;',
         '',
         'endmodule',
         '',
@@ -254,27 +252,25 @@ test('exports explicit ordered instances, parameters, and effective defaults', (
         '    output wire [7:0] result',
         ');',
         '',
-        'wire __vf_net_clock;',
-        'wire [7:0] __vf_net_result;',
-        'wire [7:0] __vf_net_fallback;',
+        'wire clock;',
+        'wire [7:0] fallback;',
         '',
-        'assign __vf_net_clock = clk;',
-        'assign result = __vf_net_result;',
-        'assign __vf_net_fallback = 8\'h5a;',
+        'assign clock = clk;',
+        'assign fallback = 8\'h5a;',
         '',
         'producer #(',
         '    .MODE(2\'b10),',
         '    .WIDTH(8),',
         '    .ENABLE(1\'b1)',
         ') u_prod (',
-        '    .clk(__vf_net_clock),',
-        '    .data_o(__vf_net_result),',
+        '    .clk(clock),',
+        '    .data_o(result),',
         '    .unused_o(),',
         '    .io()',
         ');',
         '',
         'sink u_sink (',
-        '    .data_i(__vf_net_fallback),',
+        '    .data_i(fallback),',
         '    .enable(1\'b0),',
         '    .spare_o(),',
         '    .io()',
@@ -320,7 +316,7 @@ test('resolves parameterized instance port widths to numeric RTL ranges', () => 
     assert.equal(result.status, 'generated');
     if (result.status !== 'generated') return;
     assert.match(result.text, /output wire \[23:0\] data_o/);
-    assert.match(result.text, /wire \[23:0\] __vf_net_data_o;/);
+    assert.match(result.text, /output wire \[23:0\] data_o/);
     assert.doesNotMatch(result.text, /wire \[[^\n]*WIDTH/);
 });
 
@@ -435,44 +431,44 @@ test('exports every Logic Utility as deterministic continuous assignments', () =
         '    output wire result',
         ');',
         '',
-        'wire [7:0] __vf_net_const_to_not_2;',
-        'wire [7:0] __vf_net_not_to_and;',
-        'wire [7:0] __vf_net_and_to_or;',
-        'wire [7:0] __vf_net_or_to_xor;',
-        'wire [7:0] __vf_net_xor_to_nand;',
-        'wire [7:0] __vf_net_nand_to_nor;',
-        'wire [7:0] __vf_net_nor_to_xnor;',
-        'wire [7:0] __vf_net_xnor_to_mux;',
-        'wire [7:0] __vf_net_mux_to_concat;',
-        'wire [15:0] __vf_net_concat_to_slice;',
-        'wire [7:0] __vf_net_slice_to_replicate;',
-        'wire [15:0] __vf_net_replicate_to_zext;',
-        'wire [23:0] __vf_net_zext_to_sext;',
-        'wire [31:0] __vf_net_sext_to_reduce_and;',
-        'wire __vf_net_reduce_and_to_reduce_or;',
-        'wire __vf_net_reduce_or_to_reduce_xor;',
-        'wire [7:0] __vf_net_concat_default;',
-        'wire __vf_net_reduce_xor_to_result;',
+        'wire [7:0] const_to_not;',
+        'wire [7:0] not_to_and;',
+        'wire [7:0] and_to_or;',
+        'wire [7:0] or_to_xor;',
+        'wire [7:0] xor_to_nand;',
+        'wire [7:0] nand_to_nor;',
+        'wire [7:0] nor_to_xnor;',
+        'wire [7:0] xnor_to_mux;',
+        'wire [7:0] mux_to_concat;',
+        'wire [15:0] concat_to_slice;',
+        'wire [7:0] slice_to_replicate;',
+        'wire [15:0] replicate_to_zext;',
+        'wire [23:0] zext_to_sext;',
+        'wire [31:0] sext_to_reduce_and;',
+        'wire reduce_and_to_reduce_or;',
+        'wire reduce_or_to_reduce_xor;',
+        'wire [7:0] concat_default;',
+        'wire reduce_xor_to_result;',
         '',
-        'assign result = __vf_net_reduce_xor_to_result;',
-        "assign __vf_net_concat_default = 8'hf0;",
-        "assign __vf_net_const_to_not_2 = 8'h5a;",
-        'assign __vf_net_not_to_and = ~__vf_net_const_to_not_2;',
-        'assign __vf_net_and_to_or = __vf_net_not_to_and & 0;',
-        'assign __vf_net_or_to_xor = __vf_net_and_to_or | 0;',
-        'assign __vf_net_xor_to_nand = __vf_net_or_to_xor ^ 0;',
-        'assign __vf_net_nand_to_nor = ~(__vf_net_xor_to_nand & 0);',
-        'assign __vf_net_nor_to_xnor = ~(__vf_net_nand_to_nor | 0);',
-        'assign __vf_net_xnor_to_mux = ~(__vf_net_nor_to_xnor ^ 0);',
-        "assign __vf_net_mux_to_concat = 1'b1 ? 8'h3c : __vf_net_xnor_to_mux;",
-        'assign __vf_net_concat_to_slice = {__vf_net_mux_to_concat, __vf_net_concat_default};',
-        'assign __vf_net_slice_to_replicate = __vf_net_concat_to_slice[7:0];',
-        'assign __vf_net_replicate_to_zext = {2{__vf_net_slice_to_replicate}};',
-        "assign __vf_net_zext_to_sext = {{(24-16){1'b0}}, __vf_net_replicate_to_zext};",
-        'assign __vf_net_sext_to_reduce_and = {{(32-24){__vf_net_zext_to_sext[23]}}, __vf_net_zext_to_sext};',
-        'assign __vf_net_reduce_and_to_reduce_or = &__vf_net_sext_to_reduce_and;',
-        'assign __vf_net_reduce_or_to_reduce_xor = |__vf_net_reduce_and_to_reduce_or;',
-        'assign __vf_net_reduce_xor_to_result = ^__vf_net_reduce_or_to_reduce_xor;',
+        'assign result = reduce_xor_to_result;',
+        "assign concat_default = 8'hf0;",
+        "assign const_to_not = 8'h5a;",
+        'assign not_to_and = ~const_to_not;',
+        'assign and_to_or = not_to_and & 0;',
+        'assign or_to_xor = and_to_or | 0;',
+        'assign xor_to_nand = or_to_xor ^ 0;',
+        'assign nand_to_nor = ~(xor_to_nand & 0);',
+        'assign nor_to_xnor = ~(nand_to_nor | 0);',
+        'assign xnor_to_mux = ~(nor_to_xnor ^ 0);',
+        "assign mux_to_concat = 1'b1 ? 8'h3c : xnor_to_mux;",
+        'assign concat_to_slice = {mux_to_concat, concat_default};',
+        'assign slice_to_replicate = concat_to_slice[7:0];',
+        'assign replicate_to_zext = {2{slice_to_replicate}};',
+        "assign zext_to_sext = {{(24-16){1'b0}}, replicate_to_zext};",
+        'assign sext_to_reduce_and = {{(32-24){zext_to_sext[23]}}, zext_to_sext};',
+        'assign reduce_and_to_reduce_or = &sext_to_reduce_and;',
+        'assign reduce_or_to_reduce_xor = |reduce_and_to_reduce_or;',
+        'assign reduce_xor_to_result = ^reduce_or_to_reduce_xor;',
         '',
         'endmodule',
         '',
@@ -506,7 +502,7 @@ test('uses a direct assignment for equal-width extensions', () => {
 
     assert.equal(result.status, 'generated');
     if (result.status !== 'generated') return;
-    assert.match(result.text, /assign __vf_net_result = 8'ha5;/);
+    assert.match(result.text, /assign result = 8'ha5;/);
     assert.doesNotMatch(result.text, /\{\{/);
 });
 
@@ -549,10 +545,10 @@ test('exports scalar tri-state control and inout readback assignments', () => {
 
     assert.equal(result.status, 'generated');
     if (result.status !== 'generated') return;
-    assert.match(result.text, /assign __vf_net_gpio_i = gpio;/);
+    assert.match(result.text, /assign gpio_i = gpio;/);
     assert.match(
         result.text,
-        /assign gpio = __vf_net_gpio_t \? \{8\{1'bz\}\} : __vf_net_gpio_o;/
+        /assign gpio = gpio_t \? \{8\{1'bz\}\} : gpio_o;/
     );
 });
 
@@ -579,7 +575,7 @@ test('uses the implicit high-impedance default for an unconnected scalar inout t
 
     assert.equal(result.status, 'generated');
     if (result.status !== 'generated') return;
-    assert.match(result.text, /assign pin = 1'b1 \? 1'bz : __vf_net_pin_o;/);
+    assert.match(result.text, /assign pin = 1'b1 \? 1'bz : pin_o;/);
 });
 
 test('exports per-bit inout control with collision-safe Verilog generate identifiers', () => {
@@ -622,7 +618,7 @@ test('exports per-bit inout control with collision-safe Verilog generate identif
     assert.ok(result.text.includes([
         'generate',
         '    for (__vf_gpio_index_2 = 0; __vf_gpio_index_2 < 8; __vf_gpio_index_2 = __vf_gpio_index_2 + 1) begin : __vf_gpio_tristate_2',
-        "        assign gpio[__vf_gpio_index_2] = __vf_net_gpio_t[__vf_gpio_index_2] ? 1'bz : __vf_net_gpio_o[__vf_gpio_index_2];",
+        "        assign gpio[__vf_gpio_index_2] = gpio_t[__vf_gpio_index_2] ? 1'bz : gpio_o[__vf_gpio_index_2];",
         '    end',
         'endgenerate',
     ].join('\n')));
@@ -670,15 +666,15 @@ test('exports interface bindings as ordinary collision-safe Verilog nets', () =>
 
     assert.equal(result.status, 'generated');
     if (result.status !== 'generated') return;
-    assert.match(result.text, /wire \[31:0\] __vf_if_control_request;/);
-    assert.match(result.text, /wire __vf_if_control_accept;/);
-    assert.match(result.text, /wire \[3:0\] __vf_if_control_tag;/);
-    assert.match(result.text, /\.BUS_REQUEST\(__vf_if_control_request\)/);
-    assert.match(result.text, /\.LINK_REQUEST\(__vf_if_control_request\)/);
-    assert.match(result.text, /\.LINK_ACCEPT\(__vf_if_control_accept\)/);
-    assert.match(result.text, /\.BUS_ACCEPT\(__vf_if_control_accept\)/);
-    assert.match(result.text, /\.BUS_TAG\(__vf_if_control_tag\)/);
-    assert.match(result.text, /\.LINK_TAG\(__vf_if_control_tag\)/);
+    assert.match(result.text, /wire \[31:0\] control_request;/);
+    assert.match(result.text, /wire control_accept;/);
+    assert.match(result.text, /wire \[3:0\] control_tag;/);
+    assert.match(result.text, /\.BUS_REQUEST\(control_request\)/);
+    assert.match(result.text, /\.LINK_REQUEST\(control_request\)/);
+    assert.match(result.text, /\.LINK_ACCEPT\(control_accept\)/);
+    assert.match(result.text, /\.BUS_ACCEPT\(control_accept\)/);
+    assert.match(result.text, /\.BUS_TAG\(control_tag\)/);
+    assert.match(result.text, /\.LINK_TAG\(control_tag\)/);
     assert.equal(result.text.includes('interface '), false);
     assert.equal(result.text.includes('adapter'), false);
 });
@@ -715,9 +711,9 @@ test('exports promoted interface members as deterministic scalar top-level ports
     assert.match(result.text, /output wire \[31:0\] M_LINK_request,/);
     assert.match(result.text, /input wire M_LINK_accept,/);
     assert.match(result.text, /output wire \[3:0\] M_LINK_tag/);
-    assert.match(result.text, /assign M_LINK_request = __vf_if_control_request;/);
-    assert.match(result.text, /assign __vf_if_control_accept = M_LINK_accept;/);
-    assert.match(result.text, /assign M_LINK_tag = __vf_if_control_tag;/);
+    assert.match(result.text, /assign M_LINK_request = control_request;/);
+    assert.match(result.text, /assign control_accept = M_LINK_accept;/);
+    assert.match(result.text, /assign M_LINK_tag = control_tag;/);
 });
 
 test('binds receiver-only members to explicit defaults and leaves sender-only outputs open', () => {
@@ -741,7 +737,7 @@ test('binds receiver-only members to explicit defaults and leaves sender-only ou
     assert.equal(defaulted.status, 'generated');
     if (defaulted.status !== 'generated') return;
     assert.match(defaulted.text, /\.LINK_TAG\(4'ha\)/);
-    assert.equal(defaulted.text.includes('__vf_if_control_tag'), false);
+    assert.equal(defaulted.text.includes('control_tag'), false);
 
     const senderOnly = designOf({
         instances: [
@@ -761,7 +757,7 @@ test('binds receiver-only members to explicit defaults and leaves sender-only ou
     assert.equal(opened.status, 'generated');
     if (opened.status !== 'generated') return;
     assert.match(opened.text, /\.BUS_TAG\(\)/);
-    assert.equal(opened.text.includes('__vf_if_control_tag'), false);
+    assert.equal(opened.text.includes('control_tag'), false);
 });
 
 test('permits interface width warnings and fingerprints the effective protocol', () => {
@@ -791,7 +787,7 @@ test('permits interface width warnings and fingerprints the effective protocol',
     assert.equal(zero.status, 'generated');
     assert.equal(one.status, 'generated');
     if (zero.status !== 'generated' || one.status !== 'generated') return;
-    assert.match(zero.text, /wire \[31:0\] __vf_if_control_request;/);
+    assert.match(zero.text, /wire \[31:0\] control_request;/);
     assert.match(zero.text, /\.LINK_TAG\(0\)/);
     assert.match(one.text, /\.LINK_TAG\(4'h1\)/);
     assert.notEqual(one.text, zero.text);
@@ -1017,7 +1013,7 @@ test('prefers a renderable definite driver width over an unknown bidirectional p
 
     assert.equal(result.status, 'generated');
     if (result.status !== 'generated') return;
-    assert.match(result.text, /wire \[7:0\] __vf_net_bus;/);
+    assert.match(result.text, /wire \[7:0\] bus;/);
 });
 
 test('changes the RTL fingerprint when a referenced module interface changes', () => {
@@ -1064,4 +1060,50 @@ test('rejects a top port and instance that collide in the RTL module namespace',
     assert.deepEqual(result.diagnostics.map(item => [item.path, item.code]), [
         ['$.instances[0].name', 'AD_RTL_NAME_COLLISION'],
     ]);
+});
+
+test('reuses matching interface member names and diagnoses unrelated RTL namespace collisions', () => {
+    const design = designOf({
+        instances: [{ name: 'u_master', module: 'interface_master' }],
+        interfacePorts: [{ name: 'm_link', protocol: 'project.link', role: 'master',
+            memberPrefix: 'control', members: [
+                { member: 'request', width: 32 }, { member: 'accept', width: 1 }, { member: 'tag', width: 4 },
+            ] }],
+        interfaceConnections: [{ name: 'control',
+            master: { kind: 'instance', instance: 'u_master', interface: 'BUS' },
+            slave: { kind: 'port', port: 'm_link' } }],
+    });
+    const result = exportArchDesignRtl(design, [interfaceMaster], { interfaceCatalog: interfaceCatalog() });
+    assert.equal(result.status, 'generated');
+    if (result.status === 'generated') {
+        assert.match(result.text, /\.BUS_REQUEST\(control_request\)/);
+        assert.doesNotMatch(result.text, /^wire .*control_|assign control_\w+ = control_/m);
+    }
+    for (const overrides of [
+        { instances: [{ name: 'control_request', module: 'interface_master' }],
+            interfaceConnections: [{ ...design.interfaceConnections[0], master: {
+                kind: 'instance' as const, instance: 'control_request', interface: 'BUS' } }] },
+        { ports: [{ name: 'control_request', direction: 'input' as const }],
+            interfacePorts: [{ ...design.interfacePorts[0], memberPrefix: 'external' }] },
+        { ports: [{ name: 'spare', direction: 'input' as const }],
+            connections: [{ name: 'control_request', endpoints: [{ kind: 'port' as const, port: 'spare' }] }] },
+    ]) {
+        const collided = exportArchDesignRtl({ ...design, ...overrides }, [interfaceMaster], {
+            interfaceCatalog: interfaceCatalog(),
+        });
+        assert.equal(collided.status, 'invalid');
+        if (collided.status === 'invalid') assert.ok(collided.diagnostics.some(item =>
+            item.code === 'AD_RTL_NAME_COLLISION'));
+    }
+});
+
+test('rejects HDL keywords instead of emitting invalid unprefixed signal names', () => {
+    for (const name of ['wire', 'and', 'logic', 'interface', 'module', 'always_comb', 'checker']) {
+        const design = designOf({ ports: [{ name: 'a', direction: 'input' }],
+            connections: [{ name, endpoints: [{ kind: 'port', port: 'a' }] }] });
+        const result = exportArchDesignRtl(design, []);
+        assert.equal(result.status, 'invalid');
+        if (result.status === 'invalid') assert.ok(result.diagnostics.some(item =>
+            item.path === '$.connections[0].name' && item.code === 'AD_RTL_RESERVED_NAME'));
+    }
 });

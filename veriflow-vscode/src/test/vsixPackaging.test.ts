@@ -264,6 +264,11 @@ function run(): void {
             'veriflow.openArchDesign',
             'veriflow.validateArchDesign',
             'veriflow.exportArchDesign',
+            'veriflow.newSimulationTask',
+            'veriflow.exportSimulationTestbench',
+            'veriflow.runSimulationTask',
+            'veriflow.runTraditionalTestbench',
+            'veriflow.addModuleToCanvas',
         ]) {
             assert.ok(
                 packagedManifest.contributes.commands.some(
@@ -276,11 +281,11 @@ function run(): void {
             packagedManifest.contributes.views.veriflow.map(
                 (item: { id?: string }) => item.id
             ),
-            ['veriflow.design', 'veriflow.modules', 'veriflow.results']
+            ['veriflow.files', 'veriflow.design', 'veriflow.modules']
         );
         assert.strictEqual(
             packagedManifest.contributes.views.veriflow[0].name,
-            'Design'
+            'Module Browser'
         );
         assert.ok(
             packagedManifest.activationEvents.includes('onView:veriflow.design'),
@@ -297,11 +302,23 @@ function run(): void {
                 (item: { view?: string; contents?: string }) =>
                     item.view === 'veriflow.design'
                     && item.contents?.includes(
-                        '[Create Graphical Design](command:veriflow.createArchDesign)'
+                        '[Create Architecture Design](command:veriflow.createArchDesign)'
                     )
             ),
             'VSIX manifest is missing the Arch Designs empty state'
         );
+        assert.deepStrictEqual(
+            packagedManifest.contributes.customEditors.find(
+                (item: { viewType?: string }) => item.viewType === 'veriflow.simulationTask'
+            ),
+            { viewType: 'veriflow.simulationTask', displayName: 'VeriFlow Simulation Task',
+                selector: [{ filenamePattern: '*.st' }], priority: 'default' }
+        );
+        const taskSchema = JSON.parse(entryText('extension/schemas/simulation-task.schema.json'));
+        assert.strictEqual(taskSchema.properties.format.const, 'veriflow-simulation-task');
+        assert.ok(entryText('extension/language-configuration.json'));
+        assert.ok(entryText('extension/syntaxes/verilog.tmLanguage.json'));
+        assert.ok(entryText('extension/syntaxes/systemverilog.tmLanguage.json'));
         for (const command of [
             'veriflow.validateArchDesign',
             'veriflow.exportArchDesign',

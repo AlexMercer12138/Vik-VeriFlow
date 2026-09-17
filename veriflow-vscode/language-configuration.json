@@ -1,0 +1,74 @@
+{
+  "comments": {
+    "lineComment": "//",
+    "blockComment": [
+      "/*",
+      "*/"
+    ]
+  },
+  "brackets": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
+  ],
+  "autoClosingPairs": [
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "\"",
+      "close": "\"",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    }
+  ],
+  "surroundingPairs": [
+    [
+      "(",
+      ")"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "{",
+      "}"
+    ],
+    [
+      "\"",
+      "\""
+    ]
+  ],
+  "wordPattern": "\\\\[^\\s]+|[A-Za-z_$][A-Za-z0-9_$]*",
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(?:(?:module|interface|package|class|function|task|generate)\\b.*|.*\\b(?:begin|fork|case|casex|casez)\\b[^;]*)\\s*(?://.*)?$",
+    "decreaseIndentPattern": "^\\s*(?:end\\b|endmodule\\b|endinterface\\b|endpackage\\b|endclass\\b|endfunction\\b|endtask\\b|endgenerate\\b|endcase\\b|join(?:_any|_none)?\\b)"
+  },
+  "folding": {
+    "markers": {
+      "start": "^\\s*//\\s*#?region\\b",
+      "end": "^\\s*//\\s*#?endregion\\b"
+    }
+  }
+}

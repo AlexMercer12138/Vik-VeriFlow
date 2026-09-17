@@ -232,6 +232,7 @@ function snapshotDesignPort(
     if (cached) return cached;
     const name = source.name;
     const direction = source.direction;
+    const inoutMode = source.inoutMode;
     const sourceWidth = source.width;
     const width = sourceWidth === undefined
         ? undefined
@@ -239,6 +240,7 @@ function snapshotDesignPort(
     const snapshot = Object.freeze({
         name,
         direction,
+        ...(inoutMode === undefined ? {} : { inoutMode }),
         ...(width === undefined ? {} : { width }),
     });
     context.ports.set(source, snapshot);
@@ -686,7 +688,9 @@ function addTopPortTargets(
             declarationPath: path,
             ...(signal === 't' ? { inoutPortWidth: width } : {}),
         });
-    if (port.direction === 'inout') {
+    if (port.direction === 'inout' && port.inoutMode === 'direct') {
+        add('value', 'bidirectional');
+    } else if (port.direction === 'inout') {
         add('i', 'driver');
         add('o', 'load');
         add('t', 'load');

@@ -97,6 +97,7 @@ export interface SimulationServiceRunInput {
     workspaceRoot: string;
     topModule: string;
     files: readonly string[];
+    runtimeFiles?: readonly string[];
     libDirs: readonly string[];
     defines: Readonly<Record<string, string | number | boolean>>;
     waveFile?: string;
@@ -193,7 +194,7 @@ export class SimulationService {
             }
             const request = createSimulationRequest({
                 files: input.files,
-                runtimeFiles: [],
+                runtimeFiles: input.runtimeFiles ?? [],
                 includeDirs: resolveIncludeDirs(input.workspaceRoot, input.libDirs),
                 defines: input.defines,
                 plusargs: [],

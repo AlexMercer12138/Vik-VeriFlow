@@ -320,21 +320,13 @@ function createExtensionHarness(
         }
     }
 
-    class FakeModuleTreeProvider {
+    class FakeHdlAnalysisState {
+        onDidChange(_listener: () => void) { return disposable; }
         topModule = '';
         analyzeResult: unknown;
         setScanResult(result: ModuleScanResult | null): void { latestScanResult = result; }
         setAnalyzeResult(result: unknown): void { this.analyzeResult = result; }
         getWorkspaceModuleNames(): string[] { return ['top']; }
-    }
-
-    class FakeTestbenchPanelProvider {
-        static readonly viewType = 'veriflow.testbench';
-        setBeforeGenerate(): void {}
-        setOnVisible(): void {}
-        setOnGenerated(): void {}
-        refreshModules(): void {}
-        dispose(): void {}
     }
 
     class MemoryWorkspaceIndexStore {
@@ -436,6 +428,7 @@ function createExtensionHarness(
             },
         },
         workspace: {
+            onDidChangeTextDocument: () => ({ dispose() {} }),
             workspaceFolders: [folder],
             fs: {
                 async readDirectory(uri: FakeUri): Promise<[string, number][]> {
@@ -639,16 +632,36 @@ function createExtensionHarness(
             `core stub is missing extension runtime import ${importedName}`
         );
     }
+    let runLegacySimulation: () => Promise<void> = async () => { throw new Error('Workflow not initialized'); };
     const dependencyStubs: Record<string, unknown> = {
+        './testbench/templateCommands': { registerHdlTemplateCommands: () => disposable },
+        './workbench/traditionalTestbenchController': { TraditionalTestbenchController: class {
+            onDidChange = (_listener: () => void) => disposable;
+            items() { return []; } async runFromEditor() {} dispose() {}
+        } },
+        './workbench/moduleBrowserProvider': { ModuleBrowserProvider: class {
+            refresh() {} dispose() {} async openModule() {} async setFilter() {} async copyInstantiation() {}
+        } },
+        './workbench/designDocumentTree': { DesignDocumentTreeProvider: class { refresh() {} dispose() {} } },
+        './workbench/moduleTargets': { ModuleTargetService: class { async add() {} }, ActiveCanvasContext: class { dispose() {} }, getActiveCanvas: () => undefined },
+
         './hdlFormatting': { registerHdlFormatting: () => disposable },
         './config': configStub,
         './core': coreStub,
         './core/hdl/workspaceIndexStore': {
             WorkspaceIndexStore: useRealIndex ? MemoryWorkspaceIndexStore : class {},
         },
-        './moduleTreeProvider': { ModuleTreeProvider: FakeModuleTreeProvider },
+        './hdlAnalysisState': { HdlAnalysisState: FakeHdlAnalysisState },
         './moduleInstantiationCommand': { showModuleInstantiationPicker: async () => undefined },
-        './testbenchPanel': { TestbenchPanelProvider: FakeTestbenchPanelProvider },
+        './simulationTask/taskController': {
+            SimulationTaskController: class {
+                onDidChange = (_listener: () => void) => disposable;
+                simulationView = {}; resultsView = {}; editor = { dispose() {}, async addModules() {} };
+                refresh() {}
+                dispose(): void {}
+            },
+        },
+        './simulationTask/taskEditorProvider': { SimulationTaskEditorProvider: { viewType: 'veriflow.simulationTask' } },
         './workflowController': {
             WorkflowController: class {
                 readonly state = { activeTask: undefined };
@@ -658,7 +671,7 @@ function createExtensionHarness(
                 constructor(_context: unknown, private readonly services: {
                     run(): Promise<void>;
                     settings(): unknown;
-                }) {}
+                }) { runLegacySimulation = () => this.services.run(); }
                 runTask(): Promise<void> { return this.services.run(); }
                 settings(): unknown { return this.services.settings(); }
                 entrySelected(): void {}
@@ -677,12 +690,6 @@ function createExtensionHarness(
                 static readonly viewType = 'veriflow.archDesignEditor';
                 async validate(): Promise<void> {}
                 async exportRtl(): Promise<void> {}
-            },
-        },
-        './archDesign/archDesignTreeProvider': {
-            ArchDesignTreeProvider: class {
-                refresh(): void {}
-                dispose(): void {}
             },
         },
         './output': {
@@ -726,7 +733,7 @@ function createExtensionHarness(
         hooks,
         folder,
         analyze: () => commands.get('veriflow.analyze')!(),
-        simulate: () => commands.get('veriflow.simulate')!(),
+        simulate: () => runLegacySimulation(),
         scan: () => commands.get('veriflow.scanModules')!(),
         setFile,
         setNextCommitGate(gate: ScanGate): void { nextCommitGate = gate; },

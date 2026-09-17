@@ -1,3 +1,16 @@
+import { prepareSimulationTaskWorkspace } from '@veriflow/hdl-runtime/simulationTaskWorkspace';
+import { createArchDesignDefinitionCatalog } from '@veriflow/hdl-runtime/archDesignDefinitionReference';
+import { SimulationRunCoordinator } from './workbench/simulationRunCoordinator';
+import { TraditionalTestbenchController } from './workbench/traditionalTestbenchController';
+import { discoverTraditionalWaveFile } from './workbench/traditionalTestbenchWaveform';
+import { ModuleBrowserProvider, type ModuleBrowserItem } from './workbench/moduleBrowserProvider';
+import type { ModuleBrowserRoot } from './workbench/moduleBrowserModel';
+import { DesignDocumentTreeProvider, type DesignDependency } from './workbench/designDocumentTree';
+import { parseSimulationTask } from '@veriflow/hdl-runtime/simulationTask';
+import { projectArchitectureDependencies } from './workbench/architectureDesignView';
+import { ModuleTargetService, ActiveCanvasContext, getActiveCanvas, type ModuleReference } from './workbench/moduleTargets';
+import { applyArchDesignEdit, serializeArchDesign, exportArchDesignRtl } from '@veriflow/schematic-core/arch-design';
+import { toArchDesignModuleDefinitions, normalizeArchDesignDefinitionKeys } from './archDesign/editorSupport';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -6,6 +19,7 @@ import { pathToFileURL } from 'url';
 import {
     createExtensionIverilogLoader,
     IverilogWasmBackend,
+    IVERILOG_WASM_VERSION,
 } from '@veriflow/simulator-iverilog-wasm';
 import {
     getWorkspaceRoot, getTopModule, setTopModule, resolveTopModuleSelection,
@@ -14,15 +28,14 @@ import {
     getDependencyResult, setDependencyResult,
 } from './config';
 import type { TopModuleSelection } from './config';
-import { ModuleTreeProvider } from './moduleTreeProvider';
+import { HdlAnalysisState } from './hdlAnalysisState';
 import { showModuleInstantiationPicker } from './moduleInstantiationCommand';
 import { registerHdlFormatting } from './hdlFormatting';
-import { TestbenchPanelProvider } from './testbenchPanel';
+import { registerHdlTemplateCommands } from './testbench/templateCommands';
 import { WaveformEditorProvider } from './waveformEditorProvider';
 import { ArchDesignEditorProvider } from './archDesign/archDesignEditorProvider';
 import { createArchDesignCommandHandlers } from './archDesign/archDesignCommands';
 import { createArchDesign } from './archDesign/archDesignCreation';
-import { ArchDesignTreeProvider } from './archDesign/archDesignTreeProvider';
 import {
     WorkspaceInterfaceProtocolLoader,
 } from './archDesign/interfaceProtocolLoader';
@@ -52,6 +65,11 @@ import {
 import { WorkspaceIndexStore } from './core/hdl/workspaceIndexStore';
 import { relativeDisplayPath } from './core/pathStyle';
 import { WorkflowController } from './workflowController';
+import { SimulationTaskController } from './simulationTask/taskController';
+import { SimulationTaskEditorProvider } from './simulationTask/taskEditorProvider';
+import { createSimulationBackendRegistry } from './core/simulationService';
+import { parseArchDesignText } from '@veriflow/schematic-core/arch-design';
+import { exportArchDesignToFile } from './archDesign/archDesignExport';
 import { isFreshWaveform, waveIdentity } from './workflowArtifact';
 
 const DEFAULT_VIEWERS: Record<string, WaveViewerConfig> = {
@@ -69,8 +87,7 @@ type HdlTopSelectionPersistenceChain = {
     rollbackBaseline: TopModuleSelection | undefined;
 };
 
-let treeProvider: ModuleTreeProvider;
-let tbPanelProvider: TestbenchPanelProvider;
+let analysisState: HdlAnalysisState;
 let statusBarItem: vscode.StatusBarItem;
 let depAnalyzer: DependencyAnalyzer | undefined;
 let simulationService: SimulationService | undefined;
@@ -87,6 +104,7 @@ let hdlTopPersistencePending = 0;
 let hdlTopSelectionPersistenceChain: HdlTopSelectionPersistenceChain | undefined;
 let hdlDependencyPersistenceTail: Promise<void> = Promise.resolve();
 let workflowController: WorkflowController | undefined;
+let simulationTaskController: SimulationTaskController | undefined;
 type HdlIndexPreparation = {
     analyzer: DependencyAnalyzer;
     index: WorkspaceHdlIndex;
@@ -229,27 +247,8 @@ export function activate(context: vscode.ExtensionContext): void {
         ),
     });
     externalWaveViewerLauncher = new ExternalWaveViewerLauncher();
-    treeProvider = new ModuleTreeProvider();
-    tbPanelProvider = new TestbenchPanelProvider(
-        context,
-        () => hdlStopping ? undefined : hdlIndex
-    );
+    analysisState = new HdlAnalysisState();
 
-    const archDesignTreeProvider = new ArchDesignTreeProvider();
-    const archDesignWatcher = vscode.workspace.createFileSystemWatcher('**/*.ad');
-    archDesignWatcher.onDidCreate(() => archDesignTreeProvider.refresh());
-    archDesignWatcher.onDidChange(() => archDesignTreeProvider.refresh());
-    archDesignWatcher.onDidDelete(() => archDesignTreeProvider.refresh());
-    context.subscriptions.push(
-        archDesignTreeProvider,
-        archDesignWatcher
-    );
-    tbPanelProvider.setBeforeGenerate(async () => {
-        await cmdScanModules(context);
-    });
-    tbPanelProvider.setOnVisible(async () => {
-        await cmdScanModules(context);
-    });
 
     context.subscriptions.push(
         vscode.window.registerCustomEditorProvider(
@@ -300,35 +299,196 @@ export function activate(context: vscode.ExtensionContext): void {
     });
     context.subscriptions.push(interfaceProtocolLoader);
     workflowController = new WorkflowController(context, {
-        scan: async () => { await cmdScanModules(context); },
-        definitions: () => hdlIndex?.getAllDefinitions('module') ?? [],
-        entryDefinitions: () => {
-            const keys = new Set(treeProvider.getWorkspaceDefinitions().map(item => item.key));
-            return hdlIndex?.getAllDefinitions('module').filter(item => keys.has(item.key)) ?? [];
-        },
         settings: () => getSettings(),
-        selectEntry: entry => cmdSelectTop(context, entry),
         run: () => cmdSimulate(context),
-        analyze: () => cmdAnalyze(context),
-        analyzeDesign: (key, settings) => _resolveDependencies(context, getWorkspaceRoot()!, settings ?? getSettings(), key),
-        openWave: filepath => _openWaveFile(filepath, getSettings(), () => !hdlStopping && workflowController === activeWorkflowController),
-        openGenerator: key => tbPanelProvider.open(key),
-        protocols: interfaceProtocolLoader,
-    }, treeProvider, archDesignTreeProvider);
+    });
     context.subscriptions.push(workflowController);
-    const activeWorkflowController: WorkflowController = workflowController;
-    tbPanelProvider.setOnGenerated(result => activeWorkflowController.generated(result));
-    for (const [id, provider] of [
-        ['veriflow.design', workflowController.designView],
-        ['veriflow.modules', workflowController.simulationView],
-        ['veriflow.results', workflowController.resultsView],
-    ] as const) {
-        const view = vscode.window.createTreeView(id, { treeDataProvider: provider, showCollapseAll: true });
-        context.subscriptions.push(view);
-        view.onDidChangeVisibility(event => {
-            if (event.visible) void cmdScanModules(context);
-        });
-    }
+    const coordinator = new SimulationRunCoordinator();
+    context.subscriptions.push(coordinator);
+    const traditional = new TraditionalTestbenchController(context, {
+        definitions: async () => { await cmdScanModules(context); return hdlIndex?.getAllDefinitions('module') ?? []; },
+        refreshDefinitions: async () => { await cmdScanModules(context); },
+        selectTop: definition => cmdSelectTop(context, { definitionKey: definition.key, name: definition.name }),
+        dependencies: (definition, settings) => _resolveDependencies(context, vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(definition.uri))?.uri.fsPath ?? path.dirname(vscode.Uri.parse(definition.uri).fsPath), settings, definition.key),
+        simulation: simulationService, settings: getSettings,
+        workspaceRoot: uri => vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath ?? path.dirname(uri.fsPath),
+        waveFile: async (definition, dependencies) => {
+            const source = vscode.Uri.parse(definition.uri);
+            const root = vscode.workspace.getWorkspaceFolder(source)?.uri.fsPath ?? path.dirname(source.fsPath);
+            return hdlIndex ? discoverTraditionalWaveFile(hdlIndex, dependencies, root) : undefined;
+        },
+        runtimeFiles: async (definition, dependencies) => {
+            const files = new Set<string>();
+            const sourceUri = vscode.Uri.parse(definition.uri);
+            const root = vscode.workspace.getWorkspaceFolder(sourceUri)?.uri.fsPath ?? path.dirname(sourceUri.fsPath);
+            for (const source of dependencies.files) {
+                const text = await fs.promises.readFile(source, 'utf8');
+                for (const match of text.matchAll(/\$(?:readmem[hb]|fopen)\s*\(\s*"([^"\r\n]+)"/g)) {
+                    const candidate = path.resolve(root, match[1]);
+                    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) files.add(candidate);
+                }
+            }
+            return [...files];
+        },
+        openWave: (file, uri) => _openWaveFile(file, getSettings(uri), () => !hdlStopping),
+    }, coordinator);
+    const designDefinitions = async (uri: vscode.Uri): Promise<readonly HdlDefinitionSummary[]> => {
+        const owner = {};
+        try { return (await _getSchematicIndex(context, uri, owner))?.getAllDefinitions('module') ?? []; }
+        finally { _releaseSchematicIndex(owner); }
+    };
+    simulationTaskController = new SimulationTaskController(context, {
+        definitions: designDefinitions,
+        onDidInvalidate: listener => {
+            schematicIndexInvalidationListeners.add(listener);
+            return vscode.Disposable.from({ dispose: () => schematicIndexInvalidationListeners.delete(listener) }, interfaceProtocolLoader.onDidInvalidate(listener));
+        },
+        interfaces: async uri => (await interfaceProtocolLoader.load(uri.toString())).catalog,
+        prepare: async (task, uri, signal) => {
+            const settings = getSettings(uri);
+            const workspaceRoot = vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath ?? path.dirname(uri.fsPath);
+            return prepareSimulationTaskWorkspace(task, uri.fsPath, signal, {
+                workspaceRoot,
+                includeDirs: settings.libDirs.map(directory => path.resolve(workspaceRoot, directory)),
+                defines: _filterHdlDefines(settings.defines),
+                interfaceCatalog: (await interfaceProtocolLoader.load(uri.toString())).catalog, parserPaths: {
+                    workerPath: path.join(context.extensionPath, 'dist', 'workers', 'hdlParserWorker.js'),
+                    runtimeWasmPath: path.join(context.extensionPath, 'media', 'parsers', 'web-tree-sitter.wasm'),
+                    languageWasmPath: path.join(context.extensionPath, 'media', 'parsers', 'tree-sitter-systemverilog.wasm'),
+                },
+            });
+        },
+        backend: uri => {
+            const settings = getSettings(uri);
+            if (!['builtin', 'custom'].includes(settings.simulator)) throw new Error('Choose builtin or custom in VeriFlow settings.');
+            return createSimulationBackendRegistry(settings, { builtinProvider: () => new IverilogWasmBackend(() => iverilogLoader.load(packagedIverilogEntry)) }).resolve(settings.simulator);
+        },
+        openWave: (file, uri) => _openWaveFile(file, getSettings(uri), () => !hdlStopping), coordinator,
+    });
+    const tasks = simulationTaskController;
+    context.subscriptions.push(tasks, tasks.editor, new ActiveCanvasContext(),
+        vscode.window.registerCustomEditorProvider(SimulationTaskEditorProvider.viewType, tasks.editor,
+            { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: true }));
+    const browserIndexOwners = new Map<string, object>();
+    const browserDefinitions = async (): Promise<readonly HdlDefinitionSummary[]> => {
+        const folders = vscode.workspace.workspaceFolders ?? [];
+        for (const [uri, owner] of browserIndexOwners) {
+            if (!folders.some(folder => folder.uri.toString() === uri)) { _releaseSchematicIndex(owner); browserIndexOwners.delete(uri); }
+        }
+        const groups = await Promise.all(folders.map(async folder => {
+            const uri = folder.uri.toString();
+            let owner = browserIndexOwners.get(uri);
+            if (!owner) { owner = {}; browserIndexOwners.set(uri, owner); }
+            return (await _getSchematicIndex(context, folder.uri, owner))?.getAllDefinitions('module') ?? [];
+        }));
+        return [...new Map(groups.flat().map(definition => [definition.key, definition])).values()];
+    };
+    const browserRoots = (): ModuleBrowserRoot[] => {
+        const folders = vscode.workspace.workspaceFolders ?? [];
+        return [
+            ...folders.map(folder => ({ uri: folder.uri.toString(), label: folder.name, kind: 'workspace' as const })),
+            ...folders.flatMap(folder => _dependencyRootUris(folder.uri.fsPath, getSettings(folder.uri).libDirs, folder.uri).slice(1)
+                .map(uri => ({ uri, label: path.posix.basename(vscode.Uri.parse(uri).path.replace(/\/+$/, '')), kind: 'library' as const }))),
+        ];
+    };
+    const files = new ModuleBrowserProvider({ definitions: browserDefinitions, roots: browserRoots });
+    const refreshBrowser = () => files.refresh();
+    schematicIndexInvalidationListeners.add(refreshBrowser);
+    context.subscriptions.push({ dispose: () => {
+        schematicIndexInvalidationListeners.delete(refreshBrowser);
+        for (const owner of browserIndexOwners.values()) _releaseSchematicIndex(owner);
+        browserIndexOwners.clear();
+    } });
+    const targets = new ModuleTargetService({
+        definitions: browserDefinitions,
+        targetDefinitions: designDefinitions,
+        insert: async (kind, uri, definitions) => {
+            if (kind === 'st') { await tasks.editor.addModules(uri, definitions); return; }
+            const document = await vscode.workspace.openTextDocument(uri), parsed = parseArchDesignText(document.getText());
+            if (parsed.status !== 'editable') throw new Error('Fix the AD before adding modules.');
+            let design = parsed.design;
+            for (const definition of definitions) {
+                let name = 'u_' + definition.name, index = 2;
+                while (design.instances.some(instance => instance.name === name) || design.logic.some(logic => logic.name === name)) name = 'u_' + definition.name + '_' + index++;
+                design = applyArchDesignEdit(design, { type: 'addInstance', instance: { name, module: definition.name, definitionKey: definition.key } });
+            }
+            const edit = new vscode.WorkspaceEdit(); edit.replace(uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), serializeArchDesign(design));
+            if (!await vscode.workspace.applyEdit(edit)) throw new Error('Could not add modules to the AD.');
+        },
+    });
+    const exportedFiles = async (uri: vscode.Uri, output?: string) => {
+        if (!output) return [];
+        const artifact = vscode.Uri.file(path.resolve(path.dirname(uri.fsPath), output));
+        return [{ uri: artifact, exists: await vscode.workspace.fs.stat(artifact).then(stat => stat.type === vscode.FileType.File, () => false) }];
+    };
+    const adDetails = async (uri: vscode.Uri) => {
+        const parsed = parseArchDesignText((await vscode.workspace.openTextDocument(uri)).getText());
+        if (parsed.status !== 'editable') throw new Error('Invalid Architecture Design');
+        const root = vscode.workspace.getWorkspaceFolder(uri)?.uri ?? vscode.Uri.file(path.dirname(uri.fsPath));
+        return { dependencies: projectArchitectureDependencies(parsed.design, await designDefinitions(uri), root.toString()), exportedFiles: await exportedFiles(uri, parsed.design.export.output ?? path.basename(uri.fsPath, path.extname(uri.fsPath)) + (parsed.design.export.language === 'systemverilog' ? '.sv' : '.v')) };
+    };
+    const adView = new DesignDocumentTreeProvider('ad', {
+        files: async () => vscode.workspace.findFiles('**/*.ad', '**/{node_modules,.git,.veriflow,.trash}/**'), load: adDetails,
+    });
+    const stView = new DesignDocumentTreeProvider('st', {
+        files: () => tasks.files(), load: async uri => {
+            const task = parseSimulationTask((await vscode.workspace.openTextDocument(uri)).getText());
+            const definitions = await designDefinitions(uri);
+            const dependencies: DesignDependency[] = await Promise.all(task.instances.map(async instance => {
+                if ('preset' in instance) return { label: instance.id + ' : ' + instance.preset.kind, children: [] };
+                const source = instance.source, sourceUri = vscode.Uri.file(path.resolve(path.dirname(uri.fsPath), source.path));
+                if (source.kind === 'ad') {
+                    try { return { label: instance.id + ' : ' + path.basename(source.path), children: (await adDetails(sourceUri)).dependencies }; }
+                    catch { return { label: instance.id + ' : ' + source.path, status: 'unresolved' as const, children: [] }; }
+                }
+                const candidates = definitions.filter(item => item.name === source.module && canonicalizeSourceUri(item.uri) === canonicalizeSourceUri(sourceUri.toString()));
+                if (candidates.length !== 1) return { label: instance.id + ' : ' + source.module, status: candidates.length ? 'ambiguous' as const : 'unresolved' as const, children: [] };
+                const root = vscode.workspace.getWorkspaceFolder(uri)?.uri ?? vscode.Uri.file(path.dirname(uri.fsPath));
+                const design = { format: 'vik-veriflow.arch-design', schemaVersion: 2, module: 'st', ports: [], instances: [{ name: instance.id, module: source.module, definitionKey: candidates[0].key }], connections: [], logic: [], interfacePorts: [], interfaceConnections: [], interfaceOverrides: {}, defaults: {}, export: {}, presentation: {} } as const;
+                return projectArchitectureDependencies(design, definitions, root.toString())[0];
+            }));
+            return { dependencies, exportedFiles: await exportedFiles(uri, task.settings.exportPath) };
+        },
+    });
+    context.subscriptions.push(analysisState, files, adView, stView, analysisState.onDidChange(() => { files.refresh(); adView.refresh(); stView.refresh(); }),
+        tasks.onDidChange(() => stView.refresh()),
+        vscode.workspace.onDidChangeTextDocument(event => { if (event.document.uri.path.endsWith('.ad')) adView.refresh(); if (event.document.uri.path.endsWith('.st')) stView.refresh(); }));
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider('veriflow.files', files),
+        vscode.window.createTreeView('veriflow.design', { treeDataProvider: adView }),
+        vscode.window.createTreeView('veriflow.modules', { treeDataProvider: stView }),
+        vscode.commands.registerCommand('veriflow.openModuleBrowserModule', (item: unknown) => files.openModule(item)),
+        vscode.commands.registerCommand('veriflow.copyInstantiation', (item: unknown) => files.copyInstantiation(item)),
+        vscode.commands.registerCommand('veriflow.newHdlFile', async () => {
+            const uri = await vscode.window.showSaveDialog({ title: 'New HDL File', filters: { HDL: ['v', 'sv'] },
+                defaultUri: vscode.workspace.workspaceFolders?.[0] ? vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'module.v') : undefined });
+            if (!uri) return;
+            const edit = new vscode.WorkspaceEdit(); edit.createFile(uri, { overwrite: false });
+            if (await vscode.workspace.applyEdit(edit)) await vscode.window.showTextDocument(uri);
+        }),
+        vscode.commands.registerCommand('veriflow.addModuleToCanvas', async (item: unknown, selected?: ModuleBrowserItem[]) => {
+            const target = getActiveCanvas();
+            if (!target) return;
+            const refs: ModuleReference[] = (await files.resolveSelection(item, selected)).map(value => value.reference);
+            const current = getActiveCanvas();
+            if (!current || current.kind !== target.kind || current.uri.toString() !== target.uri.toString()) return;
+            if (refs.length) await targets.add(refs);
+        }),
+        vscode.commands.registerCommand('veriflow.previewArchDesignRtl', async (uri: vscode.Uri) => {
+            const parsed = parseArchDesignText((await vscode.workspace.openTextDocument(uri)).getText()); if (parsed.status !== 'editable') throw new Error('Invalid AD');
+            const owner = {};
+            try {
+                const index = await _getSchematicIndex(context, uri, owner);
+                const root = vscode.workspace.getWorkspaceFolder(uri)?.uri ?? vscode.Uri.file(path.dirname(uri.fsPath));
+                const catalog = createArchDesignDefinitionCatalog(index?.getAllDefinitions('module') ?? [], root.toString());
+                const protocols = await interfaceProtocolLoader.load(uri.toString());
+                const result = exportArchDesignRtl(normalizeArchDesignDefinitionKeys(parsed.design, catalog), toArchDesignModuleDefinitions(catalog.definitions),
+                    { language: parsed.design.export.language, interfaceCatalog: protocols.catalog });
+                if (result.status === 'invalid') throw new Error(result.diagnostics.map(d => d.message).join('\n'));
+                await vscode.window.showTextDocument(await vscode.workspace.openTextDocument({ language: parsed.design.export.language, content: result.text }), { preview: true });
+            } finally { _releaseSchematicIndex(owner); }
+        }),
+    );
     const archDesignEditorProvider = new ArchDesignEditorProvider(context, {
         getIndex: (document, owner) => _getSchematicIndex(
             context,
@@ -417,12 +577,18 @@ export function activate(context: vscode.ExtensionContext): void {
     const cmds: Array<[string, (...args: unknown[]) => unknown]> = [
         ['veriflow.selectTop', () => {
             workflowController?.assertIdle();
-            if (workflowController?.state.activeTask) return workflowController.selectSimulationEntry();
             return cmdSelectTop(context);
         }],
-        ['veriflow.analyze', () => workflowController?.state.activeTask ? workflowController.analyzeTask() : cmdAnalyze(context)],
-        ['veriflow.simulate', () => workflowController?.runTask()],
-        ['veriflow.openWave', () => workflowController?.state.activeTask ? workflowController.openLatestWave() : cmdOpenWave(context)],
+        ['veriflow.analyze', () => cmdAnalyze(context)],
+        ['veriflow.simulate', async () => {
+            const active = getActiveCanvas();
+            if (active?.kind === 'st') await tasks.run(await vscode.workspace.openTextDocument(active.uri));
+            else await traditional.runFromEditor();
+        }],
+        ['veriflow.openWave', () => {
+            const active = getActiveCanvas();
+            return active?.kind === 'st' ? tasks.openWave(active.uri) : cmdOpenWave(context);
+        }],
         ['veriflow.openVcdViewer', (uri?: unknown) => cmdOpenVcdViewer(
             commandUri(uri)
         )],
@@ -437,28 +603,25 @@ export function activate(context: vscode.ExtensionContext): void {
         ['veriflow.showOutput', () => { if (!hdlStopping) { output.show(); } }],
         ['veriflow.createArchDesign', async () => {
             const created = await createArchDesign<vscode.Uri>({
-                requestModule: validate => vscode.window.showInputBox({
-                    title: 'Create Arch Design',
-                    prompt: 'Enter the top-level module name',
-                    placeHolder: 'soc_top',
-                    validateInput: validate,
-                }),
-                requestTarget: module => vscode.window.showSaveDialog({
+                filename: target => path.basename(target.fsPath),
+                requestTarget: () => vscode.window.showSaveDialog({
                     title: 'Create Arch Design',
                     saveLabel: 'Create',
                     defaultUri: vscode.workspace.workspaceFolders?.[0]
                         ? vscode.Uri.joinPath(
                             vscode.workspace.workspaceFolders[0].uri,
-                            `${module}.ad`
+                            'design.ad'
                         )
                         : undefined,
                     filters: { 'Arch Design': ['ad'] },
                 }),
                 writeFile: async (target, text) => {
-                    await vscode.workspace.fs.writeFile(
-                        target,
-                        Buffer.from(text, 'utf8')
-                    );
+                    if (!target.path.toLowerCase().endsWith('.ad')) throw new Error('Use a .ad filename.');
+                    const edit = new vscode.WorkspaceEdit();
+                    edit.createFile(target, { overwrite: false });
+                    edit.insert(target, new vscode.Position(0, 0), text);
+                    if (!await vscode.workspace.applyEdit(edit)) throw new Error('The file already exists or cannot be created.');
+                    if (!await (await vscode.workspace.openTextDocument(target)).save()) throw new Error('Save the new AD before continuing.');
                 },
                 openEditor: openArchDesign,
                 reportError: async message => {
@@ -467,9 +630,10 @@ export function activate(context: vscode.ExtensionContext): void {
                     );
                 },
             });
-            if (created) archDesignTreeProvider.refresh();
+            if (created) adView.refresh();
+            return created;
         }],
-        ['veriflow.refreshArchDesigns', () => archDesignTreeProvider.refresh()],
+        ['veriflow.refreshArchDesigns', () => adView.refresh()],
         ['veriflow.openArchDesign', (uri?: unknown) =>
             archDesignCommands.open(uri)],
         ['veriflow.validateArchDesign', (uri?: unknown) =>
@@ -480,7 +644,7 @@ export function activate(context: vscode.ExtensionContext): void {
     for (const [name, fn] of cmds) {
         context.subscriptions.push(vscode.commands.registerCommand(name, fn));
     }
-    context.subscriptions.push(registerHdlFormatting(context));
+    context.subscriptions.push(registerHdlFormatting(context), registerHdlTemplateCommands());
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(async (e) => {
@@ -550,7 +714,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     const savedTop = _coerceTopSelection(getTopModule(context));
-    if (savedTop?.definitionKey) { treeProvider.topModule = savedTop; }
+    if (savedTop?.definitionKey) { analysisState.topModule = savedTop; }
 
     // 恢复状态
     _restoreState(context);
@@ -1313,7 +1477,6 @@ function _resetDependencyIndex(): void {
     depAnalyzer = undefined;
     hdlIndexGeneration++;
     index?.dispose();
-    tbPanelProvider?.refreshModules();
     if (hdlStopping) {
         _disposeHdlWatchRegistry();
     } else if (hdlActiveContext) {
@@ -1476,7 +1639,8 @@ function _resolveDependencies(
     context: vscode.ExtensionContext,
     root: string,
     settings: ExtensionSettings,
-    topDefinitionKeyOrName: string
+    topDefinitionKeyOrName: string,
+    bindings?: Record<string, string>
 ): Promise<DependencyResult> {
     if (hdlStopping) {
         return Promise.reject(new HdlStoppingError());
@@ -1490,7 +1654,7 @@ function _resolveDependencies(
             throw new HdlStoppingError();
         }
         try {
-            const result = await analyzer.resolve(topDefinitionKeyOrName);
+            const result = await analyzer.resolve(topDefinitionKeyOrName, bindings);
             if (hdlStopping) {
                 throw new HdlStoppingError();
             }
@@ -1557,7 +1721,6 @@ export async function deactivate(): Promise<void> {
     hdlInstantiationIntentVersion++;
     hdlAbortController.abort();
     _resetSchematicIndexes();
-    tbPanelProvider?.dispose();
     hdlPreparationInFlight = undefined;
     hdlScanInFlight = undefined;
     hdlPresentationRootIdentity = undefined;
@@ -1574,6 +1737,8 @@ export async function deactivate(): Promise<void> {
     hdlDependencyPersistenceTail = Promise.resolve();
     workflowController?.dispose();
     workflowController = undefined;
+    simulationTaskController?.dispose();
+    simulationTaskController = undefined;
     const parser = hdlParser;
     hdlParser = undefined;
     hdlParserExtensionPath = undefined;
@@ -1590,7 +1755,7 @@ function _restoreState(context: vscode.ExtensionContext): void {
     _simulateStatus = getSimulateStatus(context);
     const savedResult = getDependencyResult(context);
     if (savedResult) {
-        treeProvider.setAnalyzeResult(savedResult);
+        analysisState.setAnalyzeResult(savedResult);
         _saveDepFileHashes(context, savedResult);
     }
     _updateStatusBar();
@@ -1625,7 +1790,6 @@ function _setSimulateStatus(context: vscode.ExtensionContext, status: string): v
     if (hdlStopping) { return; }
     _simulateStatus = status;
     setSimulateStatus(context, status);
-    workflowController?.refresh();
     _updateStatusBar();
 }
 
@@ -1647,14 +1811,14 @@ function _computeDepHashes(result: DependencyResult): Record<string, string> {
 }
 
 function _saveDepFileHashes(context: vscode.ExtensionContext, result?: DependencyResult): void {
-    const depResult = result || treeProvider.analyzeResult;
+    const depResult = result || analysisState.analyzeResult;
     if (depResult) {
         _lastDepFileHashes = _computeDepHashes(depResult);
     }
 }
 
 function _checkDepFilesChanged(context: vscode.ExtensionContext): void {
-    const depResult = treeProvider.analyzeResult;
+    const depResult = analysisState.analyzeResult;
     if (!depResult || _simulateStatus !== 'completed') { return; }
 
     const currentHashes = _computeDepHashes(depResult);
@@ -1750,7 +1914,7 @@ function _invalidateDependencyPresentation(context: vscode.ExtensionContext): vo
     if (hdlStopping) { return; }
     hdlWorkflowGeneration++;
     _markOutdatedIfCompleted(context);
-    treeProvider.setAnalyzeResult(null);
+    analysisState.setAnalyzeResult(null);
     _clearPersistedDependencyResult(context);
     _lastDepFileHashes = {};
     hdlWaveIntentGeneration++;
@@ -1854,7 +2018,7 @@ function _isCurrentTopIntent(
         || index?.getDefinition(definitionKey) === undefined) {
         return false;
     }
-    return treeProvider.getWorkspaceDefinitions().some(definition =>
+    return analysisState.getWorkspaceDefinitions().some(definition =>
         definition.workspace && definition.key === definitionKey
     );
 }
@@ -2180,11 +2344,10 @@ function _clearHdlPresentation(
     preserveTopSelection = false
 ): void {
     if (hdlStopping) { return; }
-    treeProvider.setScanResult(null);
-    treeProvider.setAnalyzeResult(null);
-    tbPanelProvider.refreshModules();
+    analysisState.setScanResult(null);
+    analysisState.setAnalyzeResult(null);
     if (!preserveTopSelection) {
-        treeProvider.topModule = undefined;
+        analysisState.topModule = undefined;
         _clearPersistedTopModule(context);
     }
     _clearPersistedDependencyResult(context);
@@ -2322,15 +2485,14 @@ async function _presentScanResult(
     } catch (error) {
         throw new HdlWatchPlanReconciliationError(error);
     }
-    treeProvider.setScanResult(result);
-    tbPanelProvider.refreshModules();
+    analysisState.setScanResult(result);
     hdlPresentationRootIdentity = rootIdentity;
 
     const stored = hdlTopPersistencePending > 0
-        ? _coerceTopSelection(treeProvider.topModule)
+        ? _coerceTopSelection(analysisState.topModule)
         : _coerceTopSelection(getTopModule(context));
     const selection = resolveTopModuleSelection(stored, result.definitions);
-    treeProvider.topModule = selection;
+    analysisState.topModule = selection;
 
     const summary = formatDuplicateSummary(duplicateGroups);
     if (summary.outputLines.length > 0) {
@@ -2700,7 +2862,7 @@ async function cmdSelectTop(context: vscode.ExtensionContext, requested?: TopMod
     const rootIdentity = hdlPresentationRootIdentity;
     const index = hdlIndex;
     // 只从工作区目录的模块中选取
-    const definitions = treeProvider.getWorkspaceDefinitions();
+    const definitions = analysisState.getWorkspaceDefinitions();
     if (definitions.length === 0) {
         vscode.window.showWarningMessage('No modules found in workspace. Add .v/.sv files or configure veriflow.libDirs, then scan again.');
         return;
@@ -2737,7 +2899,7 @@ async function cmdSelectTop(context: vscode.ExtensionContext, requested?: TopMod
         }
         const baseline = resolveTopModuleSelection(
             persistedSelectionAtEntry,
-            treeProvider.getWorkspaceDefinitions()
+            analysisState.getWorkspaceDefinitions()
         );
         if (!_isCurrentTopPresentation(
             intentVersion,
@@ -2748,7 +2910,7 @@ async function cmdSelectTop(context: vscode.ExtensionContext, requested?: TopMod
         )) {
             return;
         }
-        treeProvider.topModule = baseline;
+        analysisState.topModule = baseline;
         try {
             await _persistTopSelection(
                 context,
@@ -2766,10 +2928,10 @@ async function cmdSelectTop(context: vscode.ExtensionContext, requested?: TopMod
                 rootIdentity,
                 index
             )
-                && _sameTopSelection(_coerceTopSelection(treeProvider.topModule), baseline)) {
-                treeProvider.topModule = resolveTopModuleSelection(
+                && _sameTopSelection(_coerceTopSelection(analysisState.topModule), baseline)) {
+                analysisState.topModule = resolveTopModuleSelection(
                     _coerceTopSelection(getTopModule(context)),
-                    treeProvider.getWorkspaceDefinitions()
+                    analysisState.getWorkspaceDefinitions()
                 );
             }
             throw error;
@@ -2784,11 +2946,11 @@ async function cmdSelectTop(context: vscode.ExtensionContext, requested?: TopMod
             await hdlTopPersistenceTail;
             return;
         }
-        treeProvider.topModule = baseline;
+        analysisState.topModule = baseline;
         return;
     }
     const definition = index?.getDefinition(selected.definitionKey);
-    const workspaceDefinition = treeProvider.getWorkspaceDefinitions().find(candidate =>
+    const workspaceDefinition = analysisState.getWorkspaceDefinitions().find(candidate =>
         candidate.workspace && candidate.key === definition?.key
     );
     if (!definition || !workspaceDefinition) {
@@ -2808,7 +2970,7 @@ async function cmdSelectTop(context: vscode.ExtensionContext, requested?: TopMod
     )) {
         return;
     }
-    treeProvider.topModule = selection;
+    analysisState.topModule = selection;
     try {
         await _persistTopSelection(
             context,
@@ -2827,10 +2989,10 @@ async function cmdSelectTop(context: vscode.ExtensionContext, requested?: TopMod
             index,
             selection.definitionKey
         )
-            && _sameTopSelection(_coerceTopSelection(treeProvider.topModule), selection)) {
-            treeProvider.topModule = resolveTopModuleSelection(
+            && _sameTopSelection(_coerceTopSelection(analysisState.topModule), selection)) {
+            analysisState.topModule = resolveTopModuleSelection(
                 _coerceTopSelection(getTopModule(context)),
-                treeProvider.getWorkspaceDefinitions()
+                analysisState.getWorkspaceDefinitions()
             );
         }
         throw error;
@@ -2846,12 +3008,11 @@ async function cmdSelectTop(context: vscode.ExtensionContext, requested?: TopMod
         await hdlTopPersistenceTail;
         return;
     }
-    treeProvider.topModule = selection;
+    analysisState.topModule = selection;
     if (workflowController && !_sameTopSelection(selection, persistedSelectionAtEntry)) {
         _invalidateDependencyPresentation(context);
         _setAnalyzeStatus(context, 'idle');
     }
-    workflowController?.entrySelected(selection);
     output.appendInfo(`Simulation entry: ${selection.name}`);
 }
 
@@ -2865,11 +3026,11 @@ async function cmdAnalyze(
     if (!root) { vscode.window.showWarningMessage('No workspace folder open.'); return; }
     const workflowGeneration = hdlWorkflowGeneration;
 
-    let topSelection = _coerceTopSelection(treeProvider.topModule);
+    let topSelection = _coerceTopSelection(analysisState.topModule);
     if (!topSelection) {
         await cmdSelectTop(context);
         if (!_isCurrentHdlCommand(lifecycleGeneration, workflowGeneration)) { return; }
-        topSelection = _coerceTopSelection(treeProvider.topModule);
+        topSelection = _coerceTopSelection(analysisState.topModule);
     }
     if (!topSelection) { vscode.window.showWarningMessage('Please select a top module.'); return; }
     const topModule = topSelection.name;
@@ -2904,7 +3065,7 @@ async function cmdAnalyze(
         await hdlDependencyPersistenceTail;
         return;
     }
-    treeProvider.setAnalyzeResult(result);
+    analysisState.setAnalyzeResult(result);
     _saveDepFileHashes(context, result);
 
     const ambiguousNames = Object.keys(result.ambiguousModules);
@@ -2967,17 +3128,17 @@ async function cmdSimulate(
         output.appendError(`Simulation configuration error: ${message}`);
         _setSimulateStatus(context, 'error');
         const controller = workflowController;
-        const id = controller?.beginRun(treeProvider.topModule?.name ?? 'Simulation', [], controller.settings());
+        const id = controller?.beginRun(analysisState.topModule?.name ?? 'Simulation', [], controller.settings());
         if (id) await controller?.finishRun(id, 'failed', `Simulation configuration error: ${message}`);
         await vscode.window.showErrorMessage(`VeriFlow simulation configuration error: ${message}`);
     };
 
-    let topSelection = _coerceTopSelection(treeProvider.topModule);
+    let topSelection = _coerceTopSelection(analysisState.topModule);
     if (!topSelection) {
         if (!isCurrent()) { return; }
         await cmdSelectTop(context);
         if (!isCurrent()) { return; }
-        topSelection = _coerceTopSelection(treeProvider.topModule);
+        topSelection = _coerceTopSelection(analysisState.topModule);
     }
     if (!topSelection) { vscode.window.showWarningMessage('Please select a top module.'); return; }
     const topModule = topSelection.name;
@@ -3181,12 +3342,12 @@ async function cmdOpenWave(context: vscode.ExtensionContext): Promise<void> {
         workflowGeneration
     ) && waveIntent === hdlWaveIntentGeneration;
 
-    let topSelection = _coerceTopSelection(treeProvider.topModule);
+    let topSelection = _coerceTopSelection(analysisState.topModule);
     if (!topSelection) {
         if (!isCurrent()) { return; }
         await cmdSelectTop(context);
         if (!isCurrent()) { return; }
-        topSelection = _coerceTopSelection(treeProvider.topModule);
+        topSelection = _coerceTopSelection(analysisState.topModule);
     }
     if (!topSelection) { vscode.window.showWarningMessage('Please select a top module.'); return; }
     const topModule = topSelection.name;

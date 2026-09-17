@@ -15,7 +15,7 @@ import {
 import { DependencyAnalyzer } from '@veriflow/hdl-runtime/dependencyAnalyzer';
 
 import { type CliEnvironment } from '../main';
-import { NodeWorkspaceHost } from '../runtime/nodeWorkspaceHost';
+import { NodeWorkspaceHost } from '@veriflow/hdl-runtime/nodeWorkspaceHost';
 import { createCliSimulationBackends } from '../runtime/simulationBackends';
 import { type CommandOptions } from './project';
 

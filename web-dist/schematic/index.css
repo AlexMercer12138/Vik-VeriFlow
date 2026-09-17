@@ -708,6 +708,33 @@ dialog::backdrop {
     }
 }
 
+.diagnostic-button {
+    padding: 3px 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.diagnostic-button:hover,
+.diagnostic-button:focus-visible {
+    border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+#diagnostics-dialog {
+    width: min(720px, 85vw);
+}
+
+#diagnostics-details {
+    max-height: 60vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -717,3 +744,22 @@ dialog::backdrop {
         animation-duration: 0s !important;
     }
 }
+
+#authoring-actions button[hidden] { display: none; }
+
+.inspector-error { color: var(--vscode-errorForeground, #c42b1c); margin: 4px 0; }
+.transition-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.transition-table th { text-align: left; font-weight: 500; }
+.transition-table td { padding: 3px 2px; }
+.transition-table th:last-child { width: 28px; }
+.transition-table input { width: 100%; min-width: 0; box-sizing: border-box; }
+.preset-value-table th:first-child { width: 28px; }
+.transaction-list { display: grid; gap: 8px; margin-bottom: 8px; }
+.transaction-row { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--vscode-panel-border, #454545); }
+.transaction-heading { display: grid; grid-template-columns: 26px 1fr 26px; align-items: center; gap: 6px; }
+.transaction-row label { display: grid; gap: 4px; }
+.transaction-row label input, .transaction-row label textarea { font-weight: 400; }
+.transaction-row textarea { box-sizing: border-box; width: 100%; resize: vertical; min-height: 64px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); font: inherit; padding: 4px; }
+.transaction-row small { color: var(--vscode-descriptionForeground); }
+.transition-action { font: inherit; }
+.transition-delete { width: 26px; height: 26px; }

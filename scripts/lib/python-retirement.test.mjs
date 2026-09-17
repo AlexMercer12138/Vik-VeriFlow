@@ -12,6 +12,8 @@ const repositoryRoot = path.resolve(
 
 const ignoredDirectories = new Set([
     '.git',
+    '.artifacts',
+    '.trash',
     '.worktrees',
     'build',
     'dist',

@@ -173,6 +173,10 @@ function calculateSchematicNode(
     const leftPins = sidePins.filter(pin => pin.side === 'left');
     const rightPins = sidePins.filter(pin => pin.side === 'right');
     const isPort = node.kind === 'port';
+    const title = node.kind === 'instance' && node.subtitle
+        ? `${node.subtitle} ${node.label}`
+        : node.label;
+    const subtitle = node.kind === 'instance' ? undefined : node.subtitle;
     const leftNatural = isPort ? 0 : Math.max(
         0,
         ...leftPins.map(pin => measuredWidth(
@@ -190,10 +194,10 @@ function calculateSchematicNode(
         ))
     );
     const headingWidth = Math.max(
-        measuredWidth(measure, node.label, SCHEMATIC_TEXT_STYLES.title),
+        measuredWidth(measure, title, SCHEMATIC_TEXT_STYLES.title),
         measuredWidth(
             measure,
-            node.subtitle ?? '',
+            subtitle ?? '',
             SCHEMATIC_TEXT_STYLES.subtitle
         )
     ) + 2 * SCHEMATIC_NODE_LAYOUT.horizontalPadding;
@@ -304,15 +308,15 @@ function calculateSchematicNode(
         width,
         height,
         title: measuredLabel(
-            node.label,
+            title,
             titleBounds,
             measure,
             SCHEMATIC_TEXT_STYLES.title
         ),
-        subtitle: node.subtitle === undefined
+        subtitle: subtitle === undefined
             ? undefined
             : measuredLabel(
-                node.subtitle,
+                subtitle,
                 subtitleBounds,
                 measure,
                 SCHEMATIC_TEXT_STYLES.subtitle

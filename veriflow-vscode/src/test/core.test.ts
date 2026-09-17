@@ -2515,7 +2515,7 @@ function testModuleInstantiationManifestContribution(): void {
     const command = manifest.contributes.commands.find(
         (entry: any) => entry.command === 'veriflow.instantiateModule'
     );
-    const editorMenu = (manifest.contributes.menus['editor/context'] || []).find(
+    const editorMenu = (manifest.contributes.menus['veriflow.hdl'] || []).find(
         (entry: any) => entry.command === 'veriflow.instantiateModule'
     );
 
@@ -2527,8 +2527,7 @@ function testModuleInstantiationManifestContribution(): void {
     });
     assert.deepStrictEqual(editorMenu, {
         command: 'veriflow.instantiateModule',
-        when: 'editorLangId == verilog || editorLangId == systemverilog',
-        group: 'navigation@10',
+        group: '1_edit@2',
     });
 }
 

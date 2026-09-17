@@ -30,7 +30,7 @@ import {
     loadInterfaceProtocolCatalog,
     type InterfaceProtocolFileDiagnostic,
 } from '../runtime/interfaceProtocolLoader';
-import { NodeWorkspaceHost } from '../runtime/nodeWorkspaceHost';
+import { NodeWorkspaceHost } from '@veriflow/hdl-runtime/nodeWorkspaceHost';
 
 type LoadedArchDesign = {
     filepath: string;

@@ -34,6 +34,1434 @@
     mod3
   ));
 
+  // packages/hdl-runtime/dist/simulationTask/timing.js
+  var require_timing = __commonJS({
+    "packages/hdl-runtime/dist/simulationTask/timing.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.timeScaleFemtoseconds = timeScaleFemtoseconds;
+      exports2.numberRatio = numberRatio;
+      exports2.decimalRatio = decimalRatio;
+      exports2.clockTiming = clockTiming2;
+      function timeScaleFemtoseconds(scale2) {
+        const match = /^(1|10|100)(s|ms|us|ns|ps|fs)$/.exec(scale2);
+        if (!match)
+          throw new Error(`Invalid timescale: ${scale2}`);
+        return Number(match[1]) * { s: 1e15, ms: 1e12, us: 1e9, ns: 1e6, ps: 1e3, fs: 1 }[match[2]];
+      }
+      function numberRatio(value) {
+        const [mantissa, exponent = "0"] = String(value).toLowerCase().split("e");
+        const decimals = (mantissa.split(".")[1]?.length ?? 0) - Number(exponent);
+        const digits = BigInt(mantissa.replace(".", ""));
+        return decimals >= 0 ? [digits, 10n ** BigInt(decimals)] : [digits * 10n ** BigInt(-decimals), 1n];
+      }
+      function decimalRatio(numerator, denominator) {
+        if (denominator <= 0n)
+          throw new Error("Delay denominator must be positive");
+        let text4 = String(numerator / denominator);
+        let remainder = numerator % denominator;
+        if (remainder === 0n)
+          return text4;
+        text4 += ".";
+        while (remainder !== 0n) {
+          if (text4.length > 128)
+            throw new Error("Delay cannot be represented as an exact decimal");
+          remainder *= 10n;
+          text4 += String(remainder / denominator);
+          remainder %= denominator;
+        }
+        return text4;
+      }
+      function clockTiming2(preset, unit2, precision = "1ps") {
+        if (!Number.isFinite(preset.frequencyMHz) || preset.frequencyMHz <= 0)
+          throw new Error("Clock frequency must be positive and finite");
+        const unitFs = BigInt(timeScaleFemtoseconds(unit2));
+        const precisionFs = BigInt(timeScaleFemtoseconds(precision));
+        if (precisionFs > unitFs)
+          throw new Error("Time precision cannot be coarser than time unit");
+        const [n, d] = numberRatio(preset.frequencyMHz);
+        const numerator = 500000000n * d;
+        const denominator = n * precisionFs;
+        const ticks = (2n * numerator + denominator) / (2n * denominator);
+        if (ticks === 0n)
+          throw new Error(`Clock half period rounds to zero at ${precision}; choose a finer time precision or lower the frequency`);
+        if (ticks > BigInt(Number.MAX_SAFE_INTEGER))
+          throw new Error(`Clock half period exceeds the safe tick range at ${precision}; choose a coarser time precision or increase the frequency`);
+        return {
+          halfPeriod: decimalRatio(ticks * precisionFs, unitFs),
+          period: decimalRatio(2n * ticks * precisionFs, unitFs)
+        };
+      }
+    }
+  });
+
+  // packages/hdl-runtime/dist/simulationTask/protocols/types.js
+  var require_types = __commonJS({
+    "packages/hdl-runtime/dist/simulationTask/protocols/types.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.transactionBlock = transactionBlock;
+      exports2.checkLine = checkLine;
+      exports2.responseBits = responseBits;
+      exports2.knownInteger = knownInteger;
+      function transactionBlock(prefix, index2, timeout, lines) {
+        const block2 = `${prefix}_transaction_${index2}`;
+        return [
+          `begin : ${block2}`,
+          "    fork",
+          "        begin",
+          ...lines.map((line2) => `            ${line2}`),
+          `            disable ${block2};`,
+          "        end",
+          `        begin #(${timeout}); $fatal(1, "ST_PROTOCOL_TIMEOUT|%m"); end`,
+          "    join",
+          "end"
+        ];
+      }
+      function checkLine(path2, suffix, expected, actual, controls = "1'b1") {
+        return `$display("ST_PROTOCOL_CHECK|%m|${suffix}|%0d|%b|%b", ((${actual} === (${expected})) && (${controls})), (${expected}), ${actual}); if (!(((${actual} === (${expected})) && (${controls})) === 1'b1)) $fatal(1, "Protocol expectation failed: %m");`;
+      }
+      function responseBits(response) {
+        return { okay: "2'b00", exokay: "2'b01", slverr: "2'b10", decerr: "2'b11" }[String(response)];
+      }
+      function knownInteger(value) {
+        const text4 = value.replace(/_/g, "");
+        const match = /^(\d+)?'[sS]?([bBoOdDhH])([0-9a-fA-F]+)$/.exec(text4);
+        if (!match)
+          return BigInt(text4);
+        const prefix = match[2].toLowerCase() === "b" ? "0b" : match[2].toLowerCase() === "o" ? "0o" : match[2].toLowerCase() === "h" ? "0x" : "";
+        return BigInt(prefix + match[3]);
+      }
+    }
+  });
+
+  // packages/hdl-runtime/dist/simulationTask/protocols/i2c.js
+  var require_i2c = __commonJS({
+    "packages/hdl-runtime/dist/simulationTask/protocols/i2c.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.compileI2cProtocol = compileI2cProtocol;
+      var types_1 = require_types();
+      function compileI2cProtocol(input) {
+        const { step, context, observed: s, driven: w, fail, fits, numeric } = input;
+        if (context.netWidths[s.scl] !== 1 || context.netWidths[s.sda] !== 1)
+          fail("signals", "I2C SCL and SDA must be scalar resolved nets.");
+        if (w.scl === s.scl || w.sda === s.sda)
+          fail("signals", "I2C requires compiler-provided per-step open-drain write targets.");
+        const options = step.options;
+        const half = options.period / 2;
+        const prefix = context.prefix;
+        const actual = `${prefix}_actual`;
+        const bit = `${prefix}_bit`;
+        const address = `${prefix}_address`;
+        const writeAddress = `${prefix}_write_address`;
+        const readAddress = `${prefix}_read_address`;
+        const declarations = [
+          `reg [7:0] ${actual};`,
+          `integer ${bit};`,
+          `localparam [6:0] ${address} = ${numeric(options.address, 7)};`,
+          `localparam [7:0] ${writeAddress} = {${address}, 1'b0};`,
+          `localparam [7:0] ${readAddress} = {${address}, 1'b1};`
+        ];
+        for (const [field, values] of [["data", step.data], ["expected", step.expected ?? []]]) {
+          values.forEach((value, index2) => {
+            if (!fits(value, 8))
+              fail(`${field}[${index2}]`, "I2C byte values must fit 8 bits.");
+          });
+        }
+        const lines = [`${w.scl} <= 1'bz;`, `${w.sda} <= 1'bz;`, `#(${half});`];
+        const start = () => lines.push(`${w.sda} <= 1'bz;`, `${w.scl} <= 1'bz;`, `wait (${s.scl} === 1'b1);`, `#(${half});`, `${w.sda} <= 1'b0;`, `#(${half});`, `${w.scl} <= 1'b0;`);
+        const stop = () => lines.push(`${w.sda} <= 1'b0;`, `#(${half});`, `${w.scl} <= 1'bz;`, `wait (${s.scl} === 1'b1);`, `#(${half});`, `${w.sda} <= 1'bz;`, `#(${half});`);
+        const writeByte = (word, suffix) => {
+          lines.push(`for (${bit} = 7; ${bit} >= 0; ${bit} = ${bit} - 1) begin`, `    ${w.sda} <= ${word}[${bit}] ? 1'bz : 1'b0;`, `    #(${half});`, `    ${w.scl} <= 1'bz;`, `    wait (${s.scl} === 1'b1);`, `    #(${half});`, `    ${w.scl} <= 1'b0;`, "end", `${w.sda} <= 1'bz;`, `#(${half});`, `${w.scl} <= 1'bz;`, `wait (${s.scl} === 1'b1);`, `${actual}[0] = ${s.sda};`, `#(${half});`, `${w.scl} <= 1'b0;`, (0, types_1.checkLine)(context.path, suffix, "1'b0", `${actual}[0]`));
+        };
+        const readByte = (expected, index2, last) => {
+          const constant2 = `${prefix}_expected_${index2}`;
+          declarations.push(`localparam [7:0] ${constant2} = ${numeric(expected, 8)};`);
+          lines.push(`${w.sda} <= 1'bz;`, `for (${bit} = 7; ${bit} >= 0; ${bit} = ${bit} - 1) begin`, `    #(${half});`, `    ${w.scl} <= 1'bz;`, `    wait (${s.scl} === 1'b1);`, `    ${actual}[${bit}] = ${s.sda};`, `    #(${half});`, `    ${w.scl} <= 1'b0;`, "end", (0, types_1.checkLine)(context.path, `transaction[${index2}]`, constant2, actual), `${w.sda} <= ${last ? "1'bz" : "1'b0"};`, `#(${half});`, `${w.scl} <= 1'bz;`, `wait (${s.scl} === 1'b1);`, `#(${half});`, `${w.scl} <= 1'b0;`, `${w.sda} <= 1'bz;`);
+        };
+        const receiveByte = (expected, index2) => {
+          const constant2 = `${prefix}_expected_${index2}`;
+          declarations.push(`localparam [7:0] ${constant2} = ${numeric(expected, 8)};`);
+          lines.push(`${w.sda} <= 1'bz;`, `for (${bit} = 7; ${bit} >= 0; ${bit} = ${bit} - 1) begin`, `    @(posedge ${s.scl});`, `    ${actual}[${bit}] = ${s.sda};`, `    @(negedge ${s.scl});`, "end", (0, types_1.checkLine)(context.path, `transaction[${index2}]`, constant2, actual));
+          targetAck();
+        };
+        const targetAck = () => {
+          lines.push(`${w.sda} <= ${options.targetAck === false ? "1'bz" : "1'b0"};`, `${w.scl} <= 1'b0;`, `#(${(options.stretchCycles ?? 0) * options.period});`, `${w.scl} <= 1'bz;`, `@(posedge ${s.scl});`, `@(negedge ${s.scl});`, `${w.sda} <= 1'bz;`);
+        };
+        const waitStartAndAddress = (read, suffix) => {
+          lines.push(`wait ((${s.scl} === 1'b1) && (${s.sda} === 1'b1));`, `@(negedge ${s.sda});`, `for (${bit} = 7; ${bit} >= 0; ${bit} = ${bit} - 1) begin`, `    @(posedge ${s.scl});`, `    ${actual}[${bit}] = ${s.sda};`, `    @(negedge ${s.scl});`, "end", (0, types_1.checkLine)(context.path, suffix, `{${address}, 1'b${read ? 1 : 0}}`, actual));
+          targetAck();
+        };
+        const sendByte = (word, index2, last) => {
+          const constant2 = `${prefix}_word_${index2}`;
+          declarations.push(`localparam [7:0] ${constant2} = ${numeric(word, 8)};`);
+          lines.push(`for (${bit} = 7; ${bit} >= 0; ${bit} = ${bit} - 1) begin`, `${w.sda} <= ${constant2}[${bit}] ? 1'bz : 1'b0;`, `    @(posedge ${s.scl});`, `    @(negedge ${s.scl});`, "end", `${w.sda} <= 1'bz;`, `@(posedge ${s.scl});`, `${actual}[0] = ${s.sda};`, (0, types_1.checkLine)(context.path, `ack[${index2}]`, last ? "1'b1" : "1'b0", `${actual}[0]`), `@(negedge ${s.scl});`);
+        };
+        if (step.role === "controller") {
+          start();
+          writeByte(options.write === false ? readAddress : writeAddress, "addressAck");
+          if (options.write !== false) {
+            step.data.forEach((value, index2) => {
+              const name = `${prefix}_word_${index2}`;
+              declarations.push(`localparam [7:0] ${name} = ${numeric(value, 8)};`);
+              writeByte(name, `ack[${index2}]`);
+            });
+            if (options.repeatedStart) {
+              start();
+              writeByte(readAddress, "repeatedAddressAck");
+              step.expected.forEach((value, index2) => readByte(value, index2, index2 === step.expected.length - 1));
+            }
+          } else
+            step.expected.forEach((value, index2) => readByte(value, index2, index2 === step.expected.length - 1));
+          stop();
+        } else {
+          waitStartAndAddress(options.write === false, "address");
+          if (options.write !== false) {
+            step.expected.forEach(receiveByte);
+            if (options.repeatedStart) {
+              waitStartAndAddress(true, "repeatedAddress");
+              step.data.forEach((value, index2) => sendByte(value, index2, index2 === step.data.length - 1));
+            }
+          } else
+            step.data.forEach((value, index2) => sendByte(value, index2, index2 === step.data.length - 1));
+          lines.push(`${actual}[0] = 1'b0;`, `while (${actual}[0] !== 1'b1) begin`, `    @(posedge ${s.sda});`, `    ${actual}[0] = (${s.scl} === 1'b1);`, "end", (0, types_1.checkLine)(context.path, "stop", "1'b1", `${actual}[0]`));
+        }
+        return { declarations, statements: (0, types_1.transactionBlock)(prefix, 0, step.timeout, lines) };
+      }
+    }
+  });
+
+  // packages/hdl-runtime/dist/simulationTask/protocols/axi.js
+  var require_axi = __commonJS({
+    "packages/hdl-runtime/dist/simulationTask/protocols/axi.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.compileAxiProtocol = compileAxiProtocol;
+      var types_1 = require_types();
+      var SCALAR_SUFFIXES = ["valid", "ready", "last"];
+      function compileAxiProtocol(input) {
+        const { step, context, observed: s, driven: w, fail, fits, numeric } = input;
+        const full = step.protocol === "axi4";
+        const options = step.options;
+        const clock = step.clock;
+        const rise = `@(posedge ${clock});`;
+        const fall = `@(negedge ${clock});`;
+        const width2 = context.netWidths[s.wdata];
+        const bytes = width2 / 8;
+        if (!Number.isInteger(bytes) || bytes < 1 || bytes > 128 || (bytes & bytes - 1) !== 0)
+          fail("signals.wdata", "AXI data width must be a power-of-two number of bytes from 8 through 1024 bits.");
+        if (context.netWidths[s.rdata] !== width2)
+          fail("signals.rdata", "AXI write and read data widths must match.");
+        if (context.netWidths[s.wstrb] !== bytes)
+          fail("signals.wstrb", "AXI WSTRB width must equal the data width in bytes.");
+        if (context.netWidths[s.awaddr] !== context.netWidths[s.araddr])
+          fail("signals.araddr", "AXI read and write address widths must match.");
+        for (const [key, net] of Object.entries(s)) {
+          const scalar = SCALAR_SUFFIXES.some((suffix) => key.endsWith(suffix));
+          if (scalar && context.netWidths[net] !== 1)
+            fail(`signals.${key}`, "AXI handshake and LAST signals must be scalar.");
+        }
+        if (context.netWidths[s.bresp] !== 2 || context.netWidths[s.rresp] !== 2)
+          fail("signals.bresp", "AXI response signals must be 2 bits.");
+        if (full) {
+          if (context.netWidths[s.awid] !== context.netWidths[s.arid] || context.netWidths[s.awid] !== context.netWidths[s.bid] || context.netWidths[s.awid] !== context.netWidths[s.rid])
+            fail("signals.awid", "All AXI4 ID widths must match.");
+          if (context.netWidths[s.awlen] !== 8 || context.netWidths[s.arlen] !== 8)
+            fail("signals.awlen", "AXI4 LEN signals must be 8 bits.");
+          if (context.netWidths[s.awsize] !== 3 || context.netWidths[s.arsize] !== 3)
+            fail("signals.awsize", "AXI4 SIZE signals must be 3 bits.");
+          if (context.netWidths[s.awburst] !== 2 || context.netWidths[s.arburst] !== 2)
+            fail("signals.awburst", "AXI4 BURST signals must be 2 bits.");
+        }
+        const transmitting = step.role === "initiator" ? options.write === true : options.write === false;
+        const values = transmitting ? step.data : step.expected;
+        const beats = values.length;
+        values.forEach((value, index2) => {
+          if (!fits(value, width2))
+            fail(`${transmitting ? "data" : "expected"}[${index2}]`, `Value must fit the ${width2}-bit AXI data width.`);
+        });
+        if (!fits(options.strobe, bytes))
+          fail("options.strobe", `Byte strobe must fit ${bytes} bits.`);
+        const addressWidth = context.netWidths[s.awaddr];
+        if (!fits(options.address, addressWidth))
+          fail("options.address", "Address must fit the mapped AXI address width.");
+        if (full && !fits(options.id, context.netWidths[s.awid]))
+          fail("options.id", "Transaction ID must fit the mapped AXI ID width.");
+        const address = (0, types_1.knownInteger)(options.address);
+        if (address % BigInt(bytes) !== 0n)
+          fail("options.address", `AXI transfers must be aligned to the full ${bytes}-byte data width.`);
+        const burstBytes = bytes * beats;
+        if (options.burst === "wrap") {
+          if (![2, 4, 8, 16].includes(beats))
+            fail(transmitting ? "data" : "expected", "AXI4 WRAP bursts require 2, 4, 8 or 16 beats.");
+        }
+        const wrapBoundary = options.burst === "wrap" ? address / BigInt(burstBytes) * BigInt(burstBytes) : address;
+        const boundaryOffset = Number(wrapBoundary & 0xfffn);
+        const boundarySpan = options.burst === "fixed" ? bytes : burstBytes;
+        if (boundaryOffset + boundarySpan > 4096)
+          fail("options.address", "AXI transactions must not cross a 4 KiB boundary.");
+        const prefix = context.prefix;
+        const actual = `${prefix}_actual`;
+        const declarations = [`reg [${width2 - 1}:0] ${actual};`];
+        const constants = values.map((value, index2) => {
+          const name = `${prefix}_word_${index2}`;
+          declarations.push(`localparam [${width2 - 1}:0] ${name} = ${numeric(value, width2)};`);
+          return name;
+        });
+        const addressConstant = `${prefix}_address`;
+        declarations.push(`localparam [${addressWidth - 1}:0] ${addressConstant} = ${numeric(options.address, addressWidth)};`);
+        const idConstant = `${prefix}_id`;
+        if (full)
+          declarations.push(`localparam [${context.netWidths[s.awid] - 1}:0] ${idConstant} = ${numeric(options.id, context.netWidths[s.awid])};`);
+        const strobeConstant = `${prefix}_strobe`;
+        declarations.push(`localparam [${bytes - 1}:0] ${strobeConstant} = ${numeric(options.strobe, bytes)};`);
+        const response = (0, types_1.responseBits)(options.response);
+        const size = Math.log2(bytes);
+        const burst = options.burst === "fixed" ? "2'b00" : options.burst === "wrap" ? "2'b10" : "2'b01";
+        const wait = options.waitCycles ?? 0;
+        const lines = [];
+        const display = (suffix, expected, received, controls = "1'b1") => {
+          lines.push((0, types_1.checkLine)(context.path, suffix, expected, received, controls));
+        };
+        const init = (keys2) => keys2.forEach((key) => lines.push(`${w[key]} <= 0;`));
+        const addressControls = (write) => {
+          const channel = write ? "aw" : "ar";
+          const controls = [`${s[`${channel}addr`]} === ${addressConstant}`];
+          if (full)
+            controls.push(`${s[`${channel}id`]} === ${idConstant}`, `${s[`${channel}len`]} === 8'd${beats - 1}`, `${s[`${channel}size`]} === 3'd${size}`, `${s[`${channel}burst`]} === ${burst}`);
+          return controls.map((value) => `(${value})`).join(" && ");
+        };
+        if (step.role === "initiator") {
+          init(full ? ["awid", "awaddr", "awlen", "awsize", "awburst", "awvalid", "wdata", "wstrb", "wlast", "wvalid", "bready", "arid", "araddr", "arlen", "arsize", "arburst", "arvalid", "rready"] : ["awaddr", "awvalid", "wdata", "wstrb", "wvalid", "bready", "araddr", "arvalid", "rready"]);
+          if (options.write) {
+            lines.push("fork", "    begin", `        ${fall}`, `        ${w.awaddr} <= ${addressConstant};`, `        ${w.awvalid} <= 1'b1;`);
+            if (full)
+              lines.push(`        ${w.awid} <= ${idConstant};`, `        ${w.awlen} <= 8'd${beats - 1};`, `        ${w.awsize} <= 3'd${size};`, `        ${w.awburst} <= ${burst};`);
+            lines.push(`        ${rise}`, `        while (${s.awready} !== 1'b1) begin ${rise} end`, `        ${fall}`, `        ${w.awvalid} <= 1'b0;`, "    end", "    begin");
+            constants.forEach((constant2, index2) => {
+              lines.push(`        ${fall}`, `        ${w.wdata} <= ${constant2};`, `        ${w.wstrb} <= ${strobeConstant};`, `        ${w.wvalid} <= 1'b1;`);
+              if (full)
+                lines.push(`        ${w.wlast} <= 1'b${index2 === beats - 1 ? 1 : 0};`);
+              lines.push(`        ${rise}`, `        while (${s.wready} !== 1'b1) begin ${rise} end`);
+            });
+            lines.push(`        ${fall}`, `        ${w.wvalid} <= 1'b0;`);
+            if (full)
+              lines.push(`        ${w.wlast} <= 1'b0;`);
+            lines.push("    end", "join", `${fall}`, `${w.bready} <= 1'b1;`, `${rise}`, `while (${s.bvalid} !== 1'b1) begin ${rise} end`);
+            display("response", response, s.bresp, full ? `${s.bid} === ${idConstant}` : "1'b1");
+            lines.push(`${fall}`, `${w.bready} <= 1'b0;`);
+          } else {
+            lines.push(fall, `${w.araddr} <= ${addressConstant};`, `${w.arvalid} <= 1'b1;`);
+            if (full)
+              lines.push(`${w.arid} <= ${idConstant};`, `${w.arlen} <= 8'd${beats - 1};`, `${w.arsize} <= 3'd${size};`, `${w.arburst} <= ${burst};`);
+            lines.push(rise, `while (${s.arready} !== 1'b1) begin ${rise} end`, fall, `${w.arvalid} <= 1'b0;`, `${w.rready} <= 1'b1;`);
+            constants.forEach((constant2, index2) => {
+              lines.push(rise, `while (${s.rvalid} !== 1'b1) begin ${rise} end`, `${actual} = ${s.rdata};`);
+              const controls = [`${s.rresp} === ${response}`];
+              if (full)
+                controls.push(`${s.rid} === ${idConstant}`, `${s.rlast} === 1'b${index2 === beats - 1 ? 1 : 0}`);
+              display(`transaction[${index2}]`, constant2, actual, controls.map((value) => `(${value})`).join(" && "));
+            });
+            lines.push(fall, `${w.rready} <= 1'b0;`);
+          }
+        } else {
+          init(full ? ["awready", "wready", "bid", "bresp", "bvalid", "arready", "rid", "rdata", "rresp", "rlast", "rvalid"] : ["awready", "wready", "bresp", "bvalid", "arready", "rdata", "rresp", "rvalid"]);
+          if (options.write) {
+            lines.push("fork", "    begin", `        repeat (${wait}) ${fall}`, `        ${w.awready} <= 1'b1;`, `        ${rise}`, `        while (${s.awvalid} !== 1'b1) begin ${rise} end`);
+            display("address", addressConstant, s.awaddr, addressControls(true));
+            lines.push(`        ${fall}`, `        ${w.awready} <= 1'b0;`, "    end", "    begin");
+            constants.forEach((constant2, index2) => {
+              lines.push(`        repeat (${wait}) ${fall}`, `        ${w.wready} <= 1'b1;`, `        ${rise}`, `        while (${s.wvalid} !== 1'b1) begin ${rise} end`, `        ${actual} = ${s.wdata};`);
+              display(`transaction[${index2}]`, constant2, actual, `(${s.wstrb} === ${strobeConstant})${full ? ` && (${s.wlast} === 1'b${index2 === beats - 1 ? 1 : 0})` : ""}`);
+              lines.push(`        ${fall}`, `        ${w.wready} <= 1'b0;`);
+            });
+            lines.push("    end", "join", fall);
+            if (full)
+              lines.push(`${w.bid} <= ${idConstant};`);
+            lines.push(`${w.bresp} <= ${response};`, `${w.bvalid} <= 1'b1;`, rise, `while (${s.bready} !== 1'b1) begin ${rise} end`, fall, `${w.bvalid} <= 1'b0;`);
+          } else {
+            lines.push(`repeat (${wait}) ${fall}`, `${w.arready} <= 1'b1;`, rise, `while (${s.arvalid} !== 1'b1) begin ${rise} end`);
+            display("address", addressConstant, s.araddr, addressControls(false));
+            lines.push(fall, `${w.arready} <= 1'b0;`);
+            constants.forEach((constant2, index2) => {
+              lines.push(`repeat (${wait}) ${fall}`, `${w.rdata} <= ${constant2};`, `${w.rresp} <= ${response};`, `${w.rvalid} <= 1'b1;`);
+              if (full)
+                lines.push(`${w.rid} <= ${idConstant};`, `${w.rlast} <= 1'b${index2 === beats - 1 ? 1 : 0};`);
+              lines.push(rise, `while (${s.rready} !== 1'b1) begin ${rise} end`, fall, `${w.rvalid} <= 1'b0;`);
+            });
+            if (full)
+              lines.push(`${w.rlast} <= 1'b0;`);
+          }
+        }
+        return { declarations, statements: (0, types_1.transactionBlock)(prefix, 0, step.timeout, lines) };
+      }
+    }
+  });
+
+  // packages/hdl-runtime/dist/simulationTask/protocols/rgb888.js
+  var require_rgb888 = __commonJS({
+    "packages/hdl-runtime/dist/simulationTask/protocols/rgb888.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.compileRgb888Protocol = compileRgb888Protocol;
+      var types_1 = require_types();
+      function compileRgb888Protocol(input) {
+        const { step, context, observed: s, driven: w, fail, fits, numeric } = input;
+        for (const key of ["pclk", "hsync", "vsync", "de"])
+          if (context.netWidths[s[key]] !== 1)
+            fail(`signals.${key}`, `RGB888 ${key} must be scalar.`);
+        for (const key of ["r", "g", "b"])
+          if (context.netWidths[s[key]] !== 8)
+            fail(`signals.${key}`, `RGB888 ${key.toUpperCase()} must be 8 bits.`);
+        const options = step.options;
+        const hActive = options.hActive;
+        const hTotal = options.hTotal;
+        const vActive = options.vActive;
+        const vTotal = options.vTotal;
+        const pixels = hActive * vActive;
+        const prefix = context.prefix;
+        const x = `${prefix}_x`;
+        const y = `${prefix}_y`;
+        const frame = `${prefix}_frame`;
+        const pixel = `${prefix}_pixel`;
+        const expected = `${prefix}_expected`;
+        const ok = `${prefix}_ok`;
+        const lineOk = `${prefix}_line_ok`;
+        const firstX = `${prefix}_first_x`;
+        const firstExpected = `${prefix}_first_expected`;
+        const firstActual = `${prefix}_first_actual`;
+        const declarations = [
+          `integer ${x};`,
+          `integer ${y};`,
+          `integer ${frame};`,
+          `integer ${firstX};`,
+          `reg [23:0] ${pixel};`,
+          `reg [23:0] ${expected};`,
+          `reg [23:0] ${firstExpected};`,
+          `reg [23:0] ${firstActual};`,
+          `reg ${ok};`,
+          `reg ${lineOk};`
+        ];
+        const values = step.role === "source" ? step.data : step.expected ?? [];
+        values.forEach((value, index2) => {
+          if (!fits(value, 24))
+            fail(`${step.role === "source" ? "data" : "expected"}[${index2}]`, "RGB888 pixels must fit packed 24-bit RRGGBB values.");
+        });
+        if (options.pattern === "pixels") {
+          declarations.push(`reg [23:0] ${prefix}_pixels [0:${pixels - 1}];`);
+        } else {
+          declarations.push(`function [23:0] ${prefix}_colorbar;`, "    input integer color_x;", "    begin", `        case ((color_x * 8) / ${hActive})`, `            0: ${prefix}_colorbar = 24'hffffff;`, `            1: ${prefix}_colorbar = 24'hffff00;`, `            2: ${prefix}_colorbar = 24'h00ffff;`, `            3: ${prefix}_colorbar = 24'h00ff00;`, `            4: ${prefix}_colorbar = 24'hff00ff;`, `            5: ${prefix}_colorbar = 24'hff0000;`, `            6: ${prefix}_colorbar = 24'h0000ff;`, `            default: ${prefix}_colorbar = 24'h000000;`, "        endcase", "    end", "endfunction");
+        }
+        const active = `((${x} < ${hActive}) && (${y} < ${vActive}))`;
+        const hsync = `((${x} >= ${options.hSyncStart}) && (${x} < ${options.hSyncEnd}))`;
+        const vsync = `((${y} >= ${options.vSyncStart}) && (${y} < ${options.vSyncEnd}))`;
+        const expectedPixel = options.pattern === "pixels" ? `${prefix}_pixels[${y} * ${hActive} + ${x}]` : `${prefix}_colorbar(${x})`;
+        const lines = [];
+        if (options.pattern === "pixels")
+          values.forEach((value, index2) => lines.push(`${prefix}_pixels[${index2}] = ${numeric(value, 24)};`));
+        if (step.role === "source") {
+          declarations.push("reg vf_pixel_clock_enable = 0;", `assign ${w.pclk} = clk & vf_pixel_clock_enable;`);
+          lines.push(`${w.hsync} <= 1'b${1 - options.hsyncPolarity};`, `${w.vsync} <= 1'b${1 - options.vsyncPolarity};`, `${w.de} <= 1'b0;`, `${w.r} <= 8'b0;`, `${w.g} <= 8'b0;`, `${w.b} <= 8'b0;`, `for (${frame} = 0; ${frame} < ${options.frames}; ${frame} = ${frame} + 1) begin`, `    for (${y} = 0; ${y} < ${vTotal}; ${y} = ${y} + 1) begin`, `        for (${x} = 0; ${x} < ${hTotal}; ${x} = ${x} + 1) begin`, `            @(negedge clk);`, `            vf_pixel_clock_enable <= 1;`, `            ${w.hsync} <= ${hsync} ? 1'b${options.hsyncPolarity} : 1'b${1 - options.hsyncPolarity};`, `            ${w.vsync} <= ${vsync} ? 1'b${options.vsyncPolarity} : 1'b${1 - options.vsyncPolarity};`, `            ${w.de} <= ${active};`, `            if (${active}) begin`, `                ${pixel} = ${expectedPixel};`, `                ${w.r} <= ${pixel}[23:16];`, `                ${w.g} <= ${pixel}[15:8];`, `                ${w.b} <= ${pixel}[7:0];`, "            end else begin", `                ${w.r} <= 8'b0;`, `                ${w.g} <= 8'b0;`, `                ${w.b} <= 8'b0;`, "            end", `            @(posedge clk);`, "        end", "    end", "end", "@(negedge clk);", "vf_pixel_clock_enable <= 0;", `${w.de} <= 1'b0;`);
+          return { declarations, statements: (0, types_1.transactionBlock)(prefix, 0, step.timeout, lines) };
+        }
+        const actual = `{${s.r}, ${s.g}, ${s.b}}`;
+        lines.push(`for (${frame} = 0; ${frame} < ${options.frames}; ${frame} = ${frame} + 1) begin`, `    for (${y} = 0; ${y} < ${vTotal}; ${y} = ${y} + 1) begin`, `        ${lineOk} = 1'b1;`, `        ${firstX} = -1;`, `        for (${x} = 0; ${x} < ${hTotal}; ${x} = ${x} + 1) begin`, `            @(posedge ${s.pclk});`, `            ${pixel} = ${active} ? ${actual} : 24'b0;`, `            ${expected} = ${active} ? ${expectedPixel} : 24'b0;`, `            ${ok} = (${s.hsync} === (${hsync} ? 1'b${options.hsyncPolarity} : 1'b${1 - options.hsyncPolarity}));`, `            ${ok} = ${ok} && (${s.vsync} === (${vsync} ? 1'b${options.vsyncPolarity} : 1'b${1 - options.vsyncPolarity}));`, `            ${ok} = ${ok} && (${s.de} === ${active});`, `            if (!((${pixel} === ${expected}) && ${ok})) begin`, `                if (${lineOk}) begin`, `                    ${firstX} = ${x};`, `                    ${firstExpected} = ${expected};`, `                    ${firstActual} = ${pixel};`, "                end", `                ${lineOk} = 1'b0;`, "            end", "        end", `        if (!${lineOk}) $display("ST_PROTOCOL_DETAIL|%m|line|frame=%0d|y=%0d|x=%0d|expected=%h|actual=%h", ${frame}, ${y}, ${firstX}, ${firstExpected}, ${firstActual});`, `        ${(0, types_1.checkLine)(context.path, "line", "1'b1", lineOk)}`, "    end", "end");
+        return { declarations, statements: (0, types_1.transactionBlock)(prefix, 0, step.timeout, lines) };
+      }
+    }
+  });
+
+  // packages/hdl-runtime/dist/simulationTask/protocols/validation.js
+  var require_validation = __commonJS({
+    "packages/hdl-runtime/dist/simulationTask/protocols/validation.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.validateAdvancedProtocol = validateAdvancedProtocol;
+      function literalInteger(value) {
+        if (typeof value !== "string" || /[xz?]/i.test(value))
+          return void 0;
+        const text4 = value.replace(/_/g, "");
+        const match = /^(\d+)?'[sS]?([bBoOdDhH])([0-9a-fA-F]+)$/.exec(text4);
+        try {
+          if (!match)
+            return /^-?\d+$/.test(text4) ? BigInt(text4) : void 0;
+          const prefix = match[2].toLowerCase() === "b" ? "0b" : match[2].toLowerCase() === "o" ? "0o" : match[2].toLowerCase() === "h" ? "0x" : "";
+          return BigInt(prefix + match[3]);
+        } catch {
+          return void 0;
+        }
+      }
+      function integer(options, key, min, max2, error) {
+        const value = options[key];
+        if (!Number.isInteger(value) || Number(value) < min || Number(value) > max2)
+          error(`options.${key}`, `Expected ${min} through ${max2}.`);
+      }
+      function boolean(options, key, error) {
+        if (typeof options[key] !== "boolean")
+          error(`options.${key}`, "Expected a boolean.");
+      }
+      function payload(step, transmitting, error, single = false) {
+        const values = transmitting ? step.data : step.expected;
+        const other = transmitting ? step.expected : step.data;
+        const field = transmitting ? "data" : "expected";
+        if (!Array.isArray(values) || !values.length)
+          error(field, `Provide ${single ? "one" : "at least one"} ${transmitting ? "transmitted" : "expected"} value.`);
+        if (single && Array.isArray(values) && values.length !== 1)
+          error(field, "AXI4-Lite transfers require a single beat.");
+        if (Array.isArray(other) && other.length)
+          error(transmitting ? "expected" : "data", "This transfer direction does not use this payload field.");
+      }
+      function validateAdvancedProtocol(step, options, template, error) {
+        const allowed = new Set(template.options.map((option) => option.key));
+        for (const key of Object.keys(options))
+          if (!allowed.has(key))
+            error(`options.${key}`, "Option is unsupported for this protocol role.");
+        if (step.protocol === "i2c") {
+          integer(options, "period", 2, 1e6, error);
+          const address = literalInteger(options.address);
+          if (address === void 0 || address < 0n || address > 0x7fn)
+            error("options.address", "Expected a known 7-bit address literal.");
+          boolean(options, "write", error);
+          boolean(options, "repeatedStart", error);
+          if (step.role === "target") {
+            integer(options, "stretchCycles", 0, 1e6, error);
+            boolean(options, "targetAck", error);
+          }
+          const transmitting = step.role === "controller" ? options.write === true : options.write === false;
+          if (options.repeatedStart === true) {
+            if (options.write !== true)
+              error("options.repeatedStart", "A combined transfer starts with a write before the repeated START read.");
+            if (!step.data.length || !step.expected?.length)
+              error("expected", "A repeated START transfer requires nonempty write and read phases.");
+          } else
+            payload(step, transmitting, error);
+          return;
+        }
+        if (step.protocol === "axi4" || step.protocol === "axi4lite") {
+          boolean(options, "write", error);
+          if (literalInteger(options.address) === void 0)
+            error("options.address", "Expected a known address literal.");
+          const responses = step.protocol === "axi4lite" ? ["okay", "slverr", "decerr"] : ["okay", "exokay", "slverr", "decerr"];
+          if (!responses.includes(String(options.response)))
+            error("options.response", step.protocol === "axi4lite" ? "AXI4-Lite permits OKAY, SLVERR or DECERR; EXOKAY requires AXI4 exclusive accesses." : "Expected okay, exokay, slverr or decerr.");
+          if (typeof options.strobe !== "string" || literalInteger(options.strobe) === void 0)
+            error("options.strobe", "Expected a known byte-strobe literal.");
+          if (step.protocol === "axi4") {
+            if (literalInteger(options.id) === void 0)
+              error("options.id", "Expected a known transaction ID literal.");
+            if (!["fixed", "incr", "wrap"].includes(String(options.burst)))
+              error("options.burst", "Expected fixed, incr or wrap.");
+          }
+          if (step.role === "responder")
+            integer(options, "waitCycles", 0, 1e6, error);
+          const transmitting = step.role === "initiator" ? options.write === true : options.write === false;
+          payload(step, transmitting, error, step.protocol === "axi4lite");
+          const beats = (transmitting ? step.data : step.expected)?.length ?? 0;
+          if (step.protocol === "axi4" && (beats < 1 || beats > 256))
+            error(transmitting ? "data" : "expected", "AXI4 bursts require 1 through 256 beats.");
+          if (step.protocol === "axi4" && options.burst === "fixed" && beats > 16)
+            error(transmitting ? "data" : "expected", "AXI4 FIXED bursts permit at most 16 beats.");
+          return;
+        }
+        for (const axis of ["h", "v"]) {
+          integer(options, `${axis}Active`, 1, 8192, error);
+          integer(options, `${axis}Total`, 1, 32768, error);
+          integer(options, `${axis}SyncStart`, 0, 32768, error);
+          integer(options, `${axis}SyncEnd`, 1, 32768, error);
+          if (!(options[`${axis}Active`] <= options[`${axis}SyncStart`] && options[`${axis}SyncStart`] < options[`${axis}SyncEnd`] && options[`${axis}SyncEnd`] <= options[`${axis}Total`])) {
+            error("options.timing", `${axis.toUpperCase()} timing requires Active <= SyncStart < SyncEnd <= Total.`);
+          }
+        }
+        integer(options, "frames", 1, 1e3, error);
+        if (step.role === "source")
+          integer(options, "period", 2, 1e6, error);
+        for (const key of ["hsyncPolarity", "vsyncPolarity"])
+          if (options[key] !== 0 && options[key] !== 1)
+            error(`options.${key}`, "Expected 0 or 1.");
+        if (options.pattern !== "colorBars" && options.pattern !== "pixels")
+          error("options.pattern", "Expected colorBars or pixels.");
+        if (options.pattern === "colorBars") {
+          if (step.data.length || step.expected?.length)
+            error("data", "Color bars are generated from timing geometry and do not accept pixel payloads.");
+        } else {
+          const pixels = Number(options.hActive) * Number(options.vActive);
+          if (step.role === "source") {
+            if (step.data.length !== pixels)
+              error("data", `Pixel mode requires exactly ${pixels} packed RGB values for one frame.`);
+            if (step.expected !== void 0)
+              error("expected", "An RGB888 source does not receive pixel data.");
+          } else {
+            if (step.expected?.length !== pixels)
+              error("expected", `Pixel mode requires exactly ${pixels} packed expected RGB values for one frame.`);
+            if (step.data.length)
+              error("data", "An RGB888 monitor only accepts expected pixels.");
+          }
+        }
+      }
+    }
+  });
+
+  // packages/hdl-runtime/dist/simulationTask/protocols.js
+  var require_protocols = __commonJS({
+    "packages/hdl-runtime/dist/simulationTask/protocols.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.PROTOCOL_TEMPLATES = void 0;
+      exports2.createProtocolStep = createProtocolStep;
+      exports2.literal = literal;
+      exports2.validateProtocolStep = validateProtocolStep;
+      exports2.protocolDrivenSignals = protocolDrivenSignals;
+      exports2.protocolOpenDrainSignals = protocolOpenDrainSignals;
+      exports2.protocolPayloadFields = protocolPayloadFields;
+      exports2.fits = fits;
+      exports2.compileProtocolStep = compileProtocolStep;
+      var isTaskIdentifier = (value) => typeof value === "string" && /^[A-Za-z_][A-Za-z0-9_$]*$/.test(value);
+      var i2c_1 = require_i2c();
+      var axi_1 = require_axi();
+      var rgb888_1 = require_rgb888();
+      var validation_1 = require_validation();
+      var numberOption = (key, label, defaultValue, min, max2) => ({ key, label, kind: "number", defaultValue, min, max: max2 });
+      var booleanOption = (key, label, defaultValue) => ({ key, label, kind: "boolean", defaultValue });
+      var literalOption = (key, label, defaultValue) => ({ key, label, kind: "literal", defaultValue });
+      var selectOption = (key, label, defaultValue, values) => ({ key, label, kind: "select", defaultValue, values: values.map((value) => ({ value, label: value })) });
+      var AXI4_SIGNALS = ["awid", "awaddr", "awlen", "awsize", "awburst", "awvalid", "awready", "wdata", "wstrb", "wlast", "wvalid", "wready", "bid", "bresp", "bvalid", "bready", "arid", "araddr", "arlen", "arsize", "arburst", "arvalid", "arready", "rid", "rdata", "rresp", "rlast", "rvalid", "rready"];
+      var AXI4LITE_SIGNALS = ["awaddr", "awvalid", "awready", "wdata", "wstrb", "wvalid", "wready", "bresp", "bvalid", "bready", "araddr", "arvalid", "arready", "rdata", "rresp", "rvalid", "rready"];
+      var RGB_OPTIONS = [
+        numberOption("period", "Pixel clock period", 10, 2, 1e6),
+        numberOption("hTotal", "H total", 11, 1, 32768),
+        numberOption("hActive", "H active", 8, 1, 8192),
+        numberOption("hSyncStart", "H sync start", 9, 0, 32768),
+        numberOption("hSyncEnd", "H sync end", 10, 1, 32768),
+        numberOption("vTotal", "V total", 4, 1, 32768),
+        numberOption("vActive", "V active", 1, 1, 8192),
+        numberOption("vSyncStart", "V sync start", 2, 0, 32768),
+        numberOption("vSyncEnd", "V sync end", 3, 1, 32768),
+        selectOption("hsyncPolarity", "HSYNC polarity", "1", ["0", "1"]),
+        selectOption("vsyncPolarity", "VSYNC polarity", "1", ["0", "1"]),
+        numberOption("frames", "Frames", 1, 1, 1e3),
+        selectOption("pattern", "Pixel pattern", "colorBars", ["colorBars", "pixels"])
+      ];
+      exports2.PROTOCOL_TEMPLATES = [
+        { protocol: "uart", role: "tx", label: "UART transmitter", signals: ["data"], clock: false, options: [numberOption("width", "Data bits", 8, 5, 9), numberOption("period", "Bit period", 100, 2, 1e6), selectOption("parity", "Parity", "none", ["none", "even", "odd"]), selectOption("stopBits", "Stop bits", "1", ["1", "2"])] },
+        { protocol: "uart", role: "rx", label: "UART receiver", signals: ["data"], clock: false, options: [numberOption("width", "Data bits", 8, 5, 9), numberOption("period", "Bit period", 100, 2, 1e6), selectOption("parity", "Parity", "none", ["none", "even", "odd"]), selectOption("stopBits", "Stop bits", "1", ["1", "2"])] },
+        { protocol: "spi", role: "controller", label: "SPI controller", signals: ["sclk", "cs", "mosi", "miso"], clock: false, options: [numberOption("width", "Word width", 8, 1, 32), numberOption("period", "Clock period", 10, 2, 1e6), selectOption("cpol", "Clock polarity", "0", ["0", "1"]), selectOption("cpha", "Clock phase", "0", ["0", "1"])] },
+        { protocol: "spi", role: "peripheral", label: "SPI peripheral", signals: ["sclk", "cs", "mosi", "miso"], clock: false, options: [numberOption("width", "Word width", 8, 1, 32), numberOption("period", "Clock period", 10, 2, 1e6), selectOption("cpol", "Clock polarity", "0", ["0", "1"]), selectOption("cpha", "Clock phase", "0", ["0", "1"])] },
+        { protocol: "apb", role: "initiator", label: "APB initiator", signals: ["select", "enable", "address", "write", "wdata", "rdata", "ready"], optionalSignals: ["error"], clock: true, options: [literalOption("address", "Address", "0"), booleanOption("write", "Write", true)] },
+        { protocol: "apb", role: "responder", label: "APB responder", signals: ["select", "enable", "address", "write", "wdata", "rdata", "ready"], optionalSignals: ["error"], clock: true, options: [literalOption("address", "Address", "0"), booleanOption("write", "Write", true), numberOption("waitCycles", "Wait cycles", 0, 0, 1e6)] },
+        { protocol: "axis", role: "source", label: "AXI-STREAM source", signals: ["data", "valid", "ready"], optionalSignals: ["last"], clock: true, options: [] },
+        { protocol: "axis", role: "sink", label: "AXI-STREAM sink", signals: ["data", "valid", "ready"], optionalSignals: ["last"], clock: true, options: [numberOption("waitCycles", "Backpressure cycles", 0, 0, 1e6)] },
+        { protocol: "axis", role: "monitor", label: "AXI-STREAM monitor", signals: ["data", "valid", "ready"], optionalSignals: ["last"], clock: true, options: [] },
+        { protocol: "i2c", role: "controller", label: "I2C controller", signals: ["scl", "sda"], clock: false, options: [numberOption("period", "Clock period", 10, 2, 1e6), literalOption("address", "7-bit address", "7'h50"), booleanOption("write", "Write", true), booleanOption("repeatedStart", "Repeated START read", false)] },
+        { protocol: "i2c", role: "target", label: "I2C target", signals: ["scl", "sda"], clock: false, options: [numberOption("period", "Clock period", 10, 2, 1e6), literalOption("address", "7-bit address", "7'h50"), booleanOption("write", "Write", true), booleanOption("repeatedStart", "Repeated START read", false), numberOption("stretchCycles", "Stretch time in clock periods", 0, 0, 1e6), booleanOption("targetAck", "Acknowledge address", true)] },
+        { protocol: "axi4", role: "initiator", label: "AXI-Full initiator", signals: AXI4_SIGNALS, clock: true, options: [literalOption("address", "Address", "0"), booleanOption("write", "Write", true), literalOption("id", "Transaction ID", "0"), selectOption("burst", "Burst", "incr", ["fixed", "incr", "wrap"]), selectOption("response", "Response", "okay", ["okay", "exokay", "slverr", "decerr"]), literalOption("strobe", "Byte strobe", "15")] },
+        { protocol: "axi4", role: "responder", label: "AXI-Full responder", signals: AXI4_SIGNALS, clock: true, options: [literalOption("address", "Address", "0"), booleanOption("write", "Write", true), literalOption("id", "Transaction ID", "0"), selectOption("burst", "Burst", "incr", ["fixed", "incr", "wrap"]), selectOption("response", "Response", "okay", ["okay", "exokay", "slverr", "decerr"]), literalOption("strobe", "Byte strobe", "15"), numberOption("waitCycles", "Backpressure cycles", 0, 0, 1e6)] },
+        { protocol: "axi4lite", role: "initiator", label: "AXI-Lite initiator", signals: AXI4LITE_SIGNALS, clock: true, options: [literalOption("address", "Address", "0"), booleanOption("write", "Write", true), selectOption("response", "Response", "okay", ["okay", "slverr", "decerr"]), literalOption("strobe", "Byte strobe", "15")] },
+        { protocol: "axi4lite", role: "responder", label: "AXI-Lite responder", signals: AXI4LITE_SIGNALS, clock: true, options: [literalOption("address", "Address", "0"), booleanOption("write", "Write", true), selectOption("response", "Response", "okay", ["okay", "slverr", "decerr"]), literalOption("strobe", "Byte strobe", "15"), numberOption("waitCycles", "Backpressure cycles", 0, 0, 1e6)] },
+        { protocol: "rgb888", role: "source", label: "RGB source", signals: ["pclk", "hsync", "vsync", "de", "r", "g", "b"], clock: false, options: RGB_OPTIONS },
+        { protocol: "rgb888", role: "monitor", label: "RGB monitor", signals: ["pclk", "hsync", "vsync", "de", "r", "g", "b"], clock: false, options: RGB_OPTIONS.filter((option) => option.key !== "period") }
+      ];
+      function createProtocolStep(protocol, role) {
+        const template = exports2.PROTOCOL_TEMPLATES.find((item) => item.protocol === protocol && item.role === role);
+        if (!template)
+          throw new Error(`Unsupported protocol role ${protocol}/${role}.`);
+        const passive = role === "rx" || role === "sink" || role === "monitor" || role === "responder";
+        const options = Object.fromEntries(template.options.map((option) => [
+          option.key,
+          option.key === "hsyncPolarity" || option.key === "vsyncPolarity" || option.key === "stopBits" || option.key === "cpol" || option.key === "cpha" ? Number(option.defaultValue) : option.defaultValue
+        ]));
+        let data2 = passive ? [] : ["8'h55"];
+        let expected = passive ? ["8'h55"] : void 0;
+        if (protocol === "axi4" || protocol === "axi4lite") {
+          data2 = role === "initiator" ? ["32'h12345678"] : [];
+          expected = role === "responder" ? ["32'h12345678"] : void 0;
+        } else if (protocol === "i2c" && role === "target") {
+          data2 = [];
+          expected = ["8'h55"];
+        } else if (protocol === "rgb888") {
+          data2 = [];
+          expected = void 0;
+        }
+        return {
+          kind: "protocol",
+          protocol,
+          role,
+          signals: Object.fromEntries(template.signals.map((signal) => [signal, signal])),
+          ...template.clock ? { clock: "clk" } : {},
+          timeout: 1e4,
+          data: data2,
+          ...expected ? { expected } : {},
+          options
+        };
+      }
+      function literal(value) {
+        if (typeof value !== "string" || !value.length || value.length > 4096)
+          return false;
+        if (/^[xz]$/i.test(value) || /^-?\d[\d_]*$/.test(value))
+          return true;
+        const match = /^(\d[\d_]*)?'[sS]?([bBoOdDhH])([\da-fA-F_xXzZ?]+)$/.exec(value);
+        if (!match || match[1] && (Number(match[1].replace(/_/g, "")) < 1 || Number(match[1].replace(/_/g, "")) > 65536))
+          return false;
+        return { b: /^[01xz?]+$/i, o: /^[0-7xz?]+$/i, d: /^(?:\d+|[xz?])$/i, h: /^[0-9a-fxz?]+$/i }[match[2].toLowerCase()].test(match[3].replace(/_/g, ""));
+      }
+      function plain(value) {
+        return !!value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) && !Object.keys(value).some((key) => ["__proto__", "constructor", "prototype"].includes(key));
+      }
+      function validateProtocolStep(value, path2) {
+        const errors2 = [];
+        const error = (field, message) => errors2.push({ path: `${path2}${field ? `.${field}` : ""}`, message });
+        if (!plain(value)) {
+          error("", "Expected a plain protocol object without prototype keys.");
+          return errors2;
+        }
+        const allowed = ["kind", "protocol", "role", "signals", "clock", "timeout", "data", "expected", "options"];
+        for (const key of Object.keys(value))
+          if (!allowed.includes(key))
+            error(key, "Unknown protocol field.");
+        if (value.kind !== "protocol")
+          error("kind", "Expected protocol.");
+        const template = exports2.PROTOCOL_TEMPLATES.find((item) => item.protocol === value.protocol && item.role === value.role);
+        if (!template) {
+          error("role", "Unsupported protocol or role.");
+          return errors2;
+        }
+        if (!plain(value.signals))
+          error("signals", "Expected a plain signal map without prototype keys.");
+        else {
+          for (const signal of template.signals)
+            if (!isTaskIdentifier(value.signals[signal]))
+              error(`signals.${signal}`, "Map this signal to a valid net identifier.");
+          for (const [signal, net] of Object.entries(value.signals)) {
+            if (![...template.signals, ...template.optionalSignals ?? []].includes(signal))
+              error(`signals.${signal}`, "Unknown protocol signal.");
+            else if (!isTaskIdentifier(net))
+              error(`signals.${signal}`, "Expected a valid net identifier.");
+          }
+        }
+        if (template.clock ? !isTaskIdentifier(value.clock) : value.clock !== void 0)
+          error("clock", template.clock ? "Select an automatic clock." : "This protocol uses its period or mapped serial clock, not an automatic clock.");
+        if (typeof value.timeout !== "number" || !Number.isFinite(value.timeout) || value.timeout <= 0)
+          error("timeout", "Expected a finite positive timeout in task time units.");
+        for (const field of ["data", "expected"]) {
+          const values = value[field];
+          if (field === "expected" && values === void 0)
+            continue;
+          if (!Array.isArray(values) || values.length > 4096)
+            error(field, "Expected at most 4096 Verilog literals.");
+          else
+            for (const [index2, entry] of values.entries())
+              if (!literal(entry))
+                error(`${field}[${index2}]`, "Expected a Verilog integer or 4-state literal.");
+        }
+        const options = value.options === void 0 ? {} : value.options;
+        if (!plain(options)) {
+          error("options", "Expected a plain options object.");
+          return errors2;
+        }
+        if (["i2c", "axi4", "axi4lite", "rgb888"].includes(String(value.protocol))) {
+          (0, validation_1.validateAdvancedProtocol)(value, options, template, error);
+          return errors2;
+        }
+        const optionKeys = value.protocol === "uart" ? ["width", "period", "parity", "stopBits"] : value.protocol === "spi" ? ["width", "period", "cpol", "cpha"] : value.protocol === "apb" ? ["address", "write", ...value.role === "responder" ? ["waitCycles"] : []] : value.role === "sink" ? ["waitCycles"] : [];
+        for (const key of Object.keys(options))
+          if (!optionKeys.includes(key))
+            error(`options.${key}`, "Option is unsupported for this protocol role.");
+        if (options.width !== void 0 && (!Number.isInteger(options.width) || Number(options.width) < (value.protocol === "uart" ? 5 : 1) || Number(options.width) > (value.protocol === "uart" ? 9 : 32)))
+          error("options.width", value.protocol === "uart" ? "UART width must be 5 through 9." : "SPI width must be 1 through 32.");
+        if (["uart", "spi"].includes(String(value.protocol)) && (typeof options.period !== "number" || !Number.isFinite(options.period) || options.period <= 0))
+          error("options.period", "Set a finite positive bit/serial-clock period.");
+        for (const key of ["cpol", "cpha"])
+          if (options[key] !== void 0 && options[key] !== 0 && options[key] !== 1)
+            error(`options.${key}`, "Expected 0 or 1.");
+        if (options.parity !== void 0 && !["none", "even", "odd"].includes(String(options.parity)))
+          error("options.parity", "Expected none, even or odd.");
+        if (options.stopBits !== void 0 && options.stopBits !== 1 && options.stopBits !== 2)
+          error("options.stopBits", "Expected 1 or 2 stop bits.");
+        if (options.waitCycles !== void 0 && (!Number.isInteger(options.waitCycles) || Number(options.waitCycles) < 0 || Number(options.waitCycles) > 1e6))
+          error("options.waitCycles", "Expected zero through 1000000 wait cycles.");
+        if (options.address !== void 0 && !literal(options.address))
+          error("options.address", "Expected a Verilog address literal.");
+        if (options.write !== void 0 && typeof options.write !== "boolean")
+          error("options.write", "Expected a boolean.");
+        const receives = value.role === "rx" || value.role === "sink" || value.role === "monitor" || value.protocol === "apb" && (value.role === "initiator" && options.write === false || value.role === "responder" && options.write !== false);
+        if (receives) {
+          if (!Array.isArray(value.expected) || !value.expected.length)
+            error("expected", "This receiving role requires a finite nonempty expected list.");
+          if (Array.isArray(value.data) && value.data.length)
+            error("data", "This receiving role uses expected instead of transmitted data.");
+        } else {
+          if (Array.isArray(value.data) && !value.data.length)
+            error("data", "Provide transmitted data.");
+          if (value.protocol !== "spi" && value.expected !== void 0)
+            error("expected", "Expected data is unsupported for this transmitting role.");
+        }
+        if (value.protocol === "spi" && Array.isArray(value.expected) && Array.isArray(value.data) && value.expected.length !== value.data.length)
+          error("expected", "SPI expected and data lists must have the same transaction count.");
+        return errors2;
+      }
+      function protocolDrivenSignals(step) {
+        const keys2 = step.protocol === "uart" ? step.role === "tx" ? ["data"] : [] : step.protocol === "spi" ? step.role === "controller" ? ["sclk", "cs", "mosi"] : ["miso"] : step.protocol === "apb" ? step.role === "initiator" ? ["select", "enable", "address", "write", "wdata"] : ["rdata", "ready", "error"] : step.protocol === "axis" ? step.role === "source" ? ["data", "valid", "last"] : step.role === "sink" ? ["ready"] : [] : step.protocol === "i2c" ? ["scl", "sda"] : step.protocol === "axi4" ? step.role === "initiator" ? ["awid", "awaddr", "awlen", "awsize", "awburst", "awvalid", "wdata", "wstrb", "wlast", "wvalid", "bready", "arid", "araddr", "arlen", "arsize", "arburst", "arvalid", "rready"] : ["awready", "wready", "bid", "bresp", "bvalid", "arready", "rid", "rdata", "rresp", "rlast", "rvalid"] : step.protocol === "axi4lite" ? step.role === "initiator" ? ["awaddr", "awvalid", "wdata", "wstrb", "wvalid", "bready", "araddr", "arvalid", "rready"] : ["awready", "wready", "bresp", "bvalid", "arready", "rdata", "rresp", "rvalid"] : step.role === "source" ? ["pclk", "hsync", "vsync", "de", "r", "g", "b"] : [];
+        return keys2.flatMap((key) => step.signals[key] === void 0 ? [] : [step.signals[key]]);
+      }
+      function protocolOpenDrainSignals(step) {
+        return step.protocol === "i2c" ? ["scl", "sda"].map((key) => step.signals[key]).filter((net) => net !== void 0) : [];
+      }
+      function protocolPayloadFields(step) {
+        const options = step.options ?? {};
+        if (step.protocol === "rgb888") {
+          if (options.pattern !== "pixels")
+            return { data: false, expected: false };
+          return step.role === "source" ? { data: true, expected: false } : { data: false, expected: true };
+        }
+        if (step.protocol === "i2c" && options.repeatedStart === true)
+          return { data: true, expected: true };
+        const transmitting = step.protocol === "uart" ? step.role === "tx" : step.protocol === "spi" ? true : step.protocol === "axis" ? step.role === "source" : step.protocol === "apb" || step.protocol === "i2c" || step.protocol === "axi4" || step.protocol === "axi4lite" ? (step.role === "initiator" || step.role === "controller") === (options.write !== false) : false;
+        return transmitting ? { data: true, expected: step.protocol === "spi" } : { data: false, expected: true };
+      }
+      function numeric(value, width2) {
+        return /^[xz]$/i.test(value) ? `${width2}'b${value}` : value;
+      }
+      function fits(value, width2) {
+        if (/^[xz]$/i.test(value))
+          return true;
+        const text4 = value.replace(/_/g, "");
+        const match = /^(\d+)?'[sS]?([bBoOdDhH])(.+)$/.exec(text4);
+        if (match && /[xz?]/i.test(match[3])) {
+          const declared = match[1] ? Number(match[1]) : width2;
+          const digitBits = { b: 1, o: 3, h: 4 }[match[2].toLowerCase()];
+          return declared <= width2 && (!digitBits || match[3].length <= Math.ceil(declared / digitBits));
+        }
+        const digits = match?.[3] ?? text4;
+        const base = match?.[2].toLowerCase();
+        const number3 = BigInt((base === "b" ? "0b" : base === "h" ? "0x" : base === "o" ? "0o" : "") + digits);
+        const declaredWidth = match?.[1] ? Number(match[1]) : width2;
+        return declaredWidth <= width2 && number3 >= -(1n << BigInt(declaredWidth - 1)) && number3 < 1n << BigInt(declaredWidth);
+      }
+      function compileProtocolStep(step, context) {
+        const errors2 = validateProtocolStep(step, context.path);
+        if (errors2.length)
+          throw new Error(`${errors2[0].path}: ${errors2[0].message}`);
+        const fail = (field, message) => {
+          throw new Error(`${context.path}.${field}: ${message}`);
+        };
+        if (!/^vf_[a-zA-Z0-9_]+$/.test(context.prefix) || !/^preset$/.test(context.path))
+          fail("", "Invalid compiler-generated prefix or step path.");
+        const time = (value, field) => {
+          if (!Number.isFinite(value) || !Number.isFinite(context.tick) || context.tick <= 0 || value < context.tick || Math.abs(value / context.tick - Math.round(value / context.tick)) > 1e-6)
+            fail(field, "Time must be a finite positive multiple of the task precision.");
+        };
+        time(step.timeout, "timeout");
+        if (step.options?.period !== void 0)
+          time(step.options.period / 2, "options.period");
+        const s = step.signals;
+        const targets = context.writeTargets ?? {};
+        if (!plain(targets))
+          fail("signals", "Invalid compiler-generated write-target map.");
+        const driven = new Set(protocolDrivenSignals(step));
+        const openDrain = new Set(protocolOpenDrainSignals(step));
+        for (const [net, target] of Object.entries(targets)) {
+          const openDrainTarget = openDrain.has(net) && target === `${context.prefix}_drive_${net}`;
+          if (!driven.has(net) || target !== net && target !== `vf_drive_${net}` && !openDrainTarget)
+            fail("signals", "Invalid compiler-generated protocol write target.");
+        }
+        const w = Object.fromEntries(Object.entries(s).map(([role, net]) => [
+          role,
+          Object.prototype.hasOwnProperty.call(targets, net) ? targets[net] : net
+        ]));
+        if (new Set(Object.values(s)).size !== Object.keys(s).length)
+          fail("signals", "Protocol signal mappings must be distinct.");
+        if (step.protocol === "i2c" || step.protocol === "axi4" || step.protocol === "axi4lite" || step.protocol === "rgb888") {
+          for (const [key, net] of Object.entries(s)) {
+            if (!Object.prototype.hasOwnProperty.call(context.netWidths, net))
+              fail(`signals.${key}`, `Unknown net ${net}.`);
+          }
+          if (step.clock) {
+            if (context.netWidths[step.clock] !== 1)
+              fail("clock", "Select a declared one-bit clock net.");
+            if (Object.values(s).includes(step.clock))
+              fail("clock", "Clock and protocol signal mappings must be distinct.");
+            if (Object.prototype.hasOwnProperty.call(context.clocks, step.clock))
+              time(context.clocks[step.clock] / 2, "clock");
+          }
+          const input = { step, context, observed: s, driven: w, fail, fits, numeric };
+          if (step.protocol === "i2c")
+            return (0, i2c_1.compileI2cProtocol)(input);
+          if (step.protocol === "rgb888")
+            return (0, rgb888_1.compileRgb888Protocol)(input);
+          return (0, axi_1.compileAxiProtocol)(input);
+        }
+        for (const [key, net] of Object.entries(s)) {
+          if (!Object.prototype.hasOwnProperty.call(context.netWidths, net))
+            fail(`signals.${key}`, `Unknown net ${net}.`);
+          const width3 = context.netWidths[net];
+          if (!Number.isInteger(width3) || width3 < 1 || width3 > 65536)
+            fail(`signals.${key}`, "Invalid net width.");
+          if (!(step.protocol === "apb" && ["address", "wdata", "rdata"].includes(key)) && !(step.protocol === "axis" && key === "data") && width3 !== 1)
+            fail(`signals.${key}`, "Control and serial signals must have width 1.");
+        }
+        if (step.clock) {
+          if (context.netWidths[step.clock] !== 1)
+            fail("clock", "Select a declared one-bit clock net.");
+          if (Object.values(s).includes(step.clock))
+            fail("clock", "Clock and protocol signal mappings must be distinct.");
+          if (Object.prototype.hasOwnProperty.call(context.clocks, step.clock))
+            time(context.clocks[step.clock] / 2, "clock");
+        }
+        const width2 = step.protocol === "uart" || step.protocol === "spi" ? step.options?.width ?? 8 : context.netWidths[s[step.protocol === "apb" ? "wdata" : "data"]];
+        if (step.protocol === "apb" && context.netWidths[s.rdata] !== width2)
+          fail("signals.rdata", "APB write and read data widths must match.");
+        for (const [field, values2] of [["data", step.data], ["expected", step.expected ?? []]])
+          values2.forEach((value, index2) => {
+            if (!fits(value, width2))
+              fail(`${field}[${index2}]`, `Value must fit the ${width2}-bit transaction width.`);
+          });
+        if (step.protocol === "apb" && !fits(step.options?.address ?? "0", context.netWidths[s.address]))
+          fail("options.address", "Address must fit the mapped address width.");
+        const prefix = context.prefix;
+        const actual = `${prefix}_actual`;
+        const ok = `${prefix}_ok`;
+        const bit = `${prefix}_bit`;
+        const declarations = [`reg [${width2 - 1}:0] ${actual};`, `reg ${ok};`, `integer ${bit};`];
+        const statements = [];
+        const options = step.options ?? {};
+        const period = options.period;
+        const half = period / 2;
+        const clock = step.clock;
+        const rise = `@(posedge ${clock});`;
+        const fall = `@(negedge ${clock});`;
+        const values = step.data.length ? step.data : step.expected;
+        const constant2 = (name, value, bits = width2) => {
+          declarations.push(`localparam [${bits - 1}:0] ${name} = ${numeric(value, bits)};`);
+          return name;
+        };
+        function check(lines, index2, expected, received, controls = "1'b1") {
+          lines.push(`$display("ST_PROTOCOL_CHECK|%m|transaction[${index2}]|%0d|%b|%b", ((${received} === ${expected}) && (${controls})), ${expected}, ${received});`, `if (!(((${received} === ${expected}) && (${controls})) === 1'b1)) $fatal(1, "Protocol expectation failed: %m");`);
+        }
+        function transaction(index2, lines) {
+          const block2 = `${prefix}_transaction_${index2}`;
+          statements.push(`begin : ${block2}`, "    fork", "        begin", ...lines.map((line2) => `            ${line2}`), `            disable ${block2};`, "        end", `        begin #(${step.timeout}); $fatal(1, "ST_PROTOCOL_TIMEOUT|%m"); end`, "    join", "end");
+        }
+        if (step.protocol === "uart") {
+          const parity = options.parity ?? "none";
+          const parityExpression = (word) => `${parity === "odd" ? "~" : ""}(^${word})`;
+          if (step.role === "tx")
+            statements.push(`${w.data} <= 1'b1;`, `#(${period});`);
+          else
+            statements.push(`#(${context.tick});`);
+          values.forEach((value, index2) => {
+            const word = constant2(`${prefix}_word_${index2}`, value);
+            const lines = [];
+            if (step.role === "tx") {
+              lines.push(`${w.data} <= 1'b0;`, `#(${period});`, `for (${bit} = 0; ${bit} < ${width2}; ${bit} = ${bit} + 1) begin`, `    ${w.data} <= ${word}[${bit}];`, `    #(${period});`, "end");
+              if (parity !== "none")
+                lines.push(`${w.data} <= ${parityExpression(word)};`, `#(${period});`);
+              lines.push(`${w.data} <= 1'b1;`, `#(${period * (options.stopBits ?? 1)});`);
+            } else {
+              lines.push(`wait (${s.data} === 1'b0);`, `#(${half});`, `${ok} = (${s.data} === 1'b0);`, `for (${bit} = 0; ${bit} < ${width2}; ${bit} = ${bit} + 1) begin`, `    #(${period});`, `    ${actual}[${bit}] = ${s.data};`, "end");
+              if (parity !== "none")
+                lines.push(`#(${period});`, `${ok} = ${ok} && (${s.data} === ${parityExpression(actual)});`);
+              for (let stop = 0; stop < (options.stopBits ?? 1); stop++)
+                lines.push(`#(${period});`, `${ok} = ${ok} && (${s.data} === 1'b1);`);
+              check(lines, index2, word, actual, ok);
+              lines.push(`#(${half});`);
+            }
+            transaction(index2, lines);
+          });
+        } else if (step.protocol === "spi") {
+          const cpol = options.cpol ?? 0;
+          const cpha = options.cpha ?? 0;
+          const controller = step.role === "controller";
+          const output = controller ? w.mosi : w.miso;
+          const input = controller ? s.miso : s.mosi;
+          const leading = `@(${cpol ? "negedge" : "posedge"} ${s.sclk});`;
+          const trailing = `@(${cpol ? "posedge" : "negedge"} ${s.sclk});`;
+          if (controller)
+            statements.push(`${w.cs} <= 1'b1;`, `${w.sclk} <= 1'b${cpol};`, `${output} <= 1'b0;`, `#(${half});`);
+          else
+            statements.push(`${output} <= 1'bz;`, `#(${context.tick});`);
+          values.forEach((value, index2) => {
+            const word = constant2(`${prefix}_word_${index2}`, value);
+            const lines = [`${ok} = 1'b1;`];
+            if (controller)
+              lines.push(`${w.cs} <= 1'b0;`);
+            else
+              lines.push(`wait (${s.cs} === 1'b0);`);
+            lines.push(`for (${bit} = ${width2 - 1}; ${bit} >= 0; ${bit} = ${bit} - 1) begin`);
+            if (controller) {
+              if (!cpha)
+                lines.push(`    ${output} <= ${word}[${bit}];`);
+              lines.push(`    #(${half});`, `    ${w.sclk} <= 1'b${1 - cpol};`);
+              if (cpha)
+                lines.push(`    ${output} <= ${word}[${bit}];`);
+              else
+                lines.push(`    ${actual}[${bit}] = ${input};`);
+              lines.push(`    #(${half});`, `    ${w.sclk} <= 1'b${cpol};`);
+              if (cpha)
+                lines.push(`    ${actual}[${bit}] = ${input};`);
+            } else {
+              if (!cpha)
+                lines.push(`    ${output} <= ${word}[${bit}];`);
+              lines.push(`    ${leading}`, `    ${ok} = ${ok} && (${s.cs} === 1'b0);`);
+              if (cpha)
+                lines.push(`    ${output} <= ${word}[${bit}];`);
+              else
+                lines.push(`    ${actual}[${bit}] = ${input};`);
+              lines.push(`    ${trailing}`, `    ${ok} = ${ok} && (${s.cs} === 1'b0);`);
+              if (cpha)
+                lines.push(`    ${actual}[${bit}] = ${input};`);
+            }
+            lines.push("end");
+            if (step.expected)
+              check(lines, index2, constant2(`${prefix}_expected_${index2}`, step.expected[index2]), actual, ok);
+            if (controller)
+              lines.push(`#(${half});`, `${w.cs} <= 1'b1;`, `#(${half});`);
+            else
+              lines.push(`wait (${s.cs} === 1'b1);`, `${output} <= 1'bz;`);
+            transaction(index2, lines);
+          });
+        } else if (step.protocol === "apb") {
+          const write = options.write !== false;
+          const initiator = step.role === "initiator";
+          const address = constant2(`${prefix}_address`, options.address ?? "0", context.netWidths[s.address]);
+          if (initiator)
+            statements.push(`${w.select} <= 1'b0;`, `${w.enable} <= 1'b0;`);
+          else
+            statements.push(`${w.ready} <= 1'b0;`, ...s.error ? [`${w.error} <= 1'b0;`] : []);
+          values.forEach((value, index2) => {
+            const word = constant2(`${prefix}_word_${index2}`, value);
+            const lines = [];
+            if (initiator) {
+              lines.push(fall, `${w.select} <= 1'b1;`, `${w.enable} <= 1'b0;`, `${w.address} <= ${address};`, `${w.write} <= 1'b${write ? 1 : 0};`);
+              if (write)
+                lines.push(`${w.wdata} <= ${word};`);
+              lines.push(fall, `${w.enable} <= 1'b1;`, rise, `while (${s.ready} !== 1'b1) begin ${rise} end`);
+              const controls = s.error ? `${s.error} === 1'b0` : "1'b1";
+              if (!write)
+                check(lines, index2, word, s.rdata, controls);
+              else if (s.error)
+                check(lines, index2, "1'b0", s.error);
+              lines.push(fall, `${w.select} <= 1'b0;`, `${w.enable} <= 1'b0;`);
+            } else {
+              lines.push(rise, `while (!((${s.select} === 1'b1) && (${s.enable} === 1'b0))) begin ${rise} end`, fall);
+              if (!write)
+                lines.push(`${w.rdata} <= ${word};`);
+              if (options.waitCycles)
+                lines.push(`repeat (${options.waitCycles}) ${fall}`);
+              lines.push(`${w.ready} <= 1'b1;`, rise, `while (!((${s.select} === 1'b1) && (${s.enable} === 1'b1))) begin ${rise} end`);
+              const controls = `(${s.address} === ${address}) && (${s.write} === 1'b${write ? 1 : 0})`;
+              if (write)
+                check(lines, index2, word, s.wdata, controls);
+              else
+                check(lines, index2, address, s.address, controls);
+              lines.push(fall, `${w.ready} <= 1'b0;`);
+            }
+            transaction(index2, lines);
+          });
+        } else {
+          if (step.role === "source")
+            statements.push(`${w.valid} <= 1'b0;`, ...s.last ? [`${w.last} <= 1'b0;`] : []);
+          if (step.role === "sink")
+            statements.push(`${w.ready} <= 1'b0;`);
+          values.forEach((value, index2) => {
+            const word = constant2(`${prefix}_word_${index2}`, value);
+            const lines = [];
+            if (step.role === "source") {
+              lines.push(fall, `${w.data} <= ${word};`, `${w.valid} <= 1'b1;`);
+              if (s.last)
+                lines.push(`${w.last} <= 1'b${index2 === values.length - 1 ? 1 : 0};`);
+            } else if (step.role === "sink") {
+              if (options.waitCycles)
+                lines.push(`repeat (${options.waitCycles}) ${fall}`);
+              lines.push(fall, `${w.ready} <= 1'b1;`);
+            }
+            lines.push(rise, `while (!((${s.valid} === 1'b1) && (${s.ready} === 1'b1))) begin ${rise} end`);
+            if (step.role !== "source")
+              check(lines, index2, word, s.data, s.last ? `${s.last} === 1'b${index2 === values.length - 1 ? 1 : 0}` : "1'b1");
+            if (step.role === "source")
+              lines.push(fall, `${w.valid} <= 1'b0;`, ...s.last ? [`${w.last} <= 1'b0;`] : []);
+            if (step.role === "sink")
+              lines.push(fall, `${w.ready} <= 1'b0;`);
+            transaction(index2, lines);
+          });
+        }
+        return { declarations, statements };
+      }
+    }
+  });
+
+  // packages/hdl-runtime/dist/simulationTask/protocolPresets.js
+  var require_protocolPresets = __commonJS({
+    "packages/hdl-runtime/dist/simulationTask/protocolPresets.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.PROTOCOL_PRESET_TEMPLATES = void 0;
+      exports2.protocolPresetTransactions = protocolPresetTransactions2;
+      exports2.normalizeProtocolPreset = normalizeProtocolPreset2;
+      exports2.createProtocolPreset = createProtocolPreset2;
+      exports2.resolveProtocolPresetPorts = resolveProtocolPresetPorts;
+      exports2.protocolPresetPayloadFields = protocolPresetPayloadFields2;
+      exports2.describeProtocolPreset = describeProtocolPreset;
+      exports2.validateProtocolPreset = validateProtocolPreset2;
+      exports2.renderProtocolPreset = renderProtocolPreset;
+      var protocols_1 = require_protocols();
+      var memoryProtocol = (protocol) => ["apb", "axi4lite", "axi4"].includes(protocol);
+      function protocolPresetTransactions2(preset) {
+        if (preset.transactions !== void 0)
+          return preset.transactions;
+        if (!memoryProtocol(preset.protocol))
+          return [];
+        const operation = preset.options.write === false ? "read" : "write";
+        const address = preset.options.address ?? "0";
+        const transmitting = preset.role === "initiator" === (operation === "write");
+        if (preset.protocol !== "apb")
+          return [{
+            operation,
+            address,
+            data: transmitting ? preset.data : [],
+            ...transmitting ? {} : { expected: preset.expected ?? [] }
+          }];
+        return (transmitting ? preset.data : preset.expected ?? []).map((value) => ({
+          operation,
+          address,
+          data: transmitting ? [value] : [],
+          ...transmitting ? {} : { expected: [value] }
+        }));
+      }
+      function normalizeProtocolPreset2(preset) {
+        var _a, _b, _c;
+        if (preset.protocol !== "rgb888")
+          return preset;
+        const options = { ...preset.options };
+        for (const axis of ["h", "v"]) {
+          const active = options[`${axis}Active`];
+          const front = options[`${axis}FrontPorch`];
+          const sync = options[`${axis}Sync`];
+          const back = options[`${axis}BackPorch`];
+          if (front !== void 0 || sync !== void 0 || back !== void 0) {
+            options[_a = `${axis}SyncStart`] ?? (options[_a] = active + front);
+            options[_b = `${axis}SyncEnd`] ?? (options[_b] = active + front + sync);
+            options[_c = `${axis}Total`] ?? (options[_c] = active + front + sync + back);
+          }
+          delete options[`${axis}FrontPorch`];
+          delete options[`${axis}Sync`];
+          delete options[`${axis}BackPorch`];
+        }
+        return { ...preset, options };
+      }
+      var widthOption = (key, label, defaultValue, max2) => ({ key, label, kind: "number", defaultValue, min: 1, max: max2 });
+      var pinOption = (key, label) => ({ key, label, kind: "boolean", defaultValue: true });
+      exports2.PROTOCOL_PRESET_TEMPLATES = protocols_1.PROTOCOL_TEMPLATES.map((template) => ({
+        protocol: template.protocol,
+        role: template.role,
+        label: template.label,
+        options: [
+          ...template.options.filter((option) => !(template.protocol === "rgb888" && option.key === "period")),
+          ...template.protocol === "axis" ? [pinOption("includeLast", "Include LAST pin")] : [],
+          ...template.protocol === "apb" ? [pinOption("includeError", "Include error pin")] : [],
+          ...["apb", "axi4", "axi4lite"].includes(template.protocol) ? [widthOption("addressWidth", "Address width", 32, 64)] : [],
+          ...["apb", "axis", "axi4", "axi4lite"].includes(template.protocol) ? [widthOption("dataWidth", "Data width", 32, 1024)] : [],
+          ...template.protocol === "axi4" ? [widthOption("idWidth", "ID width", 4, 32)] : []
+        ]
+      })).sort((a, b) => ["uart", "spi", "i2c", "apb", "axis", "axi4lite", "axi4", "rgb888"].indexOf(a.protocol) - ["uart", "spi", "i2c", "apb", "axis", "axi4lite", "axi4", "rgb888"].indexOf(b.protocol));
+      function createProtocolPreset2(protocol, role) {
+        const template = exports2.PROTOCOL_PRESET_TEMPLATES.find((item) => item.protocol === protocol && (role === void 0 || item.role === role));
+        if (!template)
+          throw new Error(`Unsupported protocol role ${protocol}/${role}.`);
+        const previous = (0, protocols_1.createProtocolStep)(protocol, template.role);
+        const options = Object.fromEntries(template.options.map((option) => [
+          option.key,
+          ["hsyncPolarity", "vsyncPolarity", "stopBits", "cpol", "cpha"].includes(option.key) ? Number(option.defaultValue) : option.defaultValue
+        ]));
+        const preset = {
+          kind: "protocol",
+          protocol,
+          role: template.role,
+          start: 0,
+          timeout: 1e4,
+          data: previous.data,
+          ...previous.expected ? { expected: previous.expected } : {},
+          options
+        };
+        if (memoryProtocol(protocol)) {
+          preset.transactions = protocolPresetTransactions2(preset);
+          preset.data = [];
+          delete preset.expected;
+          delete options.write;
+          delete options.address;
+        }
+        return preset;
+      }
+      function protocolPresetPortName(preset, signal) {
+        const master = preset.role === "initiator" || preset.role === "source";
+        const prefix = master ? "m" : "s";
+        if (preset.protocol === "apb") {
+          const member = {
+            select: "psel",
+            enable: "penable",
+            address: "paddr",
+            write: "pwrite",
+            wdata: "pwdata",
+            rdata: "prdata",
+            ready: "pready",
+            error: "pslverr"
+          }[signal];
+          return member ? `${prefix}_apb_${member}` : signal;
+        }
+        if (preset.protocol === "axis" && ["data", "valid", "ready", "last"].includes(signal))
+          return `${prefix}_axis_t${signal}`;
+        if (preset.protocol === "axi4" || preset.protocol === "axi4lite")
+          return `${prefix}_axi_${signal}`;
+        return signal;
+      }
+      function resolveProtocolPresetPorts(task) {
+        const aliases = new Map(task.instances.flatMap((instance) => "preset" in instance && instance.preset.kind === "protocol" ? [[instance.id, compilerStep(instance.preset).signals]] : []));
+        const portName = (instance, port2) => aliases.get(instance)?.[port2] ?? port2;
+        const defaults6 = (values) => Object.fromEntries(Object.entries(values).map(([key, value]) => {
+          const separator = key.indexOf(".");
+          return [separator < 0 ? key : `${key.slice(0, separator)}.${portName(key.slice(0, separator), key.slice(separator + 1))}`, value];
+        }));
+        return { ...task, defaults: defaults6(task.defaults), connections: task.connections.map((connection2) => ({
+          ...connection2,
+          endpoints: connection2.endpoints.map((endpoint) => endpoint.kind === "instance" ? { ...endpoint, port: portName(endpoint.instance, endpoint.port) } : endpoint),
+          ...connection2.defaults ? { defaults: defaults6(connection2.defaults) } : {}
+        })) };
+      }
+      function compilerStep(preset) {
+        preset = normalizeProtocolPreset2(preset);
+        const template = protocols_1.PROTOCOL_TEMPLATES.find((item) => item.protocol === preset.protocol && item.role === preset.role);
+        if (!template)
+          throw new Error("Unsupported protocol or role.");
+        const { addressWidth: _addressWidth, dataWidth: _dataWidth, idWidth: _idWidth, includeLast, includeError, ...options } = preset.options;
+        const optionalSignals = (template.optionalSignals ?? []).filter((name) => !(name === "last" && includeLast === false) && !(name === "error" && includeError === false));
+        if (preset.protocol === "rgb888" && preset.role === "source")
+          options.period = 10;
+        return {
+          kind: "protocol",
+          protocol: preset.protocol,
+          role: preset.role,
+          timeout: preset.timeout,
+          data: preset.data,
+          ...preset.expected === void 0 ? {} : { expected: preset.expected },
+          options,
+          signals: Object.fromEntries([...template.signals, ...optionalSignals].map((name) => [name, protocolPresetPortName(preset, name)])),
+          ...template.clock ? { clock: "clk" } : {}
+        };
+      }
+      function protocolPresetPayloadFields2(preset) {
+        const fields = (0, protocols_1.protocolPayloadFields)(compilerStep(preset));
+        return { data: fields.data, expected: fields.expected };
+      }
+      function describeProtocolPreset(preset) {
+        const step = compilerStep(preset), outputs = new Set((0, protocols_1.protocolDrivenSignals)(step));
+        const o = preset.options;
+        const width2 = (name) => {
+          if (preset.protocol === "apb")
+            return name === "address" ? o.addressWidth ?? 32 : ["wdata", "rdata"].includes(name) ? o.dataWidth ?? 32 : 1;
+          if (preset.protocol === "axis")
+            return name === "data" ? o.dataWidth ?? 32 : 1;
+          if (preset.protocol === "rgb888")
+            return ["r", "g", "b"].includes(name) ? 8 : 1;
+          if (preset.protocol === "axi4" || preset.protocol === "axi4lite") {
+            if (name.endsWith("addr"))
+              return o.addressWidth ?? 32;
+            if (name.endsWith("data"))
+              return o.dataWidth ?? 32;
+            if (["awid", "arid", "bid", "rid"].includes(name))
+              return o.idWidth ?? 4;
+            if (name === "wstrb")
+              return (o.dataWidth ?? 32) / 8;
+            if (name.endsWith("len"))
+              return 8;
+            if (name.endsWith("size"))
+              return 3;
+            if (name.endsWith("resp") || name.endsWith("burst"))
+              return 2;
+          }
+          return 1;
+        };
+        const ports = Object.entries(step.signals).map(([signal, name]) => ({
+          name,
+          width: width2(signal),
+          direction: preset.protocol === "i2c" ? "inout" : outputs.has(name) ? "output" : "input"
+        }));
+        if (step.clock || preset.protocol === "rgb888" && preset.role === "source")
+          ports.unshift({ name: "clk", width: 1, direction: "input" });
+        return { source: `preset:${preset.protocol}:${preset.role}`, module: `__veriflow_st_${preset.protocol}_${preset.role}`, parameters: [], ports };
+      }
+      function compile(preset, tick) {
+        const errors2 = validateProtocolPreset2(preset, tick);
+        if (errors2.length)
+          throw new Error(errors2[0]);
+        const step = compilerStep(preset), ports = describeProtocolPreset(preset).ports;
+        const context = {
+          path: "preset",
+          prefix: "vf_preset",
+          tick,
+          clocks: {},
+          netWidths: Object.fromEntries(ports.map((port2) => [port2.name, Number(port2.width)])),
+          ...preset.protocol === "i2c" ? { writeTargets: { scl: "vf_preset_drive_scl", sda: "vf_preset_drive_sda" } } : {}
+        };
+        if (memoryProtocol(preset.protocol)) {
+          const rows = protocolPresetTransactions2(preset);
+          if (!rows.length)
+            throw new Error("Provide at least one bus transaction.");
+          const compiled = rows.map((row, index2) => {
+            if (!row.address)
+              throw new Error(`transactions[${index2}].address: Provide an address literal.`);
+            const transmitting = preset.role === "initiator" === (row.operation === "write");
+            const values = transmitting ? row.data : row.expected;
+            if (!values?.length)
+              throw new Error(`transactions[${index2}]: Provide ${transmitting ? "data" : "expected"} values.`);
+            if (preset.protocol !== "axi4" && values.length !== 1)
+              throw new Error(`transactions[${index2}]: APB and AXI-Lite require exactly one beat.`);
+            return (0, protocols_1.compileProtocolStep)({
+              ...step,
+              data: transmitting ? row.data : [],
+              expected: transmitting ? void 0 : row.expected,
+              options: { ...step.options, address: row.address, write: row.operation === "write" }
+            }, { ...context, prefix: `vf_preset_row_${index2}` });
+          });
+          return { declarations: compiled.flatMap((item) => item.declarations), statements: compiled.flatMap((item) => item.statements) };
+        }
+        const payload = (0, protocols_1.protocolPayloadFields)(step);
+        if (!payload.data)
+          step.data = [];
+        if (!payload.expected)
+          delete step.expected;
+        return (0, protocols_1.compileProtocolStep)(step, context);
+      }
+      function validateProtocolPreset2(value, tick = 0) {
+        try {
+          if (!value || typeof value !== "object" || Array.isArray(value))
+            throw new Error("Protocol preset must be an object.");
+          let p = value;
+          const allowed = ["kind", "protocol", "role", "start", "timeout", "data", "expected", "options", "transactions"];
+          for (const key of Object.keys(p))
+            if (!allowed.includes(key))
+              throw new Error(`Unsupported preset field ${key}.`);
+          if (p.kind !== "protocol")
+            throw new Error("Expected protocol preset.");
+          const template = exports2.PROTOCOL_PRESET_TEMPLATES.find((item) => item.protocol === p.protocol && item.role === p.role);
+          if (!template)
+            throw new Error("Unsupported protocol or role.");
+          if (!Number.isFinite(p.start) || p.start < 0)
+            throw new Error("Start time must be nonnegative.");
+          if (!p.options || typeof p.options !== "object" || Array.isArray(p.options))
+            throw new Error("Protocol options must be an object.");
+          if (p.protocol === "rgb888") {
+            for (const key of ["hFrontPorch", "hSync", "hBackPorch", "vFrontPorch", "vSync", "vBackPorch"]) {
+              const value2 = p.options[key];
+              if (value2 !== void 0 && (!Number.isInteger(value2) || value2 < (key.endsWith("Sync") ? 1 : 0) || value2 > 8192))
+                throw new Error(`Invalid legacy timing option ${key}.`);
+            }
+            p = normalizeProtocolPreset2(p);
+          }
+          for (const [key, option] of Object.entries(p.options)) {
+            const descriptor = template.options.find((item) => item.key === key);
+            if (!descriptor)
+              throw new Error(`Unsupported option ${key}.`);
+            if (descriptor.kind === "boolean" && typeof option !== "boolean")
+              throw new Error(`${key} must be a boolean.`);
+            if (descriptor.kind === "number" && (!Number.isInteger(option) || Number(option) < descriptor.min || Number(option) > descriptor.max))
+              throw new Error(`${key} must be an integer from ${descriptor.min} through ${descriptor.max}.`);
+          }
+          if (p.protocol === "axi4lite" && ![32, 64].includes(p.options.dataWidth ?? 32))
+            throw new Error("AXI4-Lite data width must be 32 or 64.");
+          if (p.protocol === "axi4") {
+            const bytes = (p.options.dataWidth ?? 32) / 8;
+            if (!Number.isInteger(bytes) || bytes < 1 || bytes > 128 || bytes & bytes - 1)
+              throw new Error("AXI4 data width must be a power of two from 8 through 1024.");
+          }
+          const step = compilerStep(p);
+          if (memoryProtocol(p.protocol))
+            step.options = { ...step.options, write: p.options.write ?? true, address: p.options.address ?? "0" };
+          const errors2 = (0, protocols_1.validateProtocolStep)(step, "preset").filter((error) => !/^preset\.(data|expected)$/.test(error.path) && !(p.protocol === "rgb888" && error.path === "preset.options.timing"));
+          if (errors2.length)
+            throw new Error(`${errors2[0].path}: ${errors2[0].message}`);
+          const payloadWidth = ["uart", "spi"].includes(p.protocol) ? p.options.width ?? 8 : p.protocol === "i2c" ? 8 : p.protocol === "rgb888" ? 24 : p.options.dataWidth ?? 32;
+          for (const [field, values] of [["data", p.data], ["expected", p.expected]]) {
+            if (values === void 0 && field === "expected")
+              continue;
+            if (!Array.isArray(values) || values.length > 4096)
+              throw new Error(`${field} must contain at most 4096 literals.`);
+            for (const value2 of values)
+              if (!(0, protocols_1.literal)(value2) || !(0, protocols_1.fits)(value2, payloadWidth))
+                throw new Error(`${field} literal must fit ${payloadWidth} bits without truncation.`);
+          }
+          for (const [key, bits] of [["address", p.protocol === "i2c" ? 7 : p.options.addressWidth ?? 32], ["id", p.options.idWidth ?? 4], ["strobe", (p.options.dataWidth ?? 32) / 8]]) {
+            const value2 = p.options[key];
+            if (value2 !== void 0 && (!(0, protocols_1.literal)(value2) || !(0, protocols_1.fits)(value2, bits)))
+              throw new Error(`${key} must fit ${bits} bits without truncation.`);
+          }
+          if (p.transactions !== void 0) {
+            if (!memoryProtocol(p.protocol))
+              throw new Error("Transactions are supported only for APB and AXI memory buses.");
+            if (!Array.isArray(p.transactions) || p.transactions.length > 4096)
+              throw new Error("transactions must contain at most 4096 rows.");
+            for (const [index2, row] of p.transactions.entries()) {
+              if (!row || typeof row !== "object" || Array.isArray(row))
+                throw new Error(`transactions[${index2}] must be an object.`);
+              for (const key of Object.keys(row))
+                if (!["operation", "address", "data", "expected"].includes(key))
+                  throw new Error(`Unsupported transaction field ${key}.`);
+              if (!["write", "read"].includes(row.operation))
+                throw new Error(`transactions[${index2}].operation must be write or read.`);
+              if (row.address !== "" && (!(0, protocols_1.literal)(row.address) || /[xz?]/i.test(row.address) || !(0, protocols_1.fits)(row.address, p.options.addressWidth ?? 32)))
+                throw new Error(`transactions[${index2}].address must fit ${p.options.addressWidth ?? 32} bits without truncation.`);
+              const transmitting = p.role === "initiator" === (row.operation === "write");
+              for (const [field, values] of [["data", row.data], ["expected", row.expected]]) {
+                if (field === "expected" && values === void 0)
+                  continue;
+                if (!Array.isArray(values) || values.length > 4096)
+                  throw new Error(`transactions[${index2}].${field} must contain at most 4096 literals.`);
+                for (const value2 of values)
+                  if (!(0, protocols_1.literal)(value2) || !(0, protocols_1.fits)(value2, payloadWidth))
+                    throw new Error(`transactions[${index2}].${field} literal must fit ${payloadWidth} bits without truncation.`);
+                if (values.length && field === "data" !== transmitting)
+                  throw new Error(`transactions[${index2}].${field} is unused for this role and operation.`);
+              }
+            }
+          }
+          for (const [label, delay] of [["start", p.start], ["timeout", p.timeout], ["half period", p.options.period === void 0 ? 1 : p.options.period / 2]]) {
+            if (!Number.isFinite(delay) || (label === "start" ? delay < 0 : delay <= 0) || tick > 0 && (delay < (label === "start" ? 0 : tick) || Math.abs(delay / tick - Math.round(delay / tick)) > 1e-6))
+              throw new Error(`${label} must be representable at the task precision.`);
+          }
+          return [];
+        } catch (error) {
+          return [error instanceof Error ? error.message : String(error)];
+        }
+      }
+      function renderProtocolPreset(preset, moduleName, tick) {
+        const compiled = compile(preset, tick), ports = describeProtocolPreset(preset).ports;
+        const declarations = ports.map((port2) => {
+          const wireOutput = preset.protocol === "rgb888" && port2.name === "pclk";
+          return `    ${port2.direction}${port2.direction === "output" && !wireOutput ? " reg" : ""}${Number(port2.width) > 1 ? ` [${Number(port2.width) - 1}:0]` : ""} ${port2.name}`;
+        });
+        const drain = preset.protocol === "i2c" ? ["scl", "sda"].flatMap((name) => [
+          `reg vf_preset_drive_${name} = 1'bz;`,
+          `assign ${name} = vf_preset_drive_${name};`,
+          `pullup(${name});`
+        ]) : [];
+        return [
+          `module ${moduleName}(`,
+          declarations.join(",\n"),
+          ");",
+          "reg vf_completed = 1'b0;",
+          ...drain,
+          ...compiled.declarations,
+          "task vf_run;",
+          "begin",
+          ...compiled.statements,
+          "end",
+          "endtask",
+          `initial begin #(${preset.start}); vf_run; vf_completed = 1'b1; end`,
+          "endmodule",
+          ""
+        ].join("\n");
+      }
+    }
+  });
+
   // node_modules/mousetrap/mousetrap.js
   var require_mousetrap = __commonJS({
     "node_modules/mousetrap/mousetrap.js"(exports2, module2) {
@@ -518,7 +1946,7 @@
           nodesById.set(node.id, node);
           node.pins.forEach((pin2, pinIndex) => {
             const key = pinKey(node.id, pin2.id);
-            orderedPins.push({ key, node, direction: pin2.direction });
+            orderedPins.push({ key, node, direction: pin2.direction, side: pin2.side });
             pinIndexes.set(key, pinIndex);
           });
         });
@@ -548,7 +1976,9 @@
         const resolved = /* @__PURE__ */ new Map();
         for (const candidate of orderedPins) {
           const boundary2 = boundaryPinSide(candidate.node, candidate.direction);
-          if (boundary2) {
+          if (candidate.side) {
+            resolved.set(candidate.key, candidate.side);
+          } else if (boundary2) {
             resolved.set(candidate.key, boundary2);
           } else if (candidate.direction === "driver") {
             resolved.set(candidate.key, "right");
@@ -899,30 +2329,30 @@
         pin: { fontSize: 10, fontWeight: 400 }
       };
       var LAYOUT_CHARACTER_WIDTH = 7;
-      function measuredWidth(measure, text3, style2) {
-        const width2 = measure(text3, style2);
+      function measuredWidth(measure, text4, style2) {
+        const width2 = measure(text4, style2);
         return Number.isFinite(width2) ? Math.max(0, width2) : 0;
       }
-      function fitText(text3, maximumWidth, measure, style2) {
+      function fitText(text4, maximumWidth, measure, style2) {
         const available = Number.isFinite(maximumWidth) ? Math.max(0, maximumWidth) : 0;
-        if (measuredWidth(measure, text3, style2) <= available) {
-          return { visibleText: text3, truncated: false };
+        if (measuredWidth(measure, text4, style2) <= available) {
+          return { visibleText: text4, truncated: false };
         }
         const ellipsis = "...";
         if (measuredWidth(measure, ellipsis, style2) > available) {
           return { visibleText: "", truncated: true };
         }
         let lower = 0;
-        let upper = text3.length;
+        let upper = text4.length;
         while (lower < upper) {
           const candidate = Math.ceil((lower + upper) / 2);
-          if (measuredWidth(measure, `${text3.slice(0, candidate)}${ellipsis}`, style2) <= available) {
+          if (measuredWidth(measure, `${text4.slice(0, candidate)}${ellipsis}`, style2) <= available) {
             lower = candidate;
           } else {
             upper = candidate - 1;
           }
         }
-        return { visibleText: `${text3.slice(0, lower)}${ellipsis}`, truncated: true };
+        return { visibleText: `${text4.slice(0, lower)}${ellipsis}`, truncated: true };
       }
       function sideFor(node, pin2, sideMap) {
         return sideMap.get((0, pins_1.pinKey)(node.id, pin2.id)) ?? (pin2.direction === "driver" ? "right" : "left");
@@ -956,9 +2386,11 @@
         const leftPins = sidePins.filter((pin2) => pin2.side === "left");
         const rightPins = sidePins.filter((pin2) => pin2.side === "right");
         const isPort = node.kind === "port";
+        const title2 = node.kind === "instance" && node.subtitle ? `${node.subtitle} ${node.label}` : node.label;
+        const subtitle = node.kind === "instance" ? void 0 : node.subtitle;
         const leftNatural = isPort ? 0 : Math.max(0, ...leftPins.map((pin2) => measuredWidth(measure, pin2.source.name, exports2.SCHEMATIC_TEXT_STYLES.pin)));
         const rightNatural = isPort ? 0 : Math.max(0, ...rightPins.map((pin2) => measuredWidth(measure, pin2.source.name, exports2.SCHEMATIC_TEXT_STYLES.pin)));
-        const headingWidth = Math.max(measuredWidth(measure, node.label, exports2.SCHEMATIC_TEXT_STYLES.title), measuredWidth(measure, node.subtitle ?? "", exports2.SCHEMATIC_TEXT_STYLES.subtitle)) + 2 * exports2.SCHEMATIC_NODE_LAYOUT.horizontalPadding;
+        const headingWidth = Math.max(measuredWidth(measure, title2, exports2.SCHEMATIC_TEXT_STYLES.title), measuredWidth(measure, subtitle ?? "", exports2.SCHEMATIC_TEXT_STYLES.subtitle)) + 2 * exports2.SCHEMATIC_NODE_LAYOUT.horizontalPadding;
         const pinWidth = leftNatural + rightNatural + exports2.SCHEMATIC_NODE_LAYOUT.minimumCenterGap + 2 * exports2.SCHEMATIC_NODE_LAYOUT.pinLabelInset;
         const naturalWidth = isPort ? exports2.SCHEMATIC_NODE_LAYOUT.portWidth : Math.min(exports2.SCHEMATIC_NODE_LAYOUT.maximumWidth, Math.max(exports2.SCHEMATIC_NODE_LAYOUT.minimumWidth, headingWidth, pinWidth));
         const sideRows = Math.max(leftPins.length, rightPins.length);
@@ -1014,8 +2446,8 @@
           source: node,
           width: width2,
           height: height2,
-          title: measuredLabel(node.label, titleBounds, measure, exports2.SCHEMATIC_TEXT_STYLES.title),
-          subtitle: node.subtitle === void 0 ? void 0 : measuredLabel(node.subtitle, subtitleBounds, measure, exports2.SCHEMATIC_TEXT_STYLES.subtitle),
+          title: measuredLabel(title2, titleBounds, measure, exports2.SCHEMATIC_TEXT_STYLES.title),
+          subtitle: subtitle === void 0 ? void 0 : measuredLabel(subtitle, subtitleBounds, measure, exports2.SCHEMATIC_TEXT_STYLES.subtitle),
           pins,
           leftLabelWidth: labelWidths.left,
           rightLabelWidth: labelWidths.right,
@@ -1026,7 +2458,7 @@
         return calculateSchematicNode(node, sideMap, measure);
       }
       function measureSchematicNodeSize(node, sideMap) {
-        const measured = measureSchematicNode(node, sideMap, (text3) => text3.length * LAYOUT_CHARACTER_WIDTH);
+        const measured = measureSchematicNode(node, sideMap, (text4) => text4.length * LAYOUT_CHARACTER_WIDTH);
         return { width: measured.width, height: measured.height };
       }
       function fitSchematicNode(node, sideMap, size, measure) {
@@ -3735,10 +5167,10 @@
       function selectCorridorCandidate(grid2, locations, from, to, rowCount, reuse) {
         return rankedCorridorCandidates(grid2, locations, from, to, rowCount, reuse)[0];
       }
-      function shortcutVariants(enabled, reuse, fromNode, toNode, from, to, geometry) {
+      function shortcutVariants(reuse, fromNode, toNode, from, to, geometry) {
         const startColumn = Math.min(fromNode.column, toNode.column);
         const endColumn = Math.max(fromNode.column, toNode.column);
-        if (!enabled || endColumn - startColumn <= 1 || realizedPinPoint(geometry, from).y === realizedPinPoint(geometry, to).y) {
+        if (endColumn - startColumn <= 1 || realizedPinPoint(geometry, from).y === realizedPinPoint(geometry, to).y) {
           return Object.freeze([]);
         }
         const midpoint = (startColumn + endColumn) / 2;
@@ -3748,42 +5180,41 @@
           ...reuse.channels.has(channel) ? [Object.freeze({ channel, fresh: true })] : []
         ]));
       }
-      function ordinaryVariantUsesFreshTracks(allowShortcuts, reuse, networkId, from, to, nodes, locations, geometry, forcedConnections, variantIndex) {
+      function ordinaryVariantUsesFreshTracks(hasExistingTree, reuse, networkId, from, to, nodes, locations, geometry, forcedConnections, variantIndex) {
         const fromNode = nodes.get(from.nodeId);
         const toNode = nodes.get(to.nodeId);
         const sourceChannel = sideChannel(fromNode, from.pinId);
         const targetChannel = sideChannel(toNode, to.pinId);
         const adjacentSharedChannel = Math.abs(fromNode.column - toNode.column) === 1 && sourceChannel === targetChannel;
-        const sharedChannel = adjacentSharedChannel || sourceChannel === targetChannel && reuse.channels.has(sourceChannel);
+        const sharedChannel = adjacentSharedChannel || sourceChannel === targetChannel && (hasExistingTree || reuse.channels.has(sourceChannel));
         const forced = adjacentSharedChannel && forcedConnections.has(connectionKey(networkId, from, to));
         if (forced)
           return false;
         const aligned = realizedPinPoint(geometry, from).y === realizedPinPoint(geometry, to).y;
-        const topologyOffset = sharedChannel ? aligned ? 1 : 2 : allowShortcuts && aligned && Math.abs(fromNode.column - toNode.column) > 1 ? 1 : 0;
+        const topologyOffset = sharedChannel ? aligned ? 1 : 2 : aligned && Math.abs(fromNode.column - toNode.column) > 1 ? 1 : 0;
         if (variantIndex < topologyOffset) {
           return sharedChannel && !aligned && variantIndex === 1;
         }
-        const shortcuts = shortcutVariants(allowShortcuts, reuse, fromNode, toNode, from, to, geometry);
+        const shortcuts = shortcutVariants(reuse, fromNode, toNode, from, to, geometry);
         const shortcutIndex = variantIndex - topologyOffset;
         if (shortcutIndex < shortcuts.length) {
           return shortcuts[shortcutIndex].fresh;
         }
         return (shortcutIndex - shortcuts.length) % 2 === 1;
       }
-      function planOrdinaryConnection(allocator, allowShortcuts, reuse, networkId, from, to, nodes, locations, rowCount, geometry, forcedConnections, preferredChannelLegs, preferredCorridorTracks, variantIndex) {
+      function planOrdinaryConnection(allocator, hasExistingTree, reuse, networkId, from, to, nodes, locations, rowCount, geometry, forcedConnections, preferredChannelLegs, preferredCorridorTracks, variantIndex) {
         const { grid: grid2 } = allocator;
         const fromNode = nodes.get(from.nodeId);
         const toNode = nodes.get(to.nodeId);
         const sourceChannel = sideChannel(fromNode, from.pinId);
         const targetChannel = sideChannel(toNode, to.pinId);
         const adjacentSharedChannel = Math.abs(fromNode.column - toNode.column) === 1 && sourceChannel === targetChannel;
-        const reusableSharedChannel = sourceChannel === targetChannel && reuse.channels.has(sourceChannel);
-        const sharedChannel = adjacentSharedChannel || reusableSharedChannel;
+        const sharedChannel = adjacentSharedChannel || sourceChannel === targetChannel && (hasExistingTree || reuse.channels.has(sourceChannel));
         const aligned = realizedPinPoint(geometry, from).y === realizedPinPoint(geometry, to).y;
         const forced = adjacentSharedChannel && forcedConnections.has(connectionKey(networkId, from, to));
         const intent = (terminal, peer, role, channel, variant) => channelLegIntent(ordinaryChannelLegKey(networkId, from, to, role, variant), networkId, channel, terminal, peer, role, nodes, locations, geometry);
         const preferred = (terminal, peer, role, channel) => preferredChannelLegs.get(preferredChannelLegKey(networkId, terminal, role, channel, role === "shared" ? peer : void 0));
-        const crossColumnAligned = allowShortcuts && !sharedChannel && Math.abs(fromNode.column - toNode.column) > 1 && aligned;
+        const crossColumnAligned = !sharedChannel && Math.abs(fromNode.column - toNode.column) > 1 && aligned;
         if ((sharedChannel || crossColumnAligned) && aligned && variantIndex === 0 && !forced) {
           return Object.freeze({ kind: "direct", networkId, from, to });
         }
@@ -3800,7 +5231,7 @@
           });
         }
         const topologyOffset = sharedChannel && !forced ? aligned ? 1 : 2 : crossColumnAligned && !forced ? 1 : 0;
-        const shortcuts = shortcutVariants(allowShortcuts, reuse, fromNode, toNode, from, to, geometry);
+        const shortcuts = shortcutVariants(reuse, fromNode, toNode, from, to, geometry);
         const shortcutIndex = variantIndex - topologyOffset;
         if (shortcutIndex >= 0 && shortcutIndex < shortcuts.length) {
           const shortcut = shortcuts[shortcutIndex];
@@ -3883,6 +5314,18 @@
             segments.push((0, geometry_1.vertical)(networkId, start.x, start.y, end.y));
           } else {
             throw new RangeError("routed path points must be orthogonal");
+          }
+        }
+        for (let earlier = 0; earlier < segments.length; earlier += 1) {
+          for (let later = earlier + 2; later < segments.length; later += 1) {
+            const intersection = farthestSegmentIntersection(segments[later], points[later], points[later + 1], segments[earlier]);
+            if (intersection) {
+              return orderedPathSegments(networkId, [
+                ...points.slice(0, earlier + 1),
+                intersection,
+                ...points.slice(later + 1)
+              ]);
+            }
           }
         }
         return freezeSegments(segments);
@@ -4590,7 +6033,7 @@
               const columnSpan = Math.abs(nodeById.get(from.nodeId).column - nodeById.get(to.nodeId).column);
               const maximumVariant = 2 * (rowCount + 3) + 2 * columnSpan + 1;
               for (let variantIndex = 0; variantIndex <= maximumVariant; variantIndex += 1) {
-                const freshTracks = ordinaryVariantUsesFreshTracks(terminals.length === 2, reuse, network.id, from, to, nodeById, locations, contextGeometry, forcedAdjacent, variantIndex);
+                const freshTracks = ordinaryVariantUsesFreshTracks(pending.length < context.remaining.length, reuse, network.id, from, to, nodeById, locations, contextGeometry, forcedAdjacent, variantIndex);
                 if (freshTracks && skipFreshVariant) {
                   skipFreshVariant = false;
                   continue;
@@ -4602,7 +6045,7 @@
                 const candidateExteriorTracks = { ...exteriorTracks };
                 let plan;
                 try {
-                  plan = planOrdinaryConnection(branch.allocator, terminals.length === 2, candidateReuse, network.id, from, to, nodeById, locations, rowCount, contextGeometry, forcedAdjacent, preferredChannelLegs, preferredCorridorTracks, variantIndex);
+                  plan = planOrdinaryConnection(branch.allocator, pending.length < context.remaining.length, candidateReuse, network.id, from, to, nodeById, locations, rowCount, contextGeometry, forcedAdjacent, preferredChannelLegs, preferredCorridorTracks, variantIndex);
                 } catch (error) {
                   if (error instanceof RangeError) {
                     candidateFailure ?? (candidateFailure = error);
@@ -4913,17 +6356,19 @@
         const id = record.id;
         const name = record.name;
         const direction = record.direction;
+        const side = record.side;
         const widthValue = record.width;
         const readOnly = record.readOnly;
         const interfaceValue = record.interface;
         const sourceSpanValue = record.sourceSpan;
-        if (typeof id !== "string" || typeof name !== "string" || !PIN_DIRECTIONS.has(direction) || typeof readOnly !== "boolean") {
+        if (typeof id !== "string" || typeof name !== "string" || !PIN_DIRECTIONS.has(direction) || typeof readOnly !== "boolean" || side !== void 0 && side !== "left" && side !== "right") {
           throw new RangeError(`node ${nodeId} pin ${pinIndex} is invalid`);
         }
         return {
           id,
           name,
           direction,
+          ...side === void 0 ? {} : { side },
           width: snapshotWidth(widthValue, `node ${nodeId} pin ${id}`),
           readOnly,
           interface: snapshotPinInterface(interfaceValue, `node ${nodeId} pin ${id}`),
@@ -5576,6 +7021,200 @@
       } });
     }
   });
+
+  // packages/schematic-webview/src/authoring/taskInspector.ts
+  var import_timing = __toESM(require_timing());
+  var import_protocolPresets = __toESM(require_protocolPresets());
+  var TransitionValidationError = class extends Error {
+    constructor(rowIndex, field, reason) {
+      super(`Transition ${rowIndex + 1} ${field}: ${reason instanceof Error ? reason.message : String(reason)}`);
+      this.rowIndex = rowIndex;
+      this.field = field;
+    }
+  };
+  function defaultSimulationPreset(kind) {
+    if (kind === "clock") return { kind, frequencyMHz: 100, initial: 0 };
+    if (kind === "reset") return { kind, active: 0, duration: 100 };
+    if (kind === "stimulus") return { kind, width: 1, initial: "1'b0", transitions: [] };
+    return (0, import_protocolPresets.createProtocolPreset)(kind);
+  }
+  function number(value, positive = false, integer = false) {
+    const parsed = Number(value);
+    if (!value.trim() || !Number.isFinite(parsed) || (positive ? parsed <= 0 : parsed < 0) || integer && !Number.isSafeInteger(parsed)) {
+      throw new Error(`Enter a ${positive ? "positive" : "non-negative"} ${integer ? "integer" : "number"}.`);
+    }
+    return parsed;
+  }
+  function stimulusValue(value, width2) {
+    const text4 = value.trim();
+    const literal = /^(\d+)'([bBoOdDhH])([0-9a-fA-FxXzZ?_]+)$/.exec(text4);
+    if (!literal || Number(literal[1]) > width2 || Number(literal[1]) < 1) throw new Error(`Enter a ${width2}-bit Verilog literal matching the width.`);
+    const digits = literal[3].replace(/_/g, "");
+    const base = literal[2].toLowerCase();
+    const valid = base === "b" ? /^[01xz?]+$/i : base === "o" ? /^[0-7xz?]+$/i : base === "d" ? /^(\d+|[xz?])$/i : /^[0-9a-fxz?]+$/i;
+    if (!valid.test(digits)) throw new Error("Invalid digit in stimulus value.");
+    const known = digits.replace(/[xz?]/gi, "0");
+    const magnitude = BigInt((base === "b" ? "0b" : base === "o" ? "0o" : base === "h" ? "0x" : "") + known);
+    if (magnitude.toString(2).length > Number(literal[1])) throw new Error("Stimulus value exceeds its declared width.");
+    return text4;
+  }
+  var timeOptions = ["s", "ms", "us", "ns", "ps", "fs"].flatMap((unit2) => [1, 10, 100].map((magnitude) => ({ value: `${magnitude}${unit2}`, label: `${magnitude}${unit2}` })));
+  function timeSeconds(time) {
+    const match = /^(1|10|100)(s|ms|us|ns|ps|fs)$/.exec(time);
+    return Number(match[1]) * { s: 1, ms: 1e-3, us: 1e-6, ns: 1e-9, ps: 1e-12, fs: 1e-15 }[match[2]];
+  }
+  var levels = [{ value: "0", label: "Low (0)" }, { value: "1", label: "High (1)" }];
+  var readonly = (id, label, value) => ({ id, label, control: "readonly", value });
+  var text = (id, label, value, commit) => ({ id, label, control: "text", value: String(value), commit });
+  var select = (id, label, value, options, commit) => ({ ...text(id, label, value, commit), control: "select", options });
+  function projectSimulationTaskInspector(task, moduleName, model) {
+    const settings = task.settings;
+    if (model.kind === "design") {
+      const update2 = (changes) => ({
+        type: "task",
+        command: "updateTaskSettings",
+        payload: { settings: { ...settings, ...changes } }
+      });
+      const time = (key, value) => {
+        if (!timeOptions.some((option) => option.value === value)) throw new Error("Choose a supported time scale.");
+        const next = { ...settings, [key]: value };
+        if (timeSeconds(next.timePrecision) > timeSeconds(next.timeUnit)) throw new Error("Time precision cannot be coarser than the time unit.");
+        return update2({ [key]: value });
+      };
+      return { ...model, title: "Simulation Task", fields: [
+        readonly("task-module", "Testbench module", moduleName),
+        select("task-time-unit", "Time unit", settings.timeUnit, timeOptions, (value) => time("timeUnit", value)),
+        select("task-time-precision", "Time precision", settings.timePrecision, timeOptions, (value) => time("timePrecision", value)),
+        text("task-duration", "End time", settings.duration, (value) => update2({ duration: number(value, true) })),
+        select("task-wave-enabled", "Generate waveform", String(settings.waveform.enabled), [
+          { value: "true", label: "Enabled" },
+          { value: "false", label: "Disabled" }
+        ], (value) => update2({ waveform: { ...settings.waveform, enabled: value === "true" } })),
+        text("task-wave-filename", "Waveform filename", settings.waveform.filename, (value) => {
+          if (!value.trim()) throw new Error("Enter a waveform filename.");
+          return update2({ waveform: { ...settings.waveform, filename: value.trim() } });
+        })
+      ] };
+    }
+    if (model.kind !== "instance") return model;
+    const id = model.fields.find((field) => field.id === "instance-name")?.value;
+    const instance = task.instances.find((instance2) => instance2.id === id);
+    if (!instance) return model;
+    if ("source" in instance) return { ...model, fields: [
+      ...model.fields,
+      readonly("instance-source", "Source", instance.source.path)
+    ] };
+    const preset = instance.preset.kind === "protocol" ? (0, import_protocolPresets.normalizeProtocolPreset)(instance.preset) : instance.preset;
+    const update = (next) => ({
+      type: "task",
+      command: "updatePreset",
+      payload: { id: instance.id, preset: next }
+    });
+    const fields = [
+      ...model.fields.filter((field) => field.id === "instance-name"),
+      readonly("preset-kind", "Simulation Utility", preset.kind === "protocol" ? { axis: "AXI-STREAM", axi4lite: "AXI-Lite", axi4: "AXI-Full", rgb888: "RGB" }[preset.protocol] ?? preset.protocol.toUpperCase() : preset.kind[0].toUpperCase() + preset.kind.slice(1))
+    ];
+    if (preset.kind === "clock") {
+      fields.push(
+        text("preset-frequency", "Frequency (MHz)", preset.frequencyMHz, (value) => update({ ...preset, frequencyMHz: number(value, true) })),
+        readonly("preset-period", "Period", `${(0, import_timing.clockTiming)(preset, settings.timeUnit, settings.timePrecision).period} (${settings.timeUnit})`),
+        select("preset-initial", "Initial level", preset.initial, levels, (value) => update({ ...preset, initial: value === "1" ? 1 : 0 }))
+      );
+    } else if (preset.kind === "reset") {
+      fields.push(
+        select("preset-active", "Active level", preset.active, levels, (value) => update({ ...preset, active: value === "1" ? 1 : 0 })),
+        text("preset-duration", `Duration (${settings.timeUnit})`, preset.duration, (value) => update({ ...preset, duration: number(value) }))
+      );
+    } else if (preset.kind === "protocol") {
+      const memoryBus = ["apb", "axi4lite", "axi4"].includes(preset.protocol);
+      const templates = import_protocolPresets.PROTOCOL_PRESET_TEMPLATES.filter((item) => item.protocol === preset.protocol);
+      const template = templates.find((item) => item.role === preset.role);
+      const commit = (next) => {
+        const errors2 = (0, import_protocolPresets.validateProtocolPreset)(next, timeSeconds(settings.timePrecision) / timeSeconds(settings.timeUnit));
+        if (errors2.length) throw new Error(errors2[0]);
+        return update(next);
+      };
+      fields.push(
+        select("preset-role", "Role", preset.role, templates.map((item) => ({ value: item.role, label: item.label })), (value) => {
+          if (!templates.some((item) => item.role === value)) throw new Error("Choose a supported role.");
+          return commit({ ...(0, import_protocolPresets.createProtocolPreset)(preset.protocol, value), start: preset.start, timeout: preset.timeout });
+        }),
+        text("preset-start", `Start time (${settings.timeUnit})`, preset.start, (value) => commit({ ...preset, start: number(value) })),
+        text("preset-timeout", `Timeout (${settings.timeUnit})`, preset.timeout, (value) => commit({ ...preset, timeout: number(value, true) }))
+      );
+      for (const option of template.options) {
+        if (memoryBus && ["address", "write"].includes(option.key)) continue;
+        const value = preset.options[option.key] ?? option.defaultValue;
+        const change = (input) => {
+          let nextValue = input.trim();
+          if (option.kind === "number") {
+            nextValue = number(input, false, true);
+            if (nextValue < (option.min ?? 0) || nextValue > (option.max ?? Number.MAX_SAFE_INTEGER)) throw new Error(`${option.label} is out of range.`);
+          } else if (option.kind === "boolean") nextValue = input === "true";
+          else if (option.kind === "select") {
+            if (!option.values?.some((item) => String(item.value) === input)) throw new Error(`Choose a supported ${option.label}.`);
+            if (["stopBits", "cpol", "cpha", "hsyncPolarity", "vsyncPolarity"].includes(option.key)) nextValue = Number(input);
+          }
+          const next = { ...preset, options: { ...preset.options, [option.key]: nextValue } };
+          return commit(next);
+        };
+        const id2 = `preset-option-${option.key}`;
+        if (option.kind === "boolean") fields.push(select(id2, option.label, String(value), [{ value: "true", label: "Yes" }, { value: "false", label: "No" }], change));
+        else if (option.kind === "select") fields.push(select(id2, option.label, String(value), option.values.map((item) => ({ value: String(item.value), label: item.label })), change));
+        else fields.push(text(id2, option.label, String(value), change));
+      }
+      if (memoryBus) return { ...model, fields, transactions: {
+        rows: (0, import_protocolPresets.protocolPresetTransactions)(preset),
+        role: preset.role,
+        burst: preset.protocol === "axi4",
+        commit: (rows) => {
+          const { expected: _expected, ...next } = preset;
+          const { address: _address, write: _write, ...options } = preset.options;
+          return commit({ ...next, data: [], options, transactions: rows });
+        }
+      } };
+      const payload = (0, import_protocolPresets.protocolPresetPayloadFields)(preset);
+      const valueTables = [];
+      for (const key of ["data", "expected"]) {
+        if (!payload[key]) continue;
+        valueTables.push({
+          label: key === "data" ? "Transmit values" : "Expected values",
+          placeholder: preset.protocol === "rgb888" ? "24'hff0000" : "8'h5a",
+          rows: preset[key] ?? [],
+          commit: (rows) => commit({ ...preset, [key]: rows.map((row) => row.trim()) })
+        });
+      }
+      return { ...model, fields, valueTables };
+    } else {
+      fields.push(
+        text("preset-width", "Width", preset.width, (value) => update({ ...preset, width: number(value, true, true) })),
+        text("preset-initial", "Initial value", preset.initial, (value) => update({ ...preset, initial: stimulusValue(value, preset.width) }))
+      );
+      return { ...model, fields, transitions: {
+        rows: preset.transitions,
+        commit: (rows) => {
+          let previous = -1;
+          const transitions = rows.map((row, index2) => {
+            let at;
+            try {
+              at = number(String(row.at));
+              if (at <= previous) throw new Error("Transition times must be strictly increasing.");
+            } catch (error) {
+              throw new TransitionValidationError(index2, "time", error);
+            }
+            previous = at;
+            try {
+              return { at, value: stimulusValue(row.value, preset.width) };
+            } catch (error) {
+              throw new TransitionValidationError(index2, "value", error);
+            }
+          });
+          return update({ ...preset, transitions });
+        }
+      } };
+    }
+    return { ...model, fields };
+  }
 
   // node_modules/tslib/tslib.es6.mjs
   function __rest(s, e) {
@@ -6689,8 +8328,8 @@
     if (string.charCodeAt(0) === 46) {
       result.push("");
     }
-    string.replace(rePropName, function(match, number2, quote, subString) {
-      result.push(quote ? subString.replace(reEscapeChar, "$1") : number2 || match);
+    string.replace(rePropName, function(match, number3, quote, subString) {
+      result.push(quote ? subString.replace(reEscapeChar, "$1") : number3 || match);
     });
     return result;
   });
@@ -7258,21 +8897,21 @@
   var castArray_default = castArray;
 
   // node_modules/lodash-es/_baseClamp.js
-  function baseClamp(number2, lower, upper) {
-    if (number2 === number2) {
+  function baseClamp(number3, lower, upper) {
+    if (number3 === number3) {
       if (upper !== void 0) {
-        number2 = number2 <= upper ? number2 : upper;
+        number3 = number3 <= upper ? number3 : upper;
       }
       if (lower !== void 0) {
-        number2 = number2 >= lower ? number2 : lower;
+        number3 = number3 >= lower ? number3 : lower;
       }
     }
-    return number2;
+    return number3;
   }
   var baseClamp_default = baseClamp;
 
   // node_modules/lodash-es/clamp.js
-  function clamp(number2, lower, upper) {
+  function clamp(number3, lower, upper) {
     if (upper === void 0) {
       upper = lower;
       lower = void 0;
@@ -7285,7 +8924,7 @@
       lower = toNumber_default(lower);
       lower = lower === lower ? lower : 0;
     }
-    return baseClamp_default(toNumber_default(number2), lower, upper);
+    return baseClamp_default(toNumber_default(number3), lower, upper);
   }
   var clamp_default = clamp;
 
@@ -9051,8 +10690,8 @@
       }
       return matches[1];
     }
-    const number2 = parseFloat(val);
-    if (Number.isNaN(number2)) {
+    const number3 = parseFloat(val);
+    if (Number.isNaN(number3)) {
       return null;
     }
     let regexp;
@@ -9072,7 +10711,7 @@
     }
     return {
       unit: unit2,
-      value: number2
+      value: number3
     };
   }
   function normalizeSides(box) {
@@ -14155,7 +15794,7 @@
     styleToObject: () => styleToObject,
     svgVersion: () => svgVersion,
     tagName: () => tagName,
-    text: () => text,
+    text: () => text2,
     toLocalPoint: () => toLocalPoint,
     toPath: () => toPath,
     toPathData: () => toPathData,
@@ -15164,8 +16803,8 @@
   }
 
   // node_modules/@antv/x6/es/common/text/sanitize.js
-  function sanitize(text3) {
-    return text3.replace(/ /g, " ");
+  function sanitize(text4) {
+    return text4.replace(/ /g, " ");
   }
 
   // node_modules/@antv/x6/es/common/vector/index.js
@@ -15327,7 +16966,7 @@
       return _Vector.create("defs").appendTo(context);
     }
     text(content9, options = {}) {
-      text(this.node, content9, options);
+      text2(this.node, content9, options);
       return this;
     }
     tagName() {
@@ -15609,7 +17248,7 @@
     }
     return dy;
   }
-  function text(elem, content9, options = {}) {
+  function text2(elem, content9, options = {}) {
     content9 = main_exports.sanitize(content9);
     const eol2 = options.eol;
     let textPath2 = options.textPath;
@@ -15763,9 +17402,9 @@
     firstLine.setAttribute("dy", dy);
     elem.appendChild(containerNode);
   }
-  function measureText(text3, styles = {}) {
+  function measureText(text4, styles = {}) {
     const canvasContext = document.createElement("canvas").getContext("2d");
-    if (!text3) {
+    if (!text4) {
       return { width: 0 };
     }
     const font = [];
@@ -15776,22 +17415,22 @@
     font.push(fontSize);
     font.push(styles["font-family"] || "sans-serif");
     canvasContext.font = font.join(" ");
-    return canvasContext.measureText(text3);
+    return canvasContext.measureText(text4);
   }
-  function splitTextByLength(text3, splitWidth, totalWidth, style2 = {}) {
+  function splitTextByLength(text4, splitWidth, totalWidth, style2 = {}) {
     if (splitWidth >= totalWidth) {
-      return [text3, ""];
+      return [text4, ""];
     }
-    const length2 = text3.length;
+    const length2 = text4.length;
     const caches = {};
     let index2 = Math.round(splitWidth / totalWidth * length2 - 1);
     if (index2 < 0) {
       index2 = 0;
     }
     while (index2 >= 0 && index2 < length2) {
-      const frontText = text3.slice(0, index2);
+      const frontText = text4.slice(0, index2);
       const frontWidth = caches[frontText] || measureText(frontText, style2).width;
-      const behindText = text3.slice(0, index2 + 1);
+      const behindText = text4.slice(0, index2 + 1);
       const behindWidth = caches[behindText] || measureText(behindText, style2).width;
       caches[frontText] = frontWidth;
       caches[behindText] = behindWidth;
@@ -15803,19 +17442,19 @@
         break;
       }
     }
-    return [text3.slice(0, index2), text3.slice(index2)];
+    return [text4.slice(0, index2), text4.slice(index2)];
   }
-  function breakText(text3, size, styles = {}, options = {}) {
+  function breakText(text4, size, styles = {}, options = {}) {
     const width2 = size.width;
     const height2 = size.height;
     const eol2 = options.eol || "\n";
     const fontSize = styles.fontSize || 14;
     const lineHeight2 = styles.lineHeight ? parseFloat(styles.lineHeight) : Math.ceil(fontSize * 1.4);
     const maxLines = Math.floor(height2 / lineHeight2);
-    if (text3.indexOf(eol2) > -1) {
+    if (text4.indexOf(eol2) > -1) {
       const delimiter = string_exports.uuid();
       const splitText = [];
-      text3.split(eol2).forEach((line2) => {
+      text4.split(eol2).forEach((line2) => {
         const part = breakText(line2, Object.assign(Object.assign({}, size), { height: Number.MAX_SAFE_INTEGER }), styles, Object.assign(Object.assign({}, options), { eol: delimiter }));
         if (part) {
           splitText.push(...part.split(delimiter));
@@ -15823,12 +17462,12 @@
       });
       return splitText.slice(0, maxLines).join(eol2);
     }
-    const { width: textWidth } = measureText(text3, styles);
+    const { width: textWidth } = measureText(text4, styles);
     if (textWidth < width2) {
-      return text3;
+      return text4;
     }
     const lines = [];
-    let remainText = text3;
+    let remainText = text4;
     let remainWidth = textWidth;
     let ellipsis = options.ellipsis;
     let ellipsisWidth = 0;
@@ -17587,7 +19226,7 @@
   var interp_exports = {};
   __export(interp_exports, {
     color: () => color,
-    number: () => number,
+    number: () => number2,
     object: () => object,
     transform: () => transform2,
     unit: () => unit
@@ -17597,7 +19236,7 @@
   var unitReg = /(-?(?:\d*\.\d+|\d+))\s*(px|em|rem|ch|vh|vw|vmin|vmax|%|cm|mm|in|pt|pc|ex|fr|deg|rad|turn)$/;
 
   // node_modules/@antv/x6/es/common/animation/interp.js
-  var number = (a, b) => {
+  var number2 = (a, b) => {
     const d = b - a;
     return (t) => {
       return a + d * t;
@@ -17686,7 +19325,7 @@
               const interpolate = unit(fromVal, toVal);
               values.push(interpolate(t));
             } else if (!Number.isNaN(parseFloat(fromVal)) && !Number.isNaN(parseFloat(toVal))) {
-              const interpolate = number(parseFloat(fromVal), parseFloat(toVal));
+              const interpolate = number2(parseFloat(fromVal), parseFloat(toVal));
               values.push(interpolate(t).toString());
             } else {
               values.push(fromVal);
@@ -18268,7 +19907,7 @@
     stroke: () => stroke,
     style: () => style,
     targetMarker: () => targetMarker,
-    text: () => text2,
+    text: () => text3,
     textPath: () => textPath,
     textVerticalAnchor: () => textVerticalAnchor,
     textWrap: () => textWrap,
@@ -18480,11 +20119,11 @@
   };
 
   // node_modules/@antv/x6/es/registry/attr/text.js
-  var text2 = {
+  var text3 = {
     qualify(_text, { attrs }) {
       return attrs.textWrap == null || !object_exports.isPlainObject(attrs.textWrap);
     },
-    set(text3, { view, elem, attrs }) {
+    set(text4, { view, elem, attrs }) {
       const cacheName = "x6-text";
       const cache5 = main_exports2.data(elem, cacheName);
       const json = (str) => {
@@ -18506,7 +20145,7 @@
         lineHeight: attrs["line-height"] || attrs.lineHeight
       };
       const fontSize = attrs["font-size"] || attrs.fontSize;
-      const textHash = JSON.stringify([text3, options]);
+      const textHash = JSON.stringify([text4, options]);
       if (fontSize) {
         elem.setAttribute("font-size", fontSize);
       }
@@ -18522,7 +20161,7 @@
             }
           }
         }
-        main_exports2.text(elem, `${text3}`, options);
+        main_exports2.text(elem, `${text4}`, options);
         main_exports2.data(elem, cacheName, textHash);
       }
     }
@@ -18562,7 +20201,7 @@
       } else {
         wrappedText = "";
       }
-      function_exports.call(text2.set, this, wrappedText, {
+      function_exports.call(text3.set, this, wrappedText, {
         view,
         elem,
         attrs,
@@ -24450,8 +26089,8 @@
       style2.fontFamily = attrs.fontFamily;
       style2.color = attrs.color;
       style2.backgroundColor = attrs.backgroundColor;
-      const text3 = this.getCellText() || "";
-      editor.innerText = text3;
+      const text4 = this.getCellText() || "";
+      editor.innerText = text4;
       this.setCellText("");
       return this;
     }
@@ -27935,9 +29574,9 @@
     return `CustomEdge${counter3}`;
   }
   var Edge = class _Edge extends Cell {
-    static parseStringLabel(text3) {
+    static parseStringLabel(text4) {
       return {
-        attrs: { label: { text: text3 } }
+        attrs: { label: { text: text4 } }
       };
     }
     static isEdge(instance) {
@@ -31318,7 +32957,7 @@
       var _a;
       this.cleanCache();
       this.updateConnection(options);
-      const _b = this.cell.getAttrs(), { text: text3 } = _b, attrs = __rest(_b, ["text"]);
+      const _b = this.cell.getAttrs(), { text: text4 } = _b, attrs = __rest(_b, ["text"]);
       if (attrs != null) {
         if (((_a = this.container) === null || _a === void 0 ? void 0 : _a.tagName) === "g" && this.isEdgeElement(this.container) && IS_SAFARI) {
           const parent = this.container.parentNode;
@@ -36646,20 +38285,20 @@
       }
     },
     propHooks(metadata) {
-      const { text: text3 } = metadata, others = __rest(metadata, ["text"]);
-      if (text3) {
-        object_exports.setByPath(others, "attrs/label/text", text3);
+      const { text: text4 } = metadata, others = __rest(metadata, ["text"]);
+      if (text4) {
+        object_exports.setByPath(others, "attrs/label/text", text4);
       }
       return others;
     },
     attrHooks: {
       text: {
-        set(text3, { cell, view, refBBox, elem, attrs }) {
+        set(text4, { cell, view, refBBox, elem, attrs }) {
           if (elem instanceof HTMLElement) {
-            elem.textContent = text3;
+            elem.textContent = text4;
           } else {
             const style2 = attrs.style || {};
-            const wrapValue = { text: text3, width: -5, height: "100%" };
+            const wrapValue = { text: text4, width: -5, height: "100%" };
             const wrapAttrs = Object.assign({ textVerticalAnchor: "middle" }, style2);
             const textWrap2 = attrPresets.textWrap;
             function_exports.call(textWrap2.set, this, wrapValue, {
@@ -36672,7 +38311,7 @@
             return { fill: style2.color || null };
           }
         },
-        position(text3, { refBBox, elem }) {
+        position(text4, { refBBox, elem }) {
           if (elem instanceof SVGElement) {
             return refBBox.getCenter();
           }
@@ -45059,6 +46698,16 @@
     return createSVGElement([tag, attrs, iconNode]);
   };
 
+  // node_modules/lucide/dist/esm/icons/activity.mjs
+  var Activity = [
+    [
+      "path",
+      {
+        d: "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"
+      }
+    ]
+  ];
+
   // node_modules/lucide/dist/esm/icons/cable.mjs
   var Cable = [
     ["path", { d: "M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1z" }],
@@ -45158,6 +46807,14 @@
     ["path", { d: "m15 14-3 3-3-3" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/play.mjs
+  var Play = [
+    [
+      "path",
+      { d: "M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" }
+    ]
+  ];
+
   // node_modules/lucide/dist/esm/icons/refresh-cw.mjs
   var RefreshCw = [
     ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" }],
@@ -45187,6 +46844,9 @@
     ["path", { d: "M12 8v8" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/square.mjs
+  var Square = [["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }]];
+
   // node_modules/lucide/dist/esm/icons/trash-2.mjs
   var Trash2 = [
     ["path", { d: "M10 11v6" }],
@@ -45194,6 +46854,13 @@
     ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" }],
     ["path", { d: "M3 6h18" }],
     ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/waves-horizontal.mjs
+  var WavesHorizontal = [
+    ["path", { d: "M2 12q2.5 2 5 0t5 0 5 0 5 0" }],
+    ["path", { d: "M2 19q2.5 2 5 0t5 0 5 0 5 0" }],
+    ["path", { d: "M2 5q2.5 2 5 0t5 0 5 0 5 0" }]
   ];
 
   // node_modules/lucide/dist/esm/icons/workflow.mjs
@@ -45369,6 +47036,20 @@
   }
 
   // veriflow-vscode/src/schematic/webviewSupport.ts
+  function canConnectScalarPins(graph2, first, second) {
+    if (first.id === second.id) return false;
+    const drivers = /* @__PURE__ */ new Set();
+    for (const pin2 of [first, second]) {
+      if (pin2.direction === "driver") drivers.add(pin2.id);
+      for (const network of graph2.networks) {
+        if (!network.endpoints.some((endpoint) => endpoint.pinId === pin2.id)) continue;
+        for (const endpoint of network.endpoints) {
+          if (endpoint.role === "driver") drivers.add(endpoint.pinId);
+        }
+      }
+    }
+    return drivers.size <= 1;
+  }
   var ARCH_DESIGN_LOGIC_OPERATION_OPTIONS = Object.freeze([
     { value: "constant", label: "Constant" },
     { value: "not", label: "NOT" },
@@ -45833,7 +47514,9 @@
   }
   function portDefaultKeys(port2) {
     if (port2.direction === "output") return [`${port2.name}.value`];
-    if (port2.direction === "inout") return [`${port2.name}.o`, `${port2.name}.t`];
+    if (port2.direction === "inout" && port2.inoutMode !== "direct") {
+      return [`${port2.name}.o`, `${port2.name}.t`];
+    }
     return [];
   }
   function effectiveDefaultPlaceholder(snapshot, endpoint, connection2) {
@@ -45853,6 +47536,7 @@
       port: {
         name: next.name ?? port2.name,
         direction: next.direction ?? port2.direction,
+        ...(next.direction ?? port2.direction) === "inout" && (next.inoutMode ?? port2.inoutMode) !== void 0 ? { inoutMode: next.inoutMode ?? port2.inoutMode } : {},
         ...next.width === void 0 && !Object.prototype.hasOwnProperty.call(next, "width") ? port2.width === void 0 ? {} : { width: port2.width } : next.width === void 0 ? {} : { width: next.width }
       }
     });
@@ -45868,6 +47552,27 @@
       },
       textField("port-width", "Width", displayedWidth(port2.width), (value) => updatedPort({ width: normalizedWidth(value) }))
     ];
+    if (port2.direction === "inout") {
+      const connected = snapshot.design.connections.some((connection2) => connection2.endpoints.some((endpoint) => endpoint.kind === "port" && endpoint.port === port2.name));
+      const mode = port2.inoutMode ?? "tristate";
+      fields.push(connected ? readonlyField("port-inout-mode", "Inout mode", mode) : {
+        id: "port-inout-mode",
+        label: "Inout mode",
+        control: "select",
+        value: mode,
+        options: [
+          { value: "direct", label: "Direct (bidirectional)" },
+          { value: "tristate", label: "Tri-state (i/o/t)" }
+        ],
+        commit: (value) => value === "direct" || value === "tristate" ? updatedPort({ inoutMode: value }) : void 0
+      });
+      fields.push(readonlyField("port-inout-description", "Connection", mode === "direct" ? "Connect module inout pins directly. Use the top-level port name for the network." : "i reads the pad; o drives its value; t = 1 releases it to high impedance."));
+      if (connected) fields.push(readonlyField(
+        "port-inout-mode-help",
+        "Change mode",
+        "Disconnect this port before changing its inout mode."
+      ));
+    }
     for (const key of portDefaultKeys(port2)) {
       fields.push(textField(
         `default-${key}`,
@@ -46008,6 +47713,7 @@
     const port2 = {
       name: pin2.name,
       direction,
+      ...direction === "inout" ? { inoutMode: "direct" } : {},
       ...width2 === void 0 ? {} : { width: width2 }
     };
     const fields = [
@@ -46389,7 +48095,9 @@
     if (node.kind !== "port") return void 0;
     const port2 = design.ports.find((candidate) => candidate.name === node.label);
     if (!port2) return void 0;
-    if (port2.direction !== "inout") return { kind: "port", port: port2.name };
+    if (port2.direction !== "inout" || port2.inoutMode === "direct") {
+      return { kind: "port", port: port2.name };
+    }
     const prefix = `${port2.name}_`;
     const signal = pin2.name.startsWith(prefix) ? pin2.name.slice(prefix.length) : "";
     return signal === "i" || signal === "o" || signal === "t" ? { kind: "port", port: port2.name, signal } : void 0;
@@ -46532,6 +48240,14 @@
     authoringActions: requiredElement("authoring-actions"),
     addInstanceButton: requiredElement("add-instance-button"),
     addLogicButton: requiredElement("add-logic-button"),
+    addSimulationButton: requiredElement("add-simulation-button"),
+    runTaskButton: requiredElement("run-task-button"),
+    waveTaskButton: requiredElement("wave-task-button"),
+    taskStatus: requiredElement("task-status"),
+    addSimulationDialog: requiredElement("add-simulation-dialog"),
+    addSimulationForm: requiredElement("add-simulation-form"),
+    simulationKindSelect: requiredElement("simulation-kind-select"),
+    simulationNameInput: requiredElement("simulation-name-input"),
     addPortButton: requiredElement("add-port-button"),
     connectButton: requiredElement("connect-button"),
     exportButton: requiredElement("export-button"),
@@ -46572,9 +48288,14 @@
     addPortForm: requiredElement("add-port-form"),
     portNameInput: requiredElement("port-name-input"),
     portDirectionSelect: requiredElement("port-direction-select"),
+    portInoutModeLabel: requiredElement("port-inout-mode-label"),
+    portInoutModeSelect: requiredElement("port-inout-mode-select"),
     portWidthInput: requiredElement("port-width-input"),
     errorCount: requiredElement("error-count"),
     warningCount: requiredElement("warning-count"),
+    diagnosticsDialog: requiredElement("diagnostics-dialog"),
+    diagnosticsTitle: requiredElement("diagnostics-title"),
+    diagnosticsDetails: requiredElement("diagnostics-details"),
     selectionStatus: requiredElement("selection-status"),
     diagnosticStatus: requiredElement("diagnostic-status")
   };
@@ -46602,18 +48323,18 @@
   }
   var vscode = typeof window.acquireVsCodeApi === "function" ? window.acquireVsCodeApi() : previewApi();
   var textMeasureContext;
-  function measureNodeText(text3, style2) {
+  function measureNodeText(text4, style2) {
     if (textMeasureContext === void 0) {
       textMeasureContext = document.createElement("canvas").getContext("2d");
     }
     if (textMeasureContext) {
       const fontFamily = getComputedStyle(document.documentElement).getPropertyValue("--vscode-font-family").trim() || "sans-serif";
       textMeasureContext.font = `${style2.fontWeight} ${style2.fontSize}px ${fontFamily}`;
-      const width2 = textMeasureContext.measureText(text3).width;
+      const width2 = textMeasureContext.measureText(text4).width;
       if (Number.isFinite(width2) && width2 >= 0) return width2;
     }
     const weightFactor = style2.fontWeight === 600 ? 0.62 : 0.56;
-    return text3.length * style2.fontSize * weightFactor;
+    return text4.length * style2.fontSize * weightFactor;
   }
   function registerShapes() {
     for (const [kind, shapeName] of Object.entries(shapeNames)) {
@@ -46707,6 +48428,8 @@
             pointerEvents: "none"
           },
           subtitle: {
+            refX: 0,
+            refY: 0,
             x: 0,
             y: import_schematic_core.SCHEMATIC_NODE_LAYOUT.labelHeight / 2,
             fill: "var(--schematic-muted-text)",
@@ -46937,9 +48660,7 @@
         subtitle: {
           text: rendered.renderedSubtitle?.visibleText ?? "",
           title: rendered.renderedSubtitle?.fullText ?? "",
-          cursor: model.kind === "instance" && model.definitionKey ? "pointer" : "default",
-          textDecoration: model.kind === "instance" && model.definitionKey ? "underline" : "none",
-          event: model.kind === "instance" && model.definitionKey ? "node:open-definition" : void 0
+          pointerEvents: "none"
         }
       },
       ports: {
@@ -47115,6 +48836,11 @@
   var scheduledNodeMoveGeneration;
   var pendingNodeMoves = /* @__PURE__ */ new Map();
   var selectionBoxOrigins = /* @__PURE__ */ new Map();
+  var simulationTaskDocument = false;
+  var currentTaskState;
+  var pendingAddedNodeId;
+  var simulationNameAutomatic = true;
+  var capabilities = {};
   var archDesignDocument = false;
   var archDesignEditable = false;
   var authoringPending = false;
@@ -47197,10 +48923,9 @@
       return void 0;
     }
     if (second.kind !== "scalar") return void 0;
-    const canSource = (terminal) => terminal.pin.direction === "driver" || terminal.pin.direction === "bidirectional";
-    const canTarget = (terminal) => terminal.pin.direction === "load" || terminal.pin.direction === "bidirectional";
-    if (canSource(first) && canTarget(second)) return { source: first, target: second };
-    if (canSource(second) && canTarget(first)) return { source: second, target: first };
+    if (currentGraph && canConnectScalarPins(currentGraph, first.pin, second.pin)) {
+      return { source: first, target: second };
+    }
     return void 0;
   }
   function refreshPendingConnectionStyles() {
@@ -47318,7 +49043,20 @@
     }
   }
   function post(message) {
-    vscode.postMessage(message);
+    vscode.postMessage(simulationTaskDocument && message.type === "editArchDesign" ? { ...message, type: "editSchematic" } : message);
+  }
+  function sendTaskCommand(command, payload) {
+    if (!simulationTaskDocument || !currentRevision) return;
+    if (command === "cancel") {
+      post({ type: "simulationTaskCommand", revision: currentRevision, command, payload });
+      return;
+    }
+    if (authoringPending || queuedArchDesignCommand) return;
+    authoringPending = true;
+    queuedArchDesignCommand = { type: "task", command, payload };
+    setAuthoringControls();
+    flushLayoutSaves();
+    drainArchDesignWrites();
   }
   var layoutSaveScheduler = new DebouncedLayoutSaveScheduler(
     SAVE_DELAY_MS,
@@ -47384,6 +49122,13 @@
     dom.relayoutButton.disabled = !enabled;
     dom.searchButton.disabled = !enabled;
   }
+  var diagnosticDetails = [];
+  var diagnosticFilter = "warning";
+  function renderDiagnosticDetails() {
+    const items = diagnosticDetails.filter((item) => item.severity === diagnosticFilter);
+    dom.diagnosticsTitle.textContent = diagnosticFilter === "error" ? "Errors" : "Warnings";
+    dom.diagnosticsDetails.textContent = formatSchematicDiagnosticDetails(items) || (diagnosticFilter === "error" ? "No errors." : "No warnings.");
+  }
   function updateDiagnostics(nextErrors, nextWarnings, diagnostics) {
     errors = Math.max(0, Math.trunc(nextErrors));
     warnings = Math.max(0, Math.trunc(nextWarnings));
@@ -47392,7 +49137,9 @@
     const countText = `${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}`;
     dom.diagnosticStatus.textContent = countText;
     if (diagnostics !== void 0) {
+      diagnosticDetails = diagnostics;
       dom.diagnosticStatus.title = formatSchematicDiagnosticDetails(diagnostics);
+      renderDiagnosticDetails();
     }
     const detailText = dom.diagnosticStatus.title;
     dom.diagnosticStatus.setAttribute(
@@ -47535,14 +49282,39 @@
     dom.addInstanceButton.disabled = disabled || hasModules === 0;
     dom.addInstanceSubmit.disabled = disabled || dom.instanceModuleSelect.options.length === 0;
     dom.addLogicButton.disabled = disabled;
-    dom.addPortButton.disabled = disabled;
+    dom.addPortButton.hidden = capabilities.addPort === false || simulationTaskDocument;
+    dom.addPortButton.disabled = disabled || dom.addPortButton.hidden;
     dom.connectButton.disabled = disabled || !currentGraph;
-    dom.exportButton.disabled = disabled;
+    dom.exportButton.hidden = !simulationTaskDocument && capabilities.exportRtl === false;
+    const exportLabel = simulationTaskDocument ? "Generate Testbench" : "Export RTL";
+    dom.exportButton.title = exportLabel;
+    dom.exportButton.setAttribute("aria-label", exportLabel);
+    dom.addSimulationButton.hidden = !simulationTaskDocument;
+    dom.addSimulationButton.disabled = disabled;
+    dom.runTaskButton.hidden = !simulationTaskDocument;
+    dom.waveTaskButton.hidden = !simulationTaskDocument;
+    const running = currentTaskState?.execution.status === "running";
+    const runLabel = running ? "Stop simulation" : "Run simulation";
+    dom.runTaskButton.title = runLabel;
+    dom.runTaskButton.setAttribute("aria-label", runLabel);
+    installIcon(dom.runTaskButton, running ? Square : Play);
+    dom.runTaskButton.disabled = running ? false : disabled;
+    dom.waveTaskButton.disabled = disabled || currentTaskState?.execution.canOpenWave !== true;
+    dom.waveTaskButton.title = currentTaskState?.execution.canOpenWave ? "Open waveform" : currentTaskState?.document.settings.waveform.enabled === false ? "Waveform generation is disabled" : "Run simulation to generate a current waveform";
+    dom.taskStatus.hidden = !simulationTaskDocument;
+    const status = currentTaskState?.execution.status ?? "idle";
+    dom.taskStatus.textContent = { idle: "Not run", running: "Running", completed: "Completed", failed: "Failed", stopped: "Stopped" }[status];
+    dom.taskStatus.title = currentTaskState?.execution.error ?? "";
+    dom.inspectorForm.setAttribute("aria-label", simulationTaskDocument ? "Simulation Task properties" : "Arch Design properties");
+    dom.exportButton.disabled = disabled || dom.exportButton.hidden;
     dom.deleteButton.disabled = disabled || currentArchDesignInspector?.deleteEdit === void 0;
     dom.inspectorForm.querySelectorAll(
-      "input, select"
+      "input, select, textarea"
     ).forEach((control) => {
       control.disabled = disabled || control.dataset.readonly === "true";
+    });
+    dom.inspectorForm.querySelectorAll(".transition-action").forEach((button) => {
+      button.disabled = disabled;
     });
     dom.inspectorForm.querySelectorAll(".inspector-action").forEach((button) => {
       button.disabled = disabled || button.dataset.actionAvailable !== "true";
@@ -47607,6 +49379,11 @@
     const command = queuedArchDesignCommand;
     if (!command) return;
     queuedArchDesignCommand = void 0;
+    if (command.type === "task") {
+      archDesignSemanticEditInFlight = true;
+      post({ type: "simulationTaskCommand", revision: currentRevision, command: command.command, payload: command.payload });
+      return;
+    }
     if (command.type === "edit") {
       archDesignSemanticEditInFlight = true;
       post({
@@ -47620,12 +49397,14 @@
     authoringPending = false;
     setAuthoringControls();
   }
-  function renderArchDesignInspector(model) {
+  function renderArchDesignInspector(baseModel) {
+    let model = simulationTaskDocument && currentTaskState && currentArchDesignState ? projectSimulationTaskInspector(currentTaskState.document, currentArchDesignState.design.module, baseModel) : baseModel;
+    if (simulationTaskDocument && model.actions) model = { ...model, actions: model.actions.filter((action) => action.id !== "expose-port") };
     currentArchDesignInspector = model;
     dom.inspector.dataset.kind = model.kind;
     dom.inspector.dataset.readOnly = "false";
     dom.inspectorTitle.textContent = model.title;
-    dom.inspectorMode.textContent = authoringPending ? "Applying change" : "Arch Design";
+    dom.inspectorMode.textContent = authoringPending ? "Applying change" : simulationTaskDocument ? "Simulation Task" : "Arch Design";
     dom.inspectorProperties.hidden = true;
     dom.inspectorForm.hidden = false;
     const fields = document.createDocumentFragment();
@@ -47660,11 +49439,19 @@
           control.value = field.value;
         }
         const commit = () => {
-          const edit = field.commit?.(control.value);
-          if (edit) postArchDesignEdit(edit);
+          try {
+            const edit = field.commit?.(control.value);
+            control.setCustomValidity("");
+            if (edit?.type === "task") sendTaskCommand(edit.command, edit.payload);
+            else if (edit) postArchDesignEdit(edit);
+          } catch (error) {
+            control.setCustomValidity(error instanceof Error ? error.message : String(error));
+            control.reportValidity();
+          }
         };
         inspectorCommitters.set(control, commit);
         control.addEventListener("change", commit);
+        control.addEventListener("input", () => control.setCustomValidity(""));
         wrapper.append(label, control);
       }
       fields.append(wrapper);
@@ -47697,8 +49484,296 @@
       }
       fields.append(actions);
     }
+    if (model.transitions) fields.append(renderTransitionTable(model.transitions));
+    for (const table of model.valueTables ?? []) fields.append(renderPresetValueTable(table));
+    if (model.transactions) fields.append(renderTransactionTable(model.transactions));
     dom.inspectorForm.replaceChildren(fields);
+    if (simulationTaskDocument && currentTaskState?.execution.error) showInspectorError(currentTaskState.execution.error);
     setAuthoringControls();
+  }
+  function showInspectorError(message) {
+    let error = dom.inspectorForm.querySelector(".inspector-error");
+    if (!error) {
+      error = document.createElement("p");
+      error.className = "inspector-error";
+      error.setAttribute("role", "alert");
+      dom.inspectorForm.append(error);
+    }
+    error.textContent = message;
+  }
+  function renderTransitionTable(model) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "inspector-field";
+    const title2 = document.createElement("label");
+    title2.textContent = `Transitions (${currentTaskState?.document.settings.timeUnit ?? ""})`;
+    const table = document.createElement("table");
+    table.className = "transition-table";
+    table.setAttribute("aria-label", "Stimulus transitions");
+    const head = table.createTHead().insertRow();
+    for (const label of ["Time", "Value", ""]) {
+      const cell = document.createElement("th");
+      cell.textContent = label;
+      cell.scope = "col";
+      head.append(cell);
+    }
+    const body = table.createTBody();
+    const commit = (control) => {
+      const inputs = Array.from(body.querySelectorAll("input"));
+      inputs.forEach((input) => input.setCustomValidity(""));
+      if (inputs.some((input) => !input.value.trim())) return;
+      try {
+        const command = model.commit(Array.from(body.rows).map((row) => ({
+          at: Number(row.querySelector("[data-transition-time]").value),
+          value: row.querySelector("[data-transition-value]").value
+        })));
+        sendTaskCommand(command.command, command.payload);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const invalid = error instanceof TransitionValidationError ? body.rows[error.rowIndex]?.querySelector(`[data-transition-${error.field}]`) : control;
+        invalid?.setCustomValidity(message);
+        invalid?.reportValidity();
+        showInspectorError(message);
+      }
+    };
+    const appendRow = (at, value) => {
+      const row = body.insertRow();
+      const index2 = body.rows.length;
+      for (const [key, initial] of [["time", at], ["value", value]]) {
+        const input = document.createElement("input");
+        input.type = key === "time" ? "number" : "text";
+        if (key === "time") {
+          input.min = "0";
+          input.step = "any";
+        }
+        input.value = initial;
+        input.setAttribute(`data-transition-${key}`, "");
+        input.setAttribute("aria-label", `Transition ${index2} ${key}`);
+        input.autocomplete = "off";
+        input.spellcheck = false;
+        inspectorCommitters.set(input, () => commit(input));
+        input.addEventListener("change", () => commit(input));
+        input.addEventListener("input", () => input.setCustomValidity(""));
+        row.insertCell().append(input);
+      }
+      const remove3 = document.createElement("button");
+      remove3.type = "button";
+      remove3.className = "icon-button transition-action transition-delete";
+      remove3.title = `Delete transition ${index2}`;
+      remove3.setAttribute("aria-label", remove3.title);
+      remove3.append(createElement2(Trash2, { width: 14, height: 14, "aria-hidden": "true" }));
+      remove3.addEventListener("click", () => {
+        row.remove();
+        commit();
+      });
+      row.insertCell().append(remove3);
+    };
+    for (const row of model.rows) appendRow(String(row.at), row.value);
+    const add = document.createElement("button");
+    add.id = "add-transition";
+    add.type = "button";
+    add.className = "inspector-action transition-action";
+    add.dataset.actionAvailable = "true";
+    add.textContent = "Add transition";
+    add.addEventListener("click", () => {
+      appendRow("", "");
+      body.lastElementChild?.querySelector("input")?.focus();
+    });
+    wrapper.append(title2, table, add);
+    return wrapper;
+  }
+  function renderPresetValueTable(model) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "inspector-field";
+    const title2 = document.createElement("label");
+    title2.textContent = model.label;
+    const table = document.createElement("table");
+    table.className = "transition-table preset-value-table";
+    table.setAttribute("aria-label", model.label);
+    const head = table.createTHead().insertRow();
+    for (const label of ["#", "Value", ""]) {
+      const cell = document.createElement("th");
+      cell.textContent = label;
+      cell.scope = "col";
+      head.append(cell);
+    }
+    const body = table.createTBody();
+    const commit = (control) => {
+      const inputs = Array.from(body.querySelectorAll("input"));
+      if (inputs.some((input) => !input.value.trim())) return;
+      try {
+        const command = model.commit(inputs.map((input) => input.value));
+        control?.setCustomValidity("");
+        sendTaskCommand(command.command, command.payload);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        control?.setCustomValidity(message);
+        control?.reportValidity();
+        showInspectorError(message);
+      }
+    };
+    const appendRow = (value) => {
+      const row = body.insertRow();
+      const index2 = body.rows.length;
+      row.insertCell().textContent = String(index2);
+      const input = document.createElement("input");
+      input.value = value;
+      input.placeholder = model.placeholder;
+      input.setAttribute("aria-label", `${model.label} ${index2} value`);
+      input.autocomplete = "off";
+      input.spellcheck = false;
+      inspectorCommitters.set(input, () => commit(input));
+      input.addEventListener("change", () => commit(input));
+      input.addEventListener("input", () => input.setCustomValidity(""));
+      row.insertCell().append(input);
+      const remove3 = document.createElement("button");
+      remove3.type = "button";
+      remove3.className = "icon-button transition-action transition-delete";
+      remove3.title = `Delete ${model.label.toLowerCase()} ${index2}`;
+      remove3.setAttribute("aria-label", remove3.title);
+      remove3.append(createElement2(Trash2, { width: 14, height: 14, "aria-hidden": "true" }));
+      remove3.addEventListener("click", () => {
+        row.remove();
+        commit();
+      });
+      row.insertCell().append(remove3);
+    };
+    for (const value of model.rows) appendRow(value);
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "inspector-action transition-action";
+    add.dataset.actionAvailable = "true";
+    add.textContent = `Add ${model.label.toLowerCase().replace(/s$/, "")}`;
+    add.addEventListener("click", () => {
+      appendRow("");
+      body.lastElementChild?.querySelector("input")?.focus();
+    });
+    wrapper.append(title2, table, add);
+    return wrapper;
+  }
+  function renderTransactionTable(model) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "inspector-field";
+    const title2 = document.createElement("label");
+    title2.textContent = "Transactions";
+    const list = document.createElement("div");
+    list.className = "transaction-list";
+    list.setAttribute("role", "list");
+    list.setAttribute("aria-label", "Bus transactions");
+    const rows = model.rows.map((row) => ({ ...row, data: [...row.data], ...row.expected ? { expected: [...row.expected] } : {} }));
+    const submit = (control) => {
+      try {
+        const command = model.commit(rows);
+        control?.setCustomValidity("");
+        sendTaskCommand(command.command, command.payload);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        control?.setCustomValidity(message);
+        control?.reportValidity();
+        showInspectorError(message);
+      }
+    };
+    rows.forEach((row, index2) => {
+      const item = document.createElement("div");
+      item.className = "transaction-row";
+      item.setAttribute("role", "listitem");
+      const heading = document.createElement("div");
+      heading.className = "transaction-heading";
+      const count = document.createElement("span");
+      count.textContent = `#${index2 + 1}`;
+      const operation = document.createElement("select");
+      operation.setAttribute("aria-label", `Transaction ${index2 + 1} operation`);
+      for (const [value2, label] of [["write", "Write"], ["read", "Read"]]) {
+        const option = document.createElement("option");
+        option.value = value2;
+        option.textContent = label;
+        operation.append(option);
+      }
+      operation.value = row.operation;
+      const payloadKey = () => model.role === "initiator" === (row.operation === "write") ? "data" : "expected";
+      operation.addEventListener("change", () => {
+        const previous = row[payloadKey()] ?? [];
+        row.operation = operation.value === "read" ? "read" : "write";
+        row.data = [];
+        delete row.expected;
+        row[payloadKey()] = previous;
+        submit(operation);
+      });
+      const remove3 = document.createElement("button");
+      remove3.type = "button";
+      remove3.className = "icon-button transition-action transition-delete";
+      remove3.title = `Delete transaction ${index2 + 1}`;
+      remove3.setAttribute("aria-label", remove3.title);
+      remove3.append(createElement2(Trash2, { width: 14, height: 14, "aria-hidden": "true" }));
+      remove3.addEventListener("click", () => {
+        rows.splice(index2, 1);
+        submit();
+      });
+      heading.append(count, operation, remove3);
+      const addressLabel = document.createElement("label");
+      addressLabel.textContent = "Address";
+      const address = document.createElement("input");
+      address.setAttribute("aria-label", `Transaction ${index2 + 1} address`);
+      address.value = row.address;
+      address.placeholder = "32'h00000000";
+      address.autocomplete = "off";
+      address.spellcheck = false;
+      const commitAddress = () => {
+        row.address = address.value.trim();
+        submit(address);
+      };
+      address.addEventListener("change", commitAddress);
+      address.addEventListener("input", () => address.setCustomValidity(""));
+      inspectorCommitters.set(address, commitAddress);
+      addressLabel.append(address);
+      const valueLabel = document.createElement("label");
+      valueLabel.textContent = payloadKey() === "data" ? row.operation === "write" ? "Write data" : "Read response" : row.operation === "write" ? "Expected write data" : "Expected read data";
+      const value = model.burst ? document.createElement("textarea") : document.createElement("input");
+      value.setAttribute("aria-label", `Transaction ${index2 + 1} values`);
+      value.value = (row[payloadKey()] ?? []).join("\n");
+      value.placeholder = model.burst ? "32'h12345678\n32'habcdef00" : "32'h12345678";
+      value.spellcheck = false;
+      if (value instanceof HTMLTextAreaElement) {
+        value.rows = 3;
+        value.title = "One data beat per line";
+      }
+      const commitValue = () => {
+        row[payloadKey()] = value.value.trim() ? value.value.split(/\r?\n/).map((text4) => text4.trim()) : [];
+        submit(value);
+      };
+      value.addEventListener("change", commitValue);
+      value.addEventListener("input", () => value.setCustomValidity(""));
+      inspectorCommitters.set(value, commitValue);
+      if (value instanceof HTMLTextAreaElement) value.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          commitValue();
+        }
+      });
+      valueLabel.append(value);
+      item.append(heading, addressLabel, valueLabel);
+      if (model.burst) {
+        const hint = document.createElement("small");
+        hint.textContent = "One beat per line. Ctrl+Enter to apply.";
+        item.append(hint);
+      }
+      list.append(item);
+    });
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "inspector-action transition-action";
+    add.dataset.actionAvailable = "true";
+    add.textContent = "Add transaction";
+    add.addEventListener("click", () => {
+      rows.push({
+        operation: "write",
+        address: "0",
+        data: model.role === "initiator" ? ["0"] : [],
+        ...model.role === "initiator" ? {} : { expected: ["0"] }
+      });
+      submit();
+    });
+    wrapper.append(title2, list, add);
+    return wrapper;
   }
   function selectedNodeIds(cells) {
     return [...new Set(cells.flatMap((cell) => {
@@ -47763,11 +49838,41 @@
       scheduleLayoutSave();
     }
   }
+  var SchematicMiniMap = class extends MiniMap {
+    constructor() {
+      super(...arguments);
+      this.sourceScale = 1;
+    }
+    updatePaper(_width, _height) {
+      this.targetGraph.resize(
+        this.options.width - 2 * this.options.padding,
+        this.options.height - 2 * this.options.padding
+      );
+      this.fitOverview();
+      return this;
+    }
+    onModelUpdated() {
+      this.fitOverview();
+    }
+    onTransform() {
+      const scale2 = this.sourceGraph.zoom();
+      if (scale2 < this.sourceScale) this.fitOverview();
+      this.sourceScale = scale2;
+      this.updateViewport();
+    }
+    fitOverview() {
+      const area = this.sourceGraph.getContentArea().union(this.sourceGraph.getGraphArea());
+      this.targetGraph.zoomToRect(area, { padding: 4, maxScale: 1 });
+      this.ratio = this.targetGraph.zoom();
+      this.sourceScale = this.sourceGraph.zoom();
+      this.updateViewport();
+    }
+  };
   function setMinimapVisibility() {
     const wanted = currentLayout?.minimap === true && minimapAvailable;
     if (wanted && !minimapPlugin) {
       dom.minimap.hidden = false;
-      minimapPlugin = new MiniMap({
+      minimapPlugin = new SchematicMiniMap({
         container: dom.minimap,
         width: 180,
         height: 120,
@@ -48097,7 +50202,10 @@
       dom.moduleSelector.append(option);
     }
     selectedModuleKey = event.selectedModuleKey;
-    const nextArchDesignDocument = event.documentKind === "arch-design";
+    simulationTaskDocument = event.documentKind === "simulation-task";
+    capabilities = event.capabilities ?? {};
+    if (!simulationTaskDocument) currentTaskState = void 0;
+    const nextArchDesignDocument = event.documentKind === "arch-design" || simulationTaskDocument;
     if (!nextArchDesignDocument) {
       archDesignLayoutSaveInFlight = false;
       queuedArchDesignLayoutSave = void 0;
@@ -48129,6 +50237,18 @@
       authoringPending = queuedArchDesignCommand !== void 0;
       currentArchDesignState = event;
       archDesignEditable = true;
+      updateDiagnostics(event.validation.diagnostics.length, event.validation.warnings.length, [
+        ...event.validation.diagnostics.map((item) => ({
+          severity: "error",
+          code: item.code,
+          message: `${item.path}: ${item.message}`
+        })),
+        ...event.validation.warnings.map((item) => ({
+          severity: "warning",
+          code: item.code,
+          message: `${item.path}: ${item.message}`
+        }))
+      ]);
       renderInstanceModuleOptions(dom.instanceModuleFilter.value);
       updateSelectionStatus(selection.getSelectedCells(), false);
     } else {
@@ -48154,6 +50274,11 @@
   }
   function handleHostEvent(event) {
     switch (event.type) {
+      case "simulationTaskState":
+        currentRevision = event.revision;
+        currentTaskState = event.task;
+        updateArchDesignState({ ...event.projection, type: "archDesignState", status: "editable", revision: event.revision });
+        return;
       case "initialize":
         initialize(event);
         return;
@@ -48188,14 +50313,15 @@
         renderSchematic(
           event.graph,
           layout,
-          preservedSelection,
+          pendingAddedNodeId && event.graph.nodes.some((node) => node.id === pendingAddedNodeId) ? [pendingAddedNodeId] : preservedSelection,
           event.fitOnFirstRender === true,
           connectionLayout !== void 0
         );
+        if (pendingAddedNodeId && event.graph.nodes.some((node) => node.id === pendingAddedNodeId)) pendingAddedNodeId = void 0;
         drainArchDesignWrites();
         return;
       case "diagnostics":
-        updateDiagnostics(event.errors, event.warnings);
+        updateDiagnostics(event.errors, event.warnings, event.details);
         return;
       case "archDesignState":
         updateArchDesignState(event);
@@ -48231,6 +50357,15 @@
         return;
       case "hostError":
         connectionLayoutSnapshot = void 0;
+        if (simulationTaskDocument) {
+          authoringPending = false;
+          archDesignSemanticEditInFlight = false;
+          queuedArchDesignCommand = void 0;
+          pendingAddedNodeId = void 0;
+          showInspectorError(event.message);
+          setAuthoringControls();
+          return;
+        }
         setGraphControls(false);
         setCanvasState(event.message || "Unable to render schematic");
         return;
@@ -48268,6 +50403,9 @@
       [dom.searchNextButton, ChevronDown],
       [dom.addInstanceButton, SquarePlus],
       [dom.addLogicButton, Component],
+      [dom.addSimulationButton, Activity],
+      [dom.runTaskButton, Play],
+      [dom.waveTaskButton, WavesHorizontal],
       [dom.addPortButton, PanelTopOpen],
       [dom.connectButton, Cable],
       [dom.exportButton, FileOutput],
@@ -48602,6 +50740,43 @@ ${choice.description}`
     showDialog(dom.addInstanceDialog, dom.instanceModuleFilter);
     return dom.addInstanceDialog.open;
   }
+  dom.addSimulationButton.addEventListener("click", () => {
+    if (dom.addSimulationButton.disabled) return;
+    simulationNameAutomatic = true;
+    dom.simulationKindSelect.value = "clock";
+    dom.simulationNameInput.value = generatedInstanceName("clock");
+    dom.simulationNameInput.setCustomValidity("");
+    showDialog(dom.addSimulationDialog, dom.simulationKindSelect);
+  });
+  dom.simulationKindSelect.addEventListener("change", () => {
+    if (simulationNameAutomatic) dom.simulationNameInput.value = generatedInstanceName(dom.simulationKindSelect.value);
+  });
+  dom.simulationNameInput.addEventListener("input", () => {
+    simulationNameAutomatic = false;
+    dom.simulationNameInput.setCustomValidity("");
+  });
+  dom.addSimulationForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const kind = dom.simulationKindSelect.value;
+    const id = dom.simulationNameInput.value.trim();
+    if (!id || !["clock", "reset", "stimulus", "uart", "spi", "apb", "axis", "i2c", "axi4", "axi4lite", "rgb888"].includes(kind)) return;
+    if (currentArchDesignState?.design.instances.some((instance) => instance.name === id) || currentArchDesignState?.design.logic.some((logic) => logic.name === id)) {
+      dom.simulationNameInput.setCustomValidity("This instance name is already in use.");
+      dom.simulationNameInput.reportValidity();
+      return;
+    }
+    pendingAddedNodeId = `instance:${id}`;
+    dom.addSimulationDialog.close();
+    if (!inspectorExpanded) {
+      inspectorExpanded = true;
+      updateInspectorToggle();
+    }
+    sendTaskCommand("addPreset", { id, preset: defaultSimulationPreset(kind) });
+  });
+  dom.runTaskButton.addEventListener("click", () => sendTaskCommand(
+    currentTaskState?.execution.status === "running" ? "cancel" : "run"
+  ));
+  dom.waveTaskButton.addEventListener("click", () => sendTaskCommand("openWave"));
   dom.addInstanceButton.addEventListener("click", showAddInstanceDialog);
   dom.addLogicButton.addEventListener("click", showAddLogicDialog);
   dom.instanceModuleSelect.addEventListener("change", () => {
@@ -48632,6 +50807,9 @@ ${choice.description}`
     if (dom.addPortButton.disabled) return false;
     dom.portNameInput.value = "";
     dom.portDirectionSelect.value = "input";
+    dom.portInoutModeSelect.value = "tristate";
+    dom.portInoutModeLabel.hidden = true;
+    dom.portInoutModeSelect.hidden = true;
     dom.portWidthInput.value = "1";
     showDialog(dom.addPortDialog, dom.portNameInput);
     return dom.addPortDialog.open;
@@ -48646,6 +50824,10 @@ ${choice.description}`
   }
   function exportRtl() {
     if (dom.exportButton.disabled || !currentArchDesignState || !archDesignEditable || authoringPending) return false;
+    if (simulationTaskDocument) {
+      sendTaskCommand("generateTestbench");
+      return true;
+    }
     authoringPending = true;
     queuedArchDesignCommand = { type: "export" };
     setAuthoringControls();
@@ -48660,6 +50842,16 @@ ${choice.description}`
   }
   dom.addPortButton.addEventListener("click", showAddPortDialog);
   dom.connectButton.addEventListener("click", toggleConnectionMode);
+  for (const [button, severity] of [
+    [dom.errorCount, "error"],
+    [dom.warningCount, "warning"]
+  ]) {
+    button.addEventListener("click", () => {
+      diagnosticFilter = severity;
+      renderDiagnosticDetails();
+      dom.diagnosticsDialog.showModal();
+    });
+  }
   dom.exportButton.addEventListener("click", exportRtl);
   dom.deleteButton.addEventListener("click", deleteSelection);
   dom.addInstanceForm.addEventListener("submit", (event) => {
@@ -48668,6 +50860,7 @@ ${choice.description}`
     const selected = selectedInstanceModule();
     if (!name || !selected) return;
     dom.addInstanceDialog.close();
+    pendingAddedNodeId = `instance:${name}`;
     postArchDesignEdit({
       type: "addInstance",
       instance: {
@@ -48676,6 +50869,11 @@ ${choice.description}`
         ...selected.definitionKey === void 0 ? {} : { definitionKey: selected.definitionKey }
       }
     });
+  });
+  dom.portDirectionSelect.addEventListener("change", () => {
+    const hidden = dom.portDirectionSelect.value !== "inout";
+    dom.portInoutModeLabel.hidden = hidden;
+    dom.portInoutModeSelect.hidden = hidden;
   });
   dom.addPortForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -48688,7 +50886,14 @@ ${choice.description}`
     dom.addPortDialog.close();
     postArchDesignEdit({
       type: "addPort",
-      port: { name, direction, ...width2 === void 0 ? {} : { width: width2 } }
+      port: {
+        name,
+        direction,
+        ...width2 === void 0 ? {} : { width: width2 },
+        ...direction === "inout" ? {
+          inoutMode: dom.portInoutModeSelect.value === "direct" ? "direct" : "tristate"
+        } : {}
+      }
     });
   });
   function logicNameAvailable(name) {
@@ -48788,11 +50993,7 @@ ${choice.description}`
   graph.on("scale", updateViewportFromGraph);
   graph.on("translate", updateViewportFromGraph);
   graph.on("cell:dblclick", ({ cell }) => {
-    const command = navigationCommandForCell(navigationTargetForCell(cell), false);
-    if (command) post(command);
-  });
-  graph.on("node:open-definition", ({ cell }) => {
-    const command = navigationCommandForCell(navigationTargetForCell(cell), true);
+    const command = navigationCommandForCell(navigationTargetForCell(cell), archDesignDocument);
     if (command) post(command);
   });
   graph.on("edge:click", ({ edge }) => {
@@ -48892,6 +51093,7 @@ ${choice.description}`
     dialog.close();
     if (dialog === dom.addInstanceDialog) dom.addInstanceButton.focus();
     if (dialog === dom.addLogicDialog) dom.addLogicButton.focus();
+    if (dialog === dom.addSimulationDialog) dom.addSimulationButton.focus();
     if (dialog === dom.addPortDialog) dom.addPortButton.focus();
     return true;
   }
@@ -48991,7 +51193,7 @@ ${choice.description}`
   window.addEventListener("message", (event) => {
     if (!event.data || typeof event.data !== "object") return;
     const type = event.data.type;
-    if (type === "initialize" || type === "graph" || type === "diagnostics" || type === "archDesignState" || type === "archDesignLayoutSaved" || type === "archDesignRevisionChanged" || type === "hostError") {
+    if (type === "initialize" || type === "graph" || type === "diagnostics" || type === "simulationTaskState" || type === "archDesignState" || type === "archDesignLayoutSaved" || type === "archDesignRevisionChanged" || type === "hostError") {
       handleHostEvent(event.data);
     }
   });

@@ -62,12 +62,16 @@ assert.deepStrictEqual(archDesignLanguage.extensions, ['.ad']);
 const workflowViews = manifest.contributes.views.veriflow;
 assert.deepStrictEqual(
     workflowViews.map((item: any) => item.id),
-    ['veriflow.design', 'veriflow.modules', 'veriflow.results']
+    ['veriflow.files', 'veriflow.design', 'veriflow.modules']
 );
-assert.strictEqual(workflowViews[0].name, 'Design');
-assert.strictEqual(workflowViews[0].contextualTitle, 'Design');
-assert.strictEqual(workflowViews[1].name, 'Simulation');
-assert.strictEqual(workflowViews[1].contextualTitle, 'Simulation');
+assert.deepStrictEqual(workflowViews.map((item: any) => item.name), ['Module Browser', 'Architecture Design', 'Simulation Task']);
+assert.deepStrictEqual(workflowViews.map((item: any) => item.contextualTitle), ['Module Browser', 'Architecture Design', 'Simulation Task']);
+assert.deepStrictEqual(manifest.contributes.menus['veriflow.hdl'].map((item: any) => item.command), [
+    'veriflow.insertHdlTemplate', 'veriflow.instantiateModule', 'veriflow.formatHdl', 'veriflow.runTraditionalTestbench',
+]);
+for (const setting of ['veriflow.simulator', 'veriflow.waveViewer']) {
+    assert.deepStrictEqual(manifest.contributes.configuration.properties[setting].enum, ['builtin', 'custom']);
+}
 
 for (const id of [
     'veriflow.createArchDesign',
@@ -85,9 +89,9 @@ const archDesignWelcome = (manifest.contributes.viewsWelcome ?? []).find(
 assert.ok(archDesignWelcome, 'Arch Designs empty-state contribution is missing');
 assert.match(
     archDesignWelcome.contents,
-    /\[Create Graphical Design\]\(command:veriflow\.createArchDesign\)/
+    /\[Create Architecture Design\]\(command:veriflow\.createArchDesign\)/
 );
-for (const id of ['veriflow.createArchDesign', 'veriflow.scanModules']) {
+for (const id of ['veriflow.createArchDesign']) {
     assert.ok(
         (manifest.contributes.menus['view/title'] ?? []).some(
             (item: any) => item.command === id

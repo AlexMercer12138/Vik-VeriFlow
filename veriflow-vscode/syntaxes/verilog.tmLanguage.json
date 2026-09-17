@@ -1,0 +1,55 @@
+{
+  "name": "verilog",
+  "scopeName": "source.verilog",
+  "patterns": [
+    {
+      "name": "comment.line.double-slash.verilog",
+      "begin": "//",
+      "end": "$"
+    },
+    {
+      "name": "comment.block.verilog",
+      "begin": "/\\*",
+      "end": "\\*/"
+    },
+    {
+      "name": "string.quoted.double.verilog",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.verilog",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "name": "entity.name.variable.escaped.verilog",
+      "match": "\\\\[^\\s]+"
+    },
+    {
+      "name": "meta.preprocessor.verilog",
+      "match": "`[A-Za-z_][A-Za-z0-9_$]*"
+    },
+    {
+      "name": "support.function.system.verilog",
+      "match": "\\$[A-Za-z_][A-Za-z0-9_$]*"
+    },
+    {
+      "name": "constant.numeric.verilog",
+      "match": "(?i)(?:\\b[0-9][0-9_]*\\s*)?'s?[bodh][0-9a-f_xz?]+|'[01xz]|\\b[0-9][0-9_]*(?:\\.[0-9_]+)?(?:e[+-]?[0-9_]+)?(?:[munpf]?s)?\\b"
+    },
+    {
+      "name": "keyword.control.verilog",
+      "match": "\\b(?:always|always_comb|always_ff|always_latch|initial|assign|deassign|begin|end|module|endmodule|interface|endinterface|package|endpackage|class|endclass|function|endfunction|task|endtask|generate|endgenerate|genvar|if|else|for|foreach|while|repeat|forever|case|casex|casez|endcase|default|fork|join|join_any|join_none|wait|disable|return|break|continue|import|export|parameter|localparam|input|output|inout|ref|posedge|negedge|or|typedef|struct|union|enum|packed|signed|unsigned|automatic|static|virtual|modport|clocking|endclocking|property|endproperty|sequence|endsequence|assert|assume|cover|bind|unique|priority)\\b"
+    },
+    {
+      "name": "storage.type.verilog",
+      "match": "\\b(?:wire|reg|logic|bit|byte|shortint|int|longint|integer|time|realtime|real|shortreal|string|event|tri|tri0|tri1|trireg|wand|wor|uwire|supply0|supply1)\\b"
+    },
+    {
+      "name": "keyword.operator.verilog",
+      "match": "[+*/%=&|^~!<>?:-]+"
+    }
+  ]
+}

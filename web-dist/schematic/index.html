@@ -29,14 +29,17 @@
             <div id="authoring-actions" class="toolbar-actions authoring-actions" hidden>
                 <button id="add-instance-button" class="icon-button" type="button" title="Add instance" aria-label="Add instance" aria-keyshortcuts="A" disabled><span data-icon-slot></span></button>
                 <button id="add-logic-button" class="icon-button" type="button" title="Logic Utility" aria-label="Logic Utility" aria-keyshortcuts="L" disabled><span data-icon-slot></span></button>
+                <button id="add-simulation-button" class="icon-button" type="button" title="Simulation Utility" aria-label="Simulation Utility" hidden disabled><span data-icon-slot></span></button>
                 <button id="add-port-button" class="icon-button" type="button" title="Add port" aria-label="Add port" aria-keyshortcuts="P" disabled><span data-icon-slot></span></button>
                 <button id="connect-button" class="icon-button" type="button" title="Connect pins" aria-label="Connect pins" aria-keyshortcuts="C" aria-pressed="false" disabled><span data-icon-slot></span></button>
                 <button id="export-button" class="icon-button" type="button" title="Export RTL" aria-label="Export RTL" aria-keyshortcuts="E" disabled><span data-icon-slot></span></button>
+                <button id="run-task-button" class="icon-button" type="button" title="Run simulation" aria-label="Run simulation" hidden disabled><span data-icon-slot></span></button>
+                <button id="wave-task-button" class="icon-button" type="button" title="Open waveform" aria-label="Open waveform" hidden disabled><span data-icon-slot></span></button>
                 <button id="delete-button" class="icon-button" type="button" title="Delete selection" aria-label="Delete selection" aria-keyshortcuts="Delete Backspace" disabled><span data-icon-slot></span></button>
             </div>
             <div class="diagnostic-counts" aria-label="Validation counts">
-                <span id="error-count">E 0</span>
-                <span id="warning-count">W 0</span>
+                <button id="error-count" class="diagnostic-button" type="button" title="Show errors" aria-haspopup="dialog">E 0</button>
+                <button id="warning-count" class="diagnostic-button" type="button" title="Show warnings" aria-haspopup="dialog">W 0</button>
             </div>
         </div>
         <div id="content-row">
@@ -58,9 +61,15 @@
         </div>
         <footer id="status-strip" role="status" aria-live="polite">
             <span id="selection-status">No selection</span>
+            <span id="task-status" hidden>Not run</span>
             <span id="diagnostic-status">0 errors, 0 warnings</span>
         </footer>
     </main>
+    <dialog id="diagnostics-dialog" aria-labelledby="diagnostics-title">
+        <h2 id="diagnostics-title">Diagnostics</h2>
+        <pre id="diagnostics-details"></pre>
+        <div class="dialog-actions"><button type="button" data-dialog-cancel>Close</button></div>
+    </dialog>
     <dialog id="add-instance-dialog" aria-labelledby="add-instance-title">
         <form id="add-instance-form" method="dialog" class="authoring-dialog-form">
             <h2 id="add-instance-title">Add instance</h2>
@@ -87,8 +96,38 @@
                 <option value="output">Output</option>
                 <option value="inout">Inout</option>
             </select>
+            <label id="port-inout-mode-label" for="port-inout-mode-select" hidden>Inout mode</label>
+            <select id="port-inout-mode-select" hidden>
+                <option value="tristate">Tri-state (i/o/t)</option>
+                <option value="direct">Direct (bidirectional)</option>
+            </select>
             <label for="port-width-input">Width</label>
             <input id="port-width-input" name="width" value="1" autocomplete="off" spellcheck="false">
+            <div class="dialog-actions">
+                <button type="button" data-dialog-cancel>Cancel</button>
+                <button type="submit">Add</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="add-simulation-dialog" aria-labelledby="add-simulation-title">
+        <form id="add-simulation-form" method="dialog" class="authoring-dialog-form">
+            <h2 id="add-simulation-title">Simulation Utility</h2>
+            <label for="simulation-kind-select">Preset</label>
+            <select id="simulation-kind-select" required>
+                <option value="clock">Clock</option>
+                <option value="reset">Reset</option>
+                <option value="stimulus">Stimulus</option>
+                <option value="uart">UART</option>
+                <option value="spi">SPI</option>
+                <option value="i2c">I2C</option>
+                <option value="apb">APB</option>
+                <option value="axis">AXI-STREAM</option>
+                <option value="axi4lite">AXI-Lite</option>
+                <option value="axi4">AXI-Full</option>
+                <option value="rgb888">RGB</option>
+            </select>
+            <label for="simulation-name-input">Instance name</label>
+            <input id="simulation-name-input" required pattern="[A-Za-z_][A-Za-z0-9_$]*" autocomplete="off" spellcheck="false">
             <div class="dialog-actions">
                 <button type="button" data-dialog-cancel>Cancel</button>
                 <button type="submit">Add</button>

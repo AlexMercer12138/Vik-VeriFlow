@@ -24,3 +24,4 @@ export type {
 export * from './simulatorBackendRegistry';
 export * from './templateEngine';
 export * from './types';
+export * from './hdlTemplates';

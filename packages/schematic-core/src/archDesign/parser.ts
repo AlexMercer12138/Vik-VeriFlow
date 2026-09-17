@@ -332,7 +332,17 @@ function normalizePorts(
         const width = widthValue === undefined
             ? undefined
             : normalizeWidth(widthValue, `${path}.width`, diagnostics);
-        if (name && direction) result.push({ name, direction, ...(width ? { width } : {}) });
+        const inoutMode = ownValue(record, 'inoutMode');
+        if (inoutMode !== undefined && (
+            direction !== 'inout' || (inoutMode !== 'direct' && inoutMode !== 'tristate')
+        )) {
+            diagnostic(diagnostics, `${path}.inoutMode`, 'AD_VALUE',
+                'Inout mode must be direct or tristate and is only valid for inout ports');
+        }
+        if (name && direction) result.push({
+            name, direction, ...(width ? { width } : {}),
+            ...(inoutMode === 'direct' || inoutMode === 'tristate' ? { inoutMode } : {}),
+        });
     });
     return result;
 }

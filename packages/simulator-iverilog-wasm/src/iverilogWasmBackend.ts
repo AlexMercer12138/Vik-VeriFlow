@@ -28,6 +28,7 @@ import {
 } from './virtualWorkspace';
 
 const BACKEND_ID = 'builtin';
+export const IVERILOG_WASM_VERSION = 'iverilog-wasm-0.1.4';
 
 export type IverilogApiProvider = () => Promise<IverilogApi>;
 
@@ -61,6 +62,7 @@ export class IverilogWasmBackend implements SimulatorBackend {
                 cwd: request.cwd,
                 files: request.files,
                 runtimeFiles: request.runtimeFiles,
+                includeFiles: request.includeFiles,
                 includeDirs: request.includeDirs,
                 writableFiles: artifactPaths,
             }, this.options.workspaceFileSystem);
@@ -88,6 +90,7 @@ export class IverilogWasmBackend implements SimulatorBackend {
                 protectedHostPaths: [
                     ...request.files,
                     ...request.runtimeFiles,
+                    ...(request.includeFiles ?? []),
                 ],
                 fileSystem: this.options.artifactFileSystem,
             });
@@ -108,19 +111,20 @@ export class IverilogWasmBackend implements SimulatorBackend {
 
         try {
             const api = await this.loadApi();
-            result = await api.simulate({
+            const simulation = {
                 files: stagedFiles,
                 sources: workspace.sources,
                 includeDirs: workspace.includeDirs,
                 runCwd: workspace.runCwd,
-                generation: '2005',
+                generation: '2005' as const,
                 top: request.topModule,
                 defines: request.defines,
                 plusargs: request.plusargs,
                 artifacts: upstreamPaths,
                 timeoutMs: request.timeoutMs,
                 signal: request.signal,
-            });
+            };
+            result = await api.simulate(simulation);
         } catch (error) {
             if (errorDetails(error).code === 'INVALID_INPUT') throw error;
             return infrastructureFailure(
@@ -144,6 +148,7 @@ export class IverilogWasmBackend implements SimulatorBackend {
                     protectedHostPaths: [
                         ...request.files,
                         ...request.runtimeFiles,
+                        ...(request.includeFiles ?? []),
                     ],
                     fileSystem: this.options.artifactFileSystem,
                 },

@@ -35,6 +35,7 @@ function portValue(port: ArchDesignPort): unknown {
     return {
         name: port.name,
         direction: port.direction,
+        ...(port.inoutMode === undefined ? {} : { inoutMode: port.inoutMode }),
         ...(port.width !== undefined ? { width: widthValue(port.width) } : {}),
     };
 }

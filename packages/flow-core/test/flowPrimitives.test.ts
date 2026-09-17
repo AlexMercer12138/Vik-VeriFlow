@@ -73,7 +73,8 @@ test('compile templates render defines and include directories only when request
             ['top.v'],
             'top',
             variables.defines,
-            variables.includeDirs
+            variables.includeDirs,
+            'linux'
         ),
         'iverilog -o top.out "top.v"'
     );
@@ -84,7 +85,8 @@ test('compile templates render defines and include directories only when request
             ['top.v'],
             'top',
             variables.defines,
-            variables.includeDirs
+            variables.includeDirs,
+            'linux'
         ),
         "compile '-DTRACE' '-DWIDTH=8' '-DDISABLED=0' "
             + "'-Irtl/include' '-Ivendor headers' -o top.out \"top.v\""
@@ -129,7 +131,8 @@ test('default native simulator templates preserve their command rendering', () =
                 ['child.v', 'top.v'],
                 'top',
                 { TRACE: true },
-                ['include']
+                ['include'],
+                'linux'
             ),
             run: TemplateEngine.renderRun(simulator.runCmd, 'top.out'),
         }])

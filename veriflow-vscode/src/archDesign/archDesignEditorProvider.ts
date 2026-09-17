@@ -9,6 +9,7 @@ import {
     projectArchDesignGraph,
     reconcileArchDesignInstanceParameters,
     serializeArchDesign,
+    resolveArchDesign,
     type ArchDesign,
     type ArchDesignDiagnostic,
     type ArchDesignModuleDefinition,
@@ -190,7 +191,7 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                 const saved = await session.document.save();
                 if (this.sessions.get(session.uri.toString()) !== session) return;
                 if (!saved) {
-                    await vscode.window.showErrorMessage(
+                    void vscode.window.showErrorMessage(
                         'Unable to save Arch Design before RTL export'
                     );
                     return;
@@ -205,7 +206,7 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                     if (parseArchDesignText(session.document.getText()).status === 'editable') {
                         continue;
                     }
-                    await vscode.window.showErrorMessage(
+                    void vscode.window.showErrorMessage(
                         'Saved Arch Design is not editable and cannot be exported'
                     );
                     return;
@@ -216,7 +217,7 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
         } catch (error) {
             if (this.sessions.get(session.uri.toString()) !== session) return;
             const message = error instanceof Error ? error.message : String(error);
-            await vscode.window.showErrorMessage(message);
+            void vscode.window.showErrorMessage(message);
         }
     }
 
@@ -226,7 +227,7 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
     ): Promise<void> {
         const errorCount = snapshot.validation.diagnostics.length;
         if (!snapshot.validation.valid) {
-            await vscode.window.showErrorMessage(
+            void vscode.window.showErrorMessage(
                 `Arch Design RTL export blocked: ${errorCount} `
                 + `${errorCount === 1 ? 'error' : 'errors'}`
             );
@@ -248,18 +249,19 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                 );
             if (result.status === 'invalid') {
                 const count = result.diagnostics.length;
-                await vscode.window.showErrorMessage(
+                void vscode.window.showErrorMessage(
                     `Arch Design RTL export blocked: ${count} `
-                    + `${count === 1 ? 'error' : 'errors'}`
+                    + `${count === 1 ? 'error' : 'errors'}. `
+                    + result.diagnostics.map(item => `${item.code}: ${item.message}`).join('; ')
                 );
                 return;
             }
-            await vscode.window.showInformationMessage(
+            void vscode.window.showInformationMessage(
                 `Arch Design RTL exported: ${result.outputPath}`
             );
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            await vscode.window.showErrorMessage(message);
+            void vscode.window.showErrorMessage(message);
         }
     }
 
@@ -328,14 +330,17 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
             documentSubscription?.dispose();
         };
         const publishDiagnostics = async (
-            items: readonly ArchDesignDiagnostic[]
+            items: readonly ArchDesignDiagnostic[],
+            warnings: readonly ArchDesignDiagnostic[] = []
         ): Promise<void> => {
             if (state.disposed) return;
-            const diagnostics = items.map(item => {
+            const diagnostics = [...items, ...warnings].map((item, index) => {
                 const diagnostic = new vscode.Diagnostic(
                     diagnosticRange(),
                     `${item.path}: ${item.message}`,
-                    vscode.DiagnosticSeverity.Error
+                    index < items.length
+                        ? vscode.DiagnosticSeverity.Error
+                        : vscode.DiagnosticSeverity.Warning
                 );
                 diagnostic.code = item.code;
                 diagnostic.source = 'VeriFlow Arch Design';
@@ -344,8 +349,13 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
             this.diagnostics.set(document.uri, diagnostics);
             await post({
                 type: 'diagnostics',
-                errors: diagnostics.length,
-                warnings: 0,
+                errors: items.length,
+                warnings: warnings.length,
+                details: [...items, ...warnings].map((item, index) => ({
+                    severity: index < items.length ? 'error' : 'warning',
+                    code: item.code,
+                    message: `${item.path}: ${item.message}`,
+                })),
             });
         };
         const reportError = async (error: unknown): Promise<void> => {
@@ -479,7 +489,7 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                 ...(index === undefined ? {} : { index }),
             };
             state.snapshot = snapshot;
-            await publishDiagnostics(validation.diagnostics);
+            await publishDiagnostics(validation.diagnostics, validation.warnings);
             if (generation !== state.refreshGeneration || state.disposed) return;
             const graphUnchanged = preserveEqualGraph
                 && previousSnapshot !== undefined
@@ -587,9 +597,29 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
             edit: Parameters<typeof applyArchDesignEdit>[1],
             acknowledgePresentation = false
         ): Promise<void> => {
+            const next = applyArchDesignEdit(snapshot.design, edit);
+            if (edit.type === 'connect') {
+                const resolution = resolveArchDesign(
+                    next, snapshot.definitions, snapshot.interfaceCatalog
+                );
+                const source = edit.source;
+                const joined = resolution.connections.find(connection =>
+                    connection.endpoints.some(({ endpoint }) => endpoint.kind === source.kind
+                        && endpoint.port === source.port
+                        && (source.kind !== 'instance' || (endpoint.kind === 'instance'
+                            && endpoint.instance === source.instance))
+                        && (source.kind !== 'logic' || (endpoint.kind === 'logic'
+                            && endpoint.logic === source.logic))
+                        && (source.kind !== 'port' || (endpoint.kind === 'port'
+                            && (endpoint.signal ?? 'value') === (source.signal ?? 'value')))));
+                const multipleDrivers = resolution.diagnostics.find(item =>
+                    item.code === 'AD_MULTIPLE_DRIVERS' && joined !== undefined
+                    && item.path.startsWith(`$.connections[${joined.index}].`));
+                if (multipleDrivers) throw new Error(multipleDrivers.message);
+            }
             await applyResolvedDocumentEdit(
                 snapshot,
-                applyArchDesignEdit(snapshot.design, edit),
+                next,
                 acknowledgePresentation
             );
         };

@@ -283,7 +283,7 @@ function assertNetworkNavigationContract(source: string): void {
     assert.match(target, /return data\?\.node \?\? data\?\.network \?\? \{};/);
     assert.match(
         source,
-        /graph\.on\('cell:dblclick', \(\{ cell }\) => \{\s*const command = navigationCommandForCell\(navigationTargetForCell\(cell\), false\);/
+        /graph\.on\('cell:dblclick', \(\{ cell }\) => \{\s*const command = navigationCommandForCell\(navigationTargetForCell\(cell\), archDesignDocument\);/
     );
 }
 
@@ -1054,7 +1054,7 @@ async function testSchematicAssets(): Promise<void> {
     const webviewSource = fs.readFileSync(
         path.join(schematicSourceRoot, 'index.ts'),
         'utf8'
-    );
+    ).replace(/\r\n/g, '\n');
     assertCanonicalSegmentRendering(webviewSource);
     assertRendererCellContracts(webviewSource);
     assertNetworkSelectionContracts(webviewSource);
@@ -1142,7 +1142,9 @@ async function testSchematicAssets(): Promise<void> {
         '../../../veriflow-vscode/src/'
     )).map(filePath => path.relative(repositoryRoot, filePath).replace(/\\/g, '/'));
     assert.deepStrictEqual(temporaryImportOwners, [
+        'packages/schematic-webview/src/authoring/taskInspector.ts',
         'packages/schematic-webview/src/index.ts',
+        'packages/schematic-webview/test/taskProtocol.test.ts',
     ]);
     assert.match(
         webviewSource,

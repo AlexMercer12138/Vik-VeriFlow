@@ -69,6 +69,7 @@ test('sizes height from header and the larger side pin count', () => {
 
 test('measures the title with its rendered bold font weight', () => {
     const node = instance('instance:bold', [], 'bold title width', undefined);
+    delete node.subtitle;
     const styles: TextMeasurementStyle[] = [];
     const styleAwareMeasure: TextMeasurer = (text, style) => {
         styles.push(style);
@@ -86,6 +87,7 @@ test('measures the title with its rendered bold font weight', () => {
 
 test('fits real font widths inside the deterministic layout size', () => {
     const node = instance('instance:wide-font', [], 'W'.repeat(25), undefined);
+    delete node.subtitle;
     const sideMap = new Map<PinKey, PinSide>();
     const layoutSize = measureSchematicNodeSize(node, sideMap);
     const fitted = fitSchematicNode(
@@ -183,7 +185,7 @@ test('ellipsizes measured labels at maximum width and keeps clips inside the nod
     assert.equal(measured.width, SCHEMATIC_NODE_LAYOUT.maximumWidth);
     assert.equal(measured.title.truncated, true);
     assert.match(measured.title.visibleText, /\.\.\.$/);
-    for (const label of [measured.title, measured.subtitle!]) {
+    for (const label of [measured.title]) {
         const clip = label.clipBounds;
         assert.ok(Number.isFinite(clip.x) && Number.isFinite(clip.width));
         assert.ok(clip.x >= 0 && clip.width >= 0);
@@ -199,6 +201,20 @@ test('ellipsizes measured labels at maximum width and keeps clips inside the nod
         assert.equal(candidate.truncated, true);
         assert.ok(candidate.visibleLabel.endsWith('...'));
     }
+});
+
+test('renders the module type and instance name in one measured title without changing identity', () => {
+    const node = instance('instance:u_counter_0', [], 'u_counter_0', 'counter');
+    const measured = measureSchematicNode(node, new Map(), measure);
+
+    assert.equal(measured.title.fullText, 'counter u_counter_0');
+    assert.equal(measured.title.visibleText, 'counter u_counter_0');
+    assert.equal(measured.subtitle, undefined);
+    assert.ok(measured.width >= measureWidth('counter u_counter_0')
+        + 2 * SCHEMATIC_NODE_LAYOUT.horizontalPadding);
+    assert.equal(node.id, 'instance:u_counter_0');
+    assert.equal(node.label, 'u_counter_0');
+    assert.equal(node.subtitle, 'counter');
 });
 
 test('keeps boundary port nodes compact with a centered side anchor', () => {

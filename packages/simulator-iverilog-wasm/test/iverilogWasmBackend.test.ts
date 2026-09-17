@@ -7,6 +7,7 @@ import {
     open,
     readFile,
     readdir,
+    realpath,
     rename,
     rm,
     symlink,
@@ -1198,7 +1199,7 @@ test('maps abort during artifact parent verification without renaming the destin
     const destination = path.join(root, 'aborted.vcd');
     const controller = new AbortController();
     let apiCalls = 0;
-    let parentInspections = 0;
+    let parentCanonicalizations = 0;
     let renames = 0;
     const api = apiReturning({
         success: true,
@@ -1217,13 +1218,12 @@ test('maps abort during artifact parent verification without renaming the destin
         return api;
     }, {
         artifactFileSystem: {
-            async lstat(hostPath) {
-                const metadata = await lstat(hostPath);
-                if (hostPath === root) {
-                    parentInspections += 1;
-                    if (parentInspections === 3) controller.abort();
-                }
-                return metadata;
+            async realpath(hostPath) {
+                const canonicalPath = await realpath(hostPath);
+                parentCanonicalizations += 1;
+                // Preflight and staging each resolve the parent before commit verifies it.
+                if (parentCanonicalizations === 3) controller.abort();
+                return canonicalPath;
             },
             async rename(oldPath, newPath) {
                 renames += 1;

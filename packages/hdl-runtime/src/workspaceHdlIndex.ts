@@ -9,7 +9,7 @@ import {
     preprocessForParsing,
     preprocessingFingerprint,
 } from '@veriflow/hdl-core/preprocessor';
-import type { ResolvedIncludeInput } from '@veriflow/hdl-core/preprocessor';
+import type { PreprocessResult, ResolvedIncludeInput } from '@veriflow/hdl-core/preprocessor';
 import type { WorkspaceIndexStore } from './workspaceIndexStore';
 import type {
     HdlDefinitionKey,
@@ -452,10 +452,11 @@ export class WorkspaceHdlIndex {
         });
     }
 
-    async resolveDefinition(key: HdlDefinitionKey): Promise<{
+    async resolveDefinition(key: HdlDefinitionKey, options?: { includePreprocessedSource?: boolean }): Promise<{
         summary: HdlDefinitionSummary;
         document: HdlDocument;
         module?: ModuleModel;
+        preprocessedSource?: PreprocessResult;
     }> {
         return this.runExclusive(async () => {
             let summary = this.getDefinition(key);
@@ -530,7 +531,15 @@ export class WorkspaceHdlIndex {
             if (summary.kind === 'module' && !module) {
                 throw new Error(`Exact HDL module not found for definition: ${key}`);
             }
-            return { summary, document, module };
+            return {
+                summary, document, module,
+                ...(options?.includePreprocessedSource ? {
+                    preprocessedSource: preprocessForParsing(summary.uri, prepared.input.text, {
+                        defines: this.defines,
+                        resolvedIncludes: prepared.resolvedIncludes,
+                    }),
+                } : {}),
+            };
         });
     }
 

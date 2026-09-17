@@ -68,8 +68,10 @@ function assertStandaloneWebBuildFromCleanCore(root: string): void {
     const npmExecPath = process.env.npm_execpath;
     assert.ok(npmExecPath && path.isAbsolute(npmExecPath));
     const protectedTargets = [
+        path.join(root, 'packages', 'flow-core', 'dist'),
         path.join(root, 'packages', 'hdl-core', 'dist'),
         path.join(root, 'packages', 'schematic-core', 'dist'),
+        path.join(root, 'packages', 'hdl-runtime', 'dist'),
         path.join(root, 'web-dist'),
     ];
     const protectedSnapshots = snapshotRepositoryPaths(protectedTargets);
@@ -89,7 +91,7 @@ function assertStandaloneWebBuildFromCleanCore(root: string): void {
             timeout: 120_000,
         });
         assert.strictEqual(result.status, 0, [
-            'standalone build:web must build HDL and schematic dependencies from a clean state',
+            'standalone build:web must build HDL, schematic, and task runtime dependencies from a clean state',
             `stdout:\n${String(result.stdout ?? '')}`,
             `stderr:\n${String(result.stderr ?? '')}`,
         ].join('\n'));

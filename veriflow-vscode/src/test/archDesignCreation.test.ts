@@ -10,18 +10,8 @@ async function testCreatesCanonicalDesignBeforeOpening(): Promise<void> {
     const events: string[] = [];
 
     const result = await createArchDesign({
-        requestModule: async validate => {
-            assert.strictEqual(
-                validate('1bad'),
-                'Enter a valid Verilog module name'
-            );
-            assert.strictEqual(validate('soc_top'), undefined);
-            return 'soc_top';
-        },
-        requestTarget: async module => {
-            assert.strictEqual(module, 'soc_top');
-            return `workspace/${module}.ad`;
-        },
+        requestTarget: async () => 'workspace/soc-top.ad',
+        filename: target => target.split('/').pop()!,
         writeFile: async (target, text) => {
             events.push('write');
             writes.push([target, text]);
@@ -33,12 +23,12 @@ async function testCreatesCanonicalDesignBeforeOpening(): Promise<void> {
         reportError: async message => { errors.push(message); },
     });
 
-    assert.strictEqual(result, 'workspace/soc_top.ad');
+    assert.strictEqual(result, 'workspace/soc-top.ad');
     assert.deepStrictEqual(writes, [[
-        'workspace/soc_top.ad',
+        'workspace/soc-top.ad',
         createEmptyArchDesignText('soc_top'),
     ]]);
-    assert.deepStrictEqual(opened, ['workspace/soc_top.ad']);
+    assert.deepStrictEqual(opened, ['workspace/soc-top.ad']);
     assert.deepStrictEqual(events, ['write', 'open']);
     assert.deepStrictEqual(errors, []);
 }
@@ -49,10 +39,10 @@ async function testModuleCancellationIsANoOp(): Promise<void> {
     let openRequested = false;
 
     const result = await createArchDesign<string>({
-        requestModule: async () => undefined,
+        filename: target => target,
         requestTarget: async () => {
             targetRequested = true;
-            return 'unused.ad';
+            return undefined;
         },
         writeFile: async () => { writeRequested = true; },
         openEditor: async () => { openRequested = true; },
@@ -60,7 +50,7 @@ async function testModuleCancellationIsANoOp(): Promise<void> {
     });
 
     assert.strictEqual(result, undefined);
-    assert.strictEqual(targetRequested, false);
+    assert.strictEqual(targetRequested, true);
     assert.strictEqual(writeRequested, false);
     assert.strictEqual(openRequested, false);
 }
@@ -70,7 +60,7 @@ async function testTargetCancellationIsANoOp(): Promise<void> {
     let openRequested = false;
 
     const result = await createArchDesign<string>({
-        requestModule: async () => 'soc_top',
+        filename: target => target.split('/').pop()!,
         requestTarget: async () => undefined,
         writeFile: async () => { writeRequested = true; },
         openEditor: async () => { openRequested = true; },
@@ -87,8 +77,8 @@ async function testWriteFailureIsReportedWithoutOpening(): Promise<void> {
     let opened = false;
 
     const result = await createArchDesign<string>({
-        requestModule: async () => 'soc_top',
-        requestTarget: async () => 'workspace/soc_top.ad',
+        filename: target => target.split('/').pop()!,
+        requestTarget: async () => 'workspace/soc-top.ad',
         writeFile: async () => { throw new Error('write failed'); },
         openEditor: async () => { opened = true; },
         reportError: async message => { errors.push(message); },
@@ -103,8 +93,8 @@ async function testNonErrorFailureIsReported(): Promise<void> {
     const errors: string[] = [];
 
     await createArchDesign<string>({
-        requestModule: async () => 'soc_top',
-        requestTarget: async () => 'workspace/soc_top.ad',
+        filename: target => target.split('/').pop()!,
+        requestTarget: async () => 'workspace/soc-top.ad',
         writeFile: async () => { throw 'write failed'; },
         openEditor: async () => undefined,
         reportError: async message => { errors.push(message); },

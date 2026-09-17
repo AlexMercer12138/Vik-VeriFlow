@@ -776,7 +776,10 @@ test('shell exit 127 is a compile infrastructure failure with a cause', async ()
     try {
         const result = await new NativeSimulatorBackend('native:missing', {
             name: 'missing',
-            compileCmd: 'veriflow-command-that-does-not-exist-127',
+            // cmd.exe uses exit 1 for missing commands; inject the exit code on Windows.
+            compileCmd: process.platform === 'win32'
+                ? `${quote(process.execPath)} -e "process.exit(127)"`
+                : 'veriflow-command-that-does-not-exist-127',
             runCmd: 'unused',
         }).compileAndRun(normalizedRequest(root));
 
@@ -794,7 +797,10 @@ test('shell exit 126 is a run infrastructure failure with a cause', async () => 
     const nonExecutable = path.join(root, 'not-executable');
     writeFileSync(nonExecutable, '#!/bin/sh\nexit 0\n', { mode: 0o644 });
     const simulator = simulatorConfig(capturePath);
-    simulator.runCmd = quote(nonExecutable);
+    // Windows has no POSIX executable permission bit or corresponding shell exit 126.
+    simulator.runCmd = process.platform === 'win32'
+        ? `${quote(process.execPath)} -e "process.exit(126)"`
+        : quote(nonExecutable);
     try {
         const result = await new NativeSimulatorBackend(
             'native:not-executable',

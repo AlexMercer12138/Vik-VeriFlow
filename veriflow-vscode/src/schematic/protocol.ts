@@ -1,3 +1,5 @@
+import type { SimulationTaskDocument } from '@veriflow/hdl-runtime/simulationTask';
+import { validateProtocolPreset } from '@veriflow/hdl-runtime/simulationTask/protocolPresets';
 import {
     MAX_SCHEMATIC_PLACEMENT_OFFSET,
     type SchematicGraph,
@@ -28,6 +30,26 @@ import {
 /** Bounds source-map work while accommodating deeply composed include expansions. */
 const MAX_COMPOSITE_PARTS = 5_000;
 
+/** Capabilities are enforced by each host adapter as well as the shared UI. */
+export type SchematicCapabilities = Readonly<{
+    addPort?: boolean;
+    exportRtl?: boolean;
+    run?: boolean;
+}>;
+export type SimulationTaskAction = 'addPreset' | 'updatePreset' | 'updateTaskSettings'
+    | 'generateTestbench' | 'run' | 'cancel' | 'openWave';
+export type SchematicEditorProjection = Omit<Extract<HostEvent,
+    { type: 'archDesignState'; status: 'editable' }>, 'type' | 'status' | 'revision'>;
+export type SimulationTaskViewState = Readonly<{
+    document: SimulationTaskDocument;
+    version: number;
+    execution: Readonly<{
+        status: 'idle' | 'running' | 'completed' | 'failed' | 'stopped';
+        canOpenWave: boolean;
+        error?: string;
+    }>;
+}>;
+
 export type WebviewCommand =
     | { type: 'ready' }
     | { type: 'selectModule'; moduleKey: string }
@@ -41,16 +63,21 @@ export type WebviewCommand =
     | { type: 'openDefinition'; definitionKey: string }
     | { type: 'search'; query: string }
     | { type: 'relayoutAll'; moduleKey: string; revision: string }
+    | { type: 'editSchematic'; revision: string; edit: ArchDesignEdit }
+    | { type: 'simulationTaskCommand'; revision: string; command: SimulationTaskAction; payload?: unknown }
     | { type: 'editArchDesign'; revision: string; edit: ArchDesignEdit }
     | { type: 'exportArchDesign'; revision: string };
 
 export type HostEvent =
+    | { type: 'simulationTaskState'; revision: string; projection: SchematicEditorProjection; task: SimulationTaskViewState }
+
     | {
         type: 'initialize';
         fileUri: string;
         modules: Array<{ key: string; name: string }>;
         selectedModuleKey: string;
-        documentKind?: 'hdl' | 'arch-design';
+        documentKind?: 'hdl' | 'arch-design' | 'simulation-task';
+        capabilities?: SchematicCapabilities;
         editable?: boolean;
     }
     | {
@@ -60,7 +87,7 @@ export type HostEvent =
         layout: SchematicLayout;
         fitOnFirstRender?: boolean;
     }
-    | { type: 'diagnostics'; errors: number; warnings: number }
+    | { type: 'diagnostics'; errors: number; warnings: number; details?: SchematicGraph['diagnostics'] }
     | { type: 'hostError'; message: string }
     | { type: 'archDesignLayoutSaved'; revision: string }
     | { type: 'archDesignRevisionChanged'; revision: string }
@@ -123,6 +150,45 @@ function ownValue(value: Record<string, unknown>, key: string): unknown {
     return Object.prototype.propertyIsEnumerable.call(value, key)
         ? value[key]
         : undefined;
+}
+
+function onlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+    return Object.keys(value).every(key => keys.includes(key));
+}
+
+function finiteNumber(value: unknown, positive = false): value is number {
+    return typeof value === 'number' && Number.isFinite(value) && (positive ? value > 0 : value >= 0);
+}
+
+function validSimulationPreset(value: unknown): boolean {
+    if (!isRecord(value)) return false;
+    if (value.kind === 'protocol') return validateProtocolPreset(value).length === 0;
+    if (value.kind === 'clock') return onlyKeys(value, ['kind', 'frequencyMHz', 'initial'])
+        && finiteNumber(value.frequencyMHz, true) && (value.initial === 0 || value.initial === 1);
+    if (value.kind === 'reset') return onlyKeys(value, ['kind', 'active', 'duration'])
+        && finiteNumber(value.duration) && (value.active === 0 || value.active === 1);
+    if (value.kind !== 'stimulus' || !onlyKeys(value, ['kind', 'width', 'initial', 'transitions'])
+        || !Number.isSafeInteger(value.width) || !finiteNumber(value.width, true)
+        || !nonEmptyString(value.initial) || !Array.isArray(value.transitions)
+        || value.transitions.length > MAX_AD_DICTIONARY_ENTRIES) return false;
+    let previous = -1;
+    return value.transitions.every(row => {
+        if (!isRecord(row) || !onlyKeys(row, ['at', 'value']) || !finiteNumber(row.at)
+            || row.at <= previous || !nonEmptyString(row.value)) return false;
+        previous = row.at;
+        return true;
+    });
+}
+
+function validSimulationSettings(value: unknown): boolean {
+    if (!isRecord(value) || !onlyKeys(value, ['timeUnit', 'timePrecision', 'duration', 'waveform', 'exportPath'])) return false;
+    const timeScale = /^(1|10|100)(s|ms|us|ns|ps|fs)$/;
+    return typeof value.timeUnit === 'string' && timeScale.test(value.timeUnit)
+        && typeof value.timePrecision === 'string' && timeScale.test(value.timePrecision)
+        && finiteNumber(value.duration, true)
+        && isRecord(value.waveform) && onlyKeys(value.waveform, ['enabled', 'filename'])
+        && typeof value.waveform.enabled === 'boolean' && nonEmptyString(value.waveform.filename)
+        && (value.exportPath === undefined || nonEmptyString(value.exportPath));
 }
 
 function sourceOffset(value: unknown): value is number {
@@ -209,13 +275,17 @@ function normalizePort(value: unknown): ArchDesignPort | undefined {
     if (!isRecord(value)) return undefined;
     const name = ownValue(value, 'name');
     const direction = ownValue(value, 'direction');
+    const inoutMode = ownValue(value, 'inoutMode');
     const width = normalizeWidth(ownValue(value, 'width'));
     if (!identifier(name)
         || (direction !== 'input' && direction !== 'output' && direction !== 'inout')
+        || (inoutMode !== undefined && (direction !== 'inout'
+            || (inoutMode !== 'direct' && inoutMode !== 'tristate')))
         || width === false) return undefined;
     return {
         name,
         direction,
+        ...(inoutMode === undefined ? {} : { inoutMode }),
         ...(width === undefined ? {} : { width }),
     };
 }
@@ -760,12 +830,31 @@ export function parseWebviewCommand(value: unknown): WebviewCommand | undefined 
                     ? { type: 'relayoutAll', moduleKey, revision }
                     : undefined;
             }
+            case 'editSchematic':
             case 'editArchDesign': {
                 const revision = ownValue(value, 'revision');
                 const edit = normalizeArchDesignEdit(ownValue(value, 'edit'));
                 return nonEmptyString(revision) && edit
-                    ? { type: 'editArchDesign', revision, edit }
+                    ? { type, revision, edit }
                     : undefined;
+            }
+            case 'simulationTaskCommand': {
+                const revision = ownValue(value, 'revision');
+                const command = ownValue(value, 'command');
+                const actions: readonly string[] = ['addPreset', 'updatePreset', 'updateTaskSettings',
+                    'generateTestbench', 'run', 'cancel', 'openWave'];
+                const payload = ownValue(value, 'payload');
+                if (!nonEmptyString(revision) || typeof command !== 'string' || !actions.includes(command)) return undefined;
+                if (command === 'addPreset' || command === 'updatePreset') {
+                    if (!isRecord(payload) || !identifier(ownValue(payload, 'id'))
+                        || !validSimulationPreset(ownValue(payload, 'preset'))
+                        || !onlyKeys(payload, ['id', 'preset'])) return undefined;
+                } else if (command === 'updateTaskSettings') {
+                    if (!isRecord(payload) || !onlyKeys(payload, ['settings'])
+                        || !validSimulationSettings(ownValue(payload, 'settings'))) return undefined;
+                } else if (payload !== undefined) return undefined;
+                return { type, revision, command: command as SimulationTaskAction,
+                    ...(payload === undefined ? {} : { payload }) };
             }
             case 'exportArchDesign': {
                 const revision = ownValue(value, 'revision');

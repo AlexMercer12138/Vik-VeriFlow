@@ -27,6 +27,26 @@ export type SchematicWebviewResources = {
     nonce: string;
 };
 
+/** Connections join networks, so two loads may be connected without adding a driver. */
+export function canConnectScalarPins(
+    graph: SchematicGraph,
+    first: GraphPin,
+    second: GraphPin
+): boolean {
+    if (first.id === second.id) return false;
+    const drivers = new Set<string>();
+    for (const pin of [first, second]) {
+        if (pin.direction === 'driver') drivers.add(pin.id);
+        for (const network of graph.networks) {
+            if (!network.endpoints.some(endpoint => endpoint.pinId === pin.id)) continue;
+            for (const endpoint of network.endpoints) {
+                if (endpoint.role === 'driver') drivers.add(endpoint.pinId);
+            }
+        }
+    }
+    return drivers.size <= 1;
+}
+
 function escapeHtmlAttribute(value: string): string {
     return value
         .replace(/&/g, '&amp;')
@@ -726,7 +746,9 @@ function projectLogicInspector(
 
 function portDefaultKeys(port: ArchDesignPort): string[] {
     if (port.direction === 'output') return [`${port.name}.value`];
-    if (port.direction === 'inout') return [`${port.name}.o`, `${port.name}.t`];
+    if (port.direction === 'inout' && port.inoutMode !== 'direct') {
+        return [`${port.name}.o`, `${port.name}.t`];
+    }
     return [];
 }
 
@@ -758,13 +780,16 @@ function projectPortInspector(
     const port = snapshot.design.ports.find(candidate => candidate.name === name);
     if (!port) return undefined;
     const updatedPort = (
-        next: Partial<Pick<ArchDesignPort, 'name' | 'direction' | 'width'>>
+        next: Partial<Pick<ArchDesignPort, 'name' | 'direction' | 'width' | 'inoutMode'>>
     ): ArchDesignEdit => ({
         type: 'updatePort',
         name: port.name,
         port: {
             name: next.name ?? port.name,
             direction: next.direction ?? port.direction,
+            ...((next.direction ?? port.direction) === 'inout'
+                && (next.inoutMode ?? port.inoutMode) !== undefined
+                ? { inoutMode: next.inoutMode ?? port.inoutMode } : {}),
             ...(next.width === undefined
                 && !Object.prototype.hasOwnProperty.call(next, 'width')
                 ? (port.width === undefined ? {} : { width: port.width })
@@ -788,6 +813,25 @@ function projectPortInspector(
         textField('port-width', 'Width', displayedWidth(port.width), value =>
             updatedPort({ width: normalizedWidth(value) })),
     ];
+    if (port.direction === 'inout') {
+        const connected = snapshot.design.connections.some(connection =>
+            connection.endpoints.some(endpoint => endpoint.kind === 'port' && endpoint.port === port.name));
+        const mode = port.inoutMode ?? 'tristate';
+        fields.push(connected
+            ? readonlyField('port-inout-mode', 'Inout mode', mode)
+            : {
+                id: 'port-inout-mode', label: 'Inout mode', control: 'select', value: mode,
+                options: [{ value: 'direct', label: 'Direct (bidirectional)' },
+                    { value: 'tristate', label: 'Tri-state (i/o/t)' }],
+                commit: value => value === 'direct' || value === 'tristate'
+                    ? updatedPort({ inoutMode: value }) : undefined,
+            });
+        fields.push(readonlyField('port-inout-description', 'Connection', mode === 'direct'
+            ? 'Connect module inout pins directly. Use the top-level port name for the network.'
+            : 'i reads the pad; o drives its value; t = 1 releases it to high impedance.'));
+        if (connected) fields.push(readonlyField('port-inout-mode-help', 'Change mode',
+            'Disconnect this port before changing its inout mode.'));
+    }
     for (const key of portDefaultKeys(port)) {
         fields.push(textField(
             `default-${key}`,
@@ -960,6 +1004,7 @@ function projectPinAuthoringInspector(
     const port: ArchDesignPort = {
         name: pin.name,
         direction,
+        ...(direction === 'inout' ? { inoutMode: 'direct' as const } : {}),
         ...(width === undefined ? {} : { width }),
     };
     const fields: ArchDesignInspectorField[] = [
@@ -1417,7 +1462,9 @@ export function archDesignEndpointForPin(
     if (node.kind !== 'port') return undefined;
     const port = design.ports.find(candidate => candidate.name === node.label);
     if (!port) return undefined;
-    if (port.direction !== 'inout') return { kind: 'port', port: port.name };
+    if (port.direction !== 'inout' || port.inoutMode === 'direct') {
+        return { kind: 'port', port: port.name };
+    }
     const prefix = `${port.name}_`;
     const signal = pin.name.startsWith(prefix) ? pin.name.slice(prefix.length) : '';
     return signal === 'i' || signal === 'o' || signal === 't'

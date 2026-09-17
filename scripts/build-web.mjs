@@ -49,7 +49,7 @@ function buildWebDependencies() {
         ? process.execPath
         : process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const prefix = npmExecPath ? [npmExecPath] : [];
-    for (const workspace of ['@veriflow/hdl-core', '@veriflow/schematic-core']) {
+    for (const workspace of ['@veriflow/flow-core', '@veriflow/hdl-core', '@veriflow/schematic-core', '@veriflow/hdl-runtime']) {
         execFileSync(command, [
             ...prefix,
             'run',

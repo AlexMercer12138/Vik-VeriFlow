@@ -153,19 +153,22 @@ function snapshotPin(value: unknown, nodeId: string, pinIndex: number): GraphPin
     const id = record.id;
     const name = record.name;
     const direction = record.direction;
+    const side = record.side;
     const widthValue = record.width;
     const readOnly = record.readOnly;
     const interfaceValue = record.interface;
     const sourceSpanValue = record.sourceSpan;
     if (typeof id !== 'string' || typeof name !== 'string'
         || !PIN_DIRECTIONS.has(direction as PinDirection)
-        || typeof readOnly !== 'boolean') {
+        || typeof readOnly !== 'boolean'
+        || (side !== undefined && side !== 'left' && side !== 'right')) {
         throw new RangeError(`node ${nodeId} pin ${pinIndex} is invalid`);
     }
     return {
         id,
         name,
         direction: direction as PinDirection,
+        ...(side === undefined ? {} : { side }),
         width: snapshotWidth(widthValue, `node ${nodeId} pin ${id}`),
         readOnly,
         interface: snapshotPinInterface(interfaceValue, `node ${nodeId} pin ${id}`),

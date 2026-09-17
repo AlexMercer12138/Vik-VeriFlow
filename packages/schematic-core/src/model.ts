@@ -39,6 +39,7 @@ export type GraphPin = {
     id: string;
     name: string;
     direction: PinDirection;
+    side?: PinSide;
     width: WidthValue;
     readOnly: boolean;
     interface?: GraphInterfacePin;

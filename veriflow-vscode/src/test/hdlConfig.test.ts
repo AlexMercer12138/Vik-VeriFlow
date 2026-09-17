@@ -68,6 +68,7 @@ async function testExtensionLifecycle(): Promise<void> {
             registerCommand: () => disposable,
         },
         workspace: {
+            onDidChangeTextDocument: () => ({ dispose() {} }),
             onDidChangeConfiguration(
                 listener: (event: { affectsConfiguration(section: string): boolean }) => void
             ) {
@@ -129,27 +130,34 @@ async function testExtensionLifecycle(): Promise<void> {
         show(): void {},
     };
     const dependencyStubs: Record<string, unknown> = {
+        './testbench/templateCommands': { registerHdlTemplateCommands: () => disposable },
+        './workbench/traditionalTestbenchController': { TraditionalTestbenchController: class {
+            onDidChange = (_listener: () => void) => disposable;
+            items() { return []; } async runFromEditor() {} dispose() {}
+        } },
+        './workbench/moduleBrowserProvider': { ModuleBrowserProvider: class {
+            refresh() {} dispose() {} async openModule() {} async setFilter() {} async copyInstantiation() {}
+        } },
+        './workbench/designDocumentTree': { DesignDocumentTreeProvider: class { refresh() {} dispose() {} } },
+        './workbench/moduleTargets': { ModuleTargetService: class { async add() {} }, ActiveCanvasContext: class { dispose() {} }, getActiveCanvas: () => undefined },
+
         './hdlFormatting': { registerHdlFormatting: () => disposable },
         './config': configStub,
         './core': coreStub,
-        './moduleTreeProvider': {
-            ModuleTreeProvider: class {
+        './hdlAnalysisState': {
+            HdlAnalysisState: class {
+                onDidChange(_listener: () => void) { return disposable; }
                 setAnalyzeResult(): void {}
             },
         },
         './moduleInstantiationCommand': {
             showModuleInstantiationPicker: async () => undefined,
         },
-        './testbenchPanel': {
-            TestbenchPanelProvider: class {
-                static readonly viewType = 'veriflow.testbench';
-                setBeforeGenerate(): void {}
-                setOnVisible(): void {}
-                setOnGenerated(): void {}
-                refreshModules(): void {}
-                dispose(): void {}
-            },
-        },
+        './simulationTask/taskController': { SimulationTaskController: class {
+            onDidChange = (_listener: () => void) => disposable; simulationView = {}; resultsView = {}; editor = { dispose() {}, async addModules() {} };
+            refresh() {} dispose() {}
+        } },
+        './simulationTask/taskEditorProvider': { SimulationTaskEditorProvider: { viewType: 'veriflow.simulationTask' } },
         './waveformEditorProvider': {
             WaveformEditorProvider: class {
                 static readonly viewType = 'veriflow.waveformEditor';
@@ -180,12 +188,6 @@ async function testExtensionLifecycle(): Promise<void> {
                 static readonly viewType = 'veriflow.archDesignEditor';
                 async validate(): Promise<void> {}
                 async exportRtl(): Promise<void> {}
-            },
-        },
-        './archDesign/archDesignTreeProvider': {
-            ArchDesignTreeProvider: class {
-                refresh(): void {}
-                dispose(): void {}
             },
         },
         './output': outputStub,
@@ -282,6 +284,7 @@ async function main(): Promise<void> {
     let workerConstructions = 0;
     const vscodeStub = {
         workspace: {
+            onDidChangeTextDocument: () => ({ dispose() {} }),
             getConfiguration(section: string): { get<T>(key: string, fallback: T): T } {
                 assert.strictEqual(section, 'veriflow');
                 return {

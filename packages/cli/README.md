@@ -39,3 +39,33 @@ The bundled Icarus Verilog WebAssembly runtime is distributed under
 
 See the project repository for configuration and command documentation:
 https://github.com/AlexMercer12138/Vik-VeriFlow
+
+## Simulation Tasks
+
+One Simulation Task (`.st`) describes one graphical Testbench with HDL/AD
+sources, connections, parameter overrides and Clock/Reset/Stimulus presets:
+
+```bash
+veriflow task validate examples/simulation-task/basic.st
+veriflow task run examples/simulation-task/basic.st
+veriflow task run simulation.st --project project.json
+```
+
+`validate` resolves exact source references and generates the TB for validation
+without executing HDL. `run` invokes the selected backend once, explicitly
+selecting the generated TB top. Both use the same generator as the VS Code
+Generate Testbench action. Relative source paths are anchored at the `.st` file.
+
+The default backend is builtin. `--project` supplies the project's simulator,
+macro definitions, library directories and interface protocol configuration.
+A custom backend requires both compile and run commands in that project.
+
+Each invocation reads current inputs. Generated compilation files are temporary
+and removed after execution; a produced waveform remains at the temporary path
+printed by the command. The task and previously exported HDL are not rewritten.
+Simulation completion means the process completed successfully.
+
+Exit status is 0 for success, 1 for task/compile/run errors or cancellation, and
+2 for invalid command arguments. SIGINT cancels the active run. This interface
+has no case selection, scenario workers, compile cache or JSON/JUnit report
+options. Legacy task documents with cases/assets/verification are rejected.

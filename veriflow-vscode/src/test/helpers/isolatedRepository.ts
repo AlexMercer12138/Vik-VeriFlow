@@ -82,7 +82,7 @@ function shouldCopy(repositoryRoot: string, source: string): boolean {
     const relative = path.relative(repositoryRoot, source);
     if (!relative) return true;
     const segments = relative.split(path.sep);
-    if (segments.some(segment => ['.git', '.artifacts', 'node_modules'].includes(segment))) {
+    if (segments.some(segment => ['.git', '.artifacts', '.trash', '.worktrees', 'node_modules'].includes(segment))) {
         return false;
     }
     if (segments[0] === 'web-dist') {

@@ -1,3 +1,5 @@
+import { defaultSimulationPreset, projectSimulationTaskInspector, TransitionValidationError, type AuthoringInspectorModel } from './authoring/taskInspector';
+import type { SimulationTaskViewState } from '../../../veriflow-vscode/src/schematic/protocol';
 import {
     Graph,
     MiniMap,
@@ -14,6 +16,10 @@ import {
     Component,
     createElement,
     FileOutput,
+    Activity,
+    Play,
+    Square,
+    Waves,
     Map as MapIcon,
     Maximize2,
     PanelTopOpen,
@@ -60,6 +66,7 @@ import type { SchematicLayout } from '../../../veriflow-vscode/src/schematic/lay
 import type { HostEvent, WebviewCommand } from '../../../veriflow-vscode/src/schematic/protocol';
 import {
     archDesignEndpointForPin,
+    canConnectScalarPins,
     ARCH_DESIGN_LOGIC_OPERATION_OPTIONS,
     cloneSchematicLayout,
     DebouncedLayoutSaveScheduler,
@@ -168,6 +175,14 @@ const dom = {
     authoringActions: requiredElement<HTMLDivElement>('authoring-actions'),
     addInstanceButton: requiredElement<HTMLButtonElement>('add-instance-button'),
     addLogicButton: requiredElement<HTMLButtonElement>('add-logic-button'),
+    addSimulationButton: requiredElement<HTMLButtonElement>('add-simulation-button'),
+    runTaskButton: requiredElement<HTMLButtonElement>('run-task-button'),
+    waveTaskButton: requiredElement<HTMLButtonElement>('wave-task-button'),
+    taskStatus: requiredElement<HTMLSpanElement>('task-status'),
+    addSimulationDialog: requiredElement<HTMLDialogElement>('add-simulation-dialog'),
+    addSimulationForm: requiredElement<HTMLFormElement>('add-simulation-form'),
+    simulationKindSelect: requiredElement<HTMLSelectElement>('simulation-kind-select'),
+    simulationNameInput: requiredElement<HTMLInputElement>('simulation-name-input'),
     addPortButton: requiredElement<HTMLButtonElement>('add-port-button'),
     connectButton: requiredElement<HTMLButtonElement>('connect-button'),
     exportButton: requiredElement<HTMLButtonElement>('export-button'),
@@ -208,13 +223,18 @@ const dom = {
     addPortForm: requiredElement<HTMLFormElement>('add-port-form'),
     portNameInput: requiredElement<HTMLInputElement>('port-name-input'),
     portDirectionSelect: requiredElement<HTMLSelectElement>('port-direction-select'),
+    portInoutModeLabel: requiredElement<HTMLLabelElement>('port-inout-mode-label'),
+    portInoutModeSelect: requiredElement<HTMLSelectElement>('port-inout-mode-select'),
     portWidthInput: requiredElement<HTMLInputElement>('port-width-input'),
     errorCount: requiredElement<HTMLSpanElement>('error-count'),
-    warningCount: requiredElement<HTMLSpanElement>('warning-count'),
+    warningCount: requiredElement<HTMLButtonElement>('warning-count'),
+    diagnosticsDialog: requiredElement<HTMLDialogElement>('diagnostics-dialog'),
+    diagnosticsTitle: requiredElement<HTMLHeadingElement>('diagnostics-title'),
+    diagnosticsDetails: requiredElement<HTMLElement>('diagnostics-details'),
     selectionStatus: requiredElement<HTMLSpanElement>('selection-status'),
     diagnosticStatus: requiredElement<HTMLSpanElement>('diagnostic-status'),
 };
-const inspectorCommitters = new WeakMap<HTMLInputElement | HTMLSelectElement, () => void>();
+const inspectorCommitters = new WeakMap<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, () => void>();
 
 function requiredElement<T extends HTMLElement>(id: string): T {
     const element = document.getElementById(id);
@@ -359,6 +379,8 @@ function registerShapes(): void {
                     pointerEvents: 'none',
                 },
                 subtitle: {
+                    refX: 0,
+                    refY: 0,
                     x: 0,
                     y: SCHEMATIC_NODE_LAYOUT.labelHeight / 2,
                     fill: 'var(--schematic-muted-text)',
@@ -633,15 +655,7 @@ function createRenderedNode(
             subtitle: {
                 text: rendered.renderedSubtitle?.visibleText ?? '',
                 title: rendered.renderedSubtitle?.fullText ?? '',
-                cursor: model.kind === 'instance' && model.definitionKey
-                    ? 'pointer'
-                    : 'default',
-                textDecoration: model.kind === 'instance' && model.definitionKey
-                    ? 'underline'
-                    : 'none',
-                event: model.kind === 'instance' && model.definitionKey
-                    ? 'node:open-definition'
-                    : undefined,
+                pointerEvents: 'none',
             },
         },
         ports: {
@@ -853,11 +867,16 @@ type EditableArchDesignState = Extract<
     HostEvent,
     { type: 'archDesignState'; status: 'editable' }
 >;
+let simulationTaskDocument = false;
+let currentTaskState: SimulationTaskViewState | undefined;
+let pendingAddedNodeId: string | undefined;
+let simulationNameAutomatic = true;
+let capabilities: import('../../../veriflow-vscode/src/schematic/protocol').SchematicCapabilities = {};
 let archDesignDocument = false;
 let archDesignEditable = false;
 let authoringPending = false;
 let currentArchDesignState: EditableArchDesignState | undefined;
-let currentArchDesignInspector: ArchDesignInspectorModel | undefined;
+let currentArchDesignInspector: AuthoringInspectorModel | undefined;
 let instanceNameAutomatic = true;
 let logicNameAutomatic = true;
 const autoFittedModules = new Set<string>();
@@ -868,7 +887,8 @@ let queuedArchDesignLayoutSave: Readonly<{
 }> | undefined;
 type QueuedArchDesignCommand =
     | Readonly<{ type: 'edit'; edit: ArchDesignEdit }>
-    | Readonly<{ type: 'export' }>;
+    | Readonly<{ type: 'export' }>
+    | Readonly<{ type: 'task'; command: import('../../../veriflow-vscode/src/schematic/protocol').SimulationTaskAction; payload?: unknown }>;
 let queuedArchDesignCommand: QueuedArchDesignCommand | undefined;
 let archDesignSemanticEditInFlight = false;
 let unloadLayoutForwarded = false;
@@ -977,12 +997,9 @@ function normalizeConnectionTerminals(
         return undefined;
     }
     if (second.kind !== 'scalar') return undefined;
-    const canSource = (terminal: ScalarConnectionTerminal): boolean =>
-        terminal.pin.direction === 'driver' || terminal.pin.direction === 'bidirectional';
-    const canTarget = (terminal: ScalarConnectionTerminal): boolean =>
-        terminal.pin.direction === 'load' || terminal.pin.direction === 'bidirectional';
-    if (canSource(first) && canTarget(second)) return { source: first, target: second };
-    if (canSource(second) && canTarget(first)) return { source: second, target: first };
+    if (currentGraph && canConnectScalarPins(currentGraph, first.pin, second.pin)) {
+        return { source: first, target: second };
+    }
     return undefined;
 }
 
@@ -1110,7 +1127,19 @@ function refreshConnectionMagnets(): void {
 }
 
 function post(message: WebviewCommand): void {
-    vscode.postMessage(message);
+    vscode.postMessage(simulationTaskDocument && message.type === 'editArchDesign'
+        ? { ...message, type: 'editSchematic' } : message);
+}
+
+function sendTaskCommand(command: import('../../../veriflow-vscode/src/schematic/protocol').SimulationTaskAction, payload?: unknown): void {
+    if (!simulationTaskDocument || !currentRevision) return;
+    if (command === 'cancel') { post({ type: 'simulationTaskCommand', revision: currentRevision, command, payload }); return; }
+    if (authoringPending || queuedArchDesignCommand) return;
+    authoringPending = true;
+    queuedArchDesignCommand = { type: 'task', command, payload };
+    setAuthoringControls();
+    flushLayoutSaves();
+    drainArchDesignWrites();
 }
 
 const layoutSaveScheduler = new DebouncedLayoutSaveScheduler(
@@ -1188,6 +1217,16 @@ function setGraphControls(enabled: boolean): void {
     dom.searchButton.disabled = !enabled;
 }
 
+let diagnosticDetails: SchematicGraph['diagnostics'] = [];
+let diagnosticFilter: 'error' | 'warning' = 'warning';
+
+function renderDiagnosticDetails(): void {
+    const items = diagnosticDetails.filter(item => item.severity === diagnosticFilter);
+    dom.diagnosticsTitle.textContent = diagnosticFilter === 'error' ? 'Errors' : 'Warnings';
+    dom.diagnosticsDetails.textContent = formatSchematicDiagnosticDetails(items)
+        || (diagnosticFilter === 'error' ? 'No errors.' : 'No warnings.');
+}
+
 function updateDiagnostics(
     nextErrors: number,
     nextWarnings: number,
@@ -1201,7 +1240,9 @@ function updateDiagnostics(
         + `${warnings} warning${warnings === 1 ? '' : 's'}`;
     dom.diagnosticStatus.textContent = countText;
     if (diagnostics !== undefined) {
+        diagnosticDetails = diagnostics;
         dom.diagnosticStatus.title = formatSchematicDiagnosticDetails(diagnostics);
+        renderDiagnosticDetails();
     }
     const detailText = dom.diagnosticStatus.title;
     dom.diagnosticStatus.setAttribute(
@@ -1364,15 +1405,40 @@ function setAuthoringControls(): void {
     dom.addInstanceButton.disabled = disabled || hasModules === 0;
     dom.addInstanceSubmit.disabled = disabled || dom.instanceModuleSelect.options.length === 0;
     dom.addLogicButton.disabled = disabled;
-    dom.addPortButton.disabled = disabled;
+    dom.addPortButton.hidden = capabilities.addPort === false || simulationTaskDocument;
+    dom.addPortButton.disabled = disabled || dom.addPortButton.hidden;
     dom.connectButton.disabled = disabled || !currentGraph;
-    dom.exportButton.disabled = disabled;
+    dom.exportButton.hidden = !simulationTaskDocument && capabilities.exportRtl === false;
+    const exportLabel = simulationTaskDocument ? 'Generate Testbench' : 'Export RTL';
+    dom.exportButton.title = exportLabel;
+    dom.exportButton.setAttribute('aria-label', exportLabel);
+    dom.addSimulationButton.hidden = !simulationTaskDocument;
+    dom.addSimulationButton.disabled = disabled;
+    dom.runTaskButton.hidden = !simulationTaskDocument;
+    dom.waveTaskButton.hidden = !simulationTaskDocument;
+    const running = currentTaskState?.execution.status === 'running';
+    const runLabel = running ? 'Stop simulation' : 'Run simulation';
+    dom.runTaskButton.title = runLabel;
+    dom.runTaskButton.setAttribute('aria-label', runLabel);
+    installIcon(dom.runTaskButton, running ? Square : Play);
+    dom.runTaskButton.disabled = running ? false : disabled;
+    dom.waveTaskButton.disabled = disabled || currentTaskState?.execution.canOpenWave !== true;
+    dom.waveTaskButton.title = currentTaskState?.execution.canOpenWave ? 'Open waveform'
+        : currentTaskState?.document.settings.waveform.enabled === false ? 'Waveform generation is disabled'
+        : 'Run simulation to generate a current waveform';
+    dom.taskStatus.hidden = !simulationTaskDocument;
+    const status = currentTaskState?.execution.status ?? 'idle';
+    dom.taskStatus.textContent = ({ idle: 'Not run', running: 'Running', completed: 'Completed', failed: 'Failed', stopped: 'Stopped' })[status];
+    dom.taskStatus.title = currentTaskState?.execution.error ?? '';
+    dom.inspectorForm.setAttribute('aria-label', simulationTaskDocument ? 'Simulation Task properties' : 'Arch Design properties');
+    dom.exportButton.disabled = disabled || dom.exportButton.hidden;
     dom.deleteButton.disabled = disabled || currentArchDesignInspector?.deleteEdit === undefined;
-    dom.inspectorForm.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
-        'input, select'
+    dom.inspectorForm.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+        'input, select, textarea'
     ).forEach(control => {
         control.disabled = disabled || control.dataset.readonly === 'true';
     });
+    dom.inspectorForm.querySelectorAll<HTMLButtonElement>('.transition-action').forEach(button => { button.disabled = disabled; });
     dom.inspectorForm.querySelectorAll<HTMLButtonElement>('.inspector-action').forEach(button => {
         button.disabled = disabled || button.dataset.actionAvailable !== 'true';
     });
@@ -1454,6 +1520,11 @@ function drainArchDesignWrites(): void {
     const command = queuedArchDesignCommand;
     if (!command) return;
     queuedArchDesignCommand = undefined;
+    if (command.type === 'task') {
+        archDesignSemanticEditInFlight = true;
+        post({ type: 'simulationTaskCommand', revision: currentRevision, command: command.command, payload: command.payload });
+        return;
+    }
     if (command.type === 'edit') {
         archDesignSemanticEditInFlight = true;
         post({
@@ -1468,12 +1539,16 @@ function drainArchDesignWrites(): void {
     setAuthoringControls();
 }
 
-function renderArchDesignInspector(model: ArchDesignInspectorModel): void {
+function renderArchDesignInspector(baseModel: ArchDesignInspectorModel): void {
+    let model: AuthoringInspectorModel = simulationTaskDocument && currentTaskState && currentArchDesignState
+        ? projectSimulationTaskInspector(currentTaskState.document, currentArchDesignState.design.module, baseModel)
+        : baseModel;
+    if (simulationTaskDocument && model.actions) model = { ...model, actions: model.actions.filter(action => action.id !== 'expose-port') };
     currentArchDesignInspector = model;
     dom.inspector.dataset.kind = model.kind;
     dom.inspector.dataset.readOnly = 'false';
     dom.inspectorTitle.textContent = model.title;
-    dom.inspectorMode.textContent = authoringPending ? 'Applying change' : 'Arch Design';
+    dom.inspectorMode.textContent = authoringPending ? 'Applying change' : simulationTaskDocument ? 'Simulation Task' : 'Arch Design';
     dom.inspectorProperties.hidden = true;
     dom.inspectorForm.hidden = false;
     const fields = document.createDocumentFragment();
@@ -1510,11 +1585,19 @@ function renderArchDesignInspector(model: ArchDesignInspectorModel): void {
                 control.value = field.value;
             }
             const commit = (): void => {
-                const edit = field.commit?.(control.value);
-                if (edit) postArchDesignEdit(edit);
+                try {
+                    const edit = field.commit?.(control.value);
+                    control.setCustomValidity('');
+                    if (edit?.type === 'task') sendTaskCommand(edit.command, edit.payload);
+                    else if (edit) postArchDesignEdit(edit);
+                } catch (error) {
+                    control.setCustomValidity(error instanceof Error ? error.message : String(error));
+                    control.reportValidity();
+                }
             };
             inspectorCommitters.set(control, commit);
             control.addEventListener('change', commit);
+            control.addEventListener('input', () => control.setCustomValidity(''));
             wrapper.append(label, control);
         }
         fields.append(wrapper);
@@ -1547,8 +1630,269 @@ function renderArchDesignInspector(model: ArchDesignInspectorModel): void {
         }
         fields.append(actions);
     }
+    if (model.transitions) fields.append(renderTransitionTable(model.transitions));
+    for (const table of model.valueTables ?? []) fields.append(renderPresetValueTable(table));
+    if (model.transactions) fields.append(renderTransactionTable(model.transactions));
     dom.inspectorForm.replaceChildren(fields);
+    if (simulationTaskDocument && currentTaskState?.execution.error) showInspectorError(currentTaskState.execution.error);
     setAuthoringControls();
+}
+
+function showInspectorError(message: string): void {
+    let error = dom.inspectorForm.querySelector<HTMLParagraphElement>('.inspector-error');
+    if (!error) {
+        error = document.createElement('p');
+        error.className = 'inspector-error';
+        error.setAttribute('role', 'alert');
+        dom.inspectorForm.append(error);
+    }
+    error.textContent = message;
+}
+
+function renderTransitionTable(model: NonNullable<AuthoringInspectorModel['transitions']>): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'inspector-field';
+    const title = document.createElement('label');
+    title.textContent = `Transitions (${currentTaskState?.document.settings.timeUnit ?? ''})`;
+    const table = document.createElement('table');
+    table.className = 'transition-table';
+    table.setAttribute('aria-label', 'Stimulus transitions');
+    const head = table.createTHead().insertRow();
+    for (const label of ['Time', 'Value', '']) {
+        const cell = document.createElement('th');
+        cell.textContent = label;
+        cell.scope = 'col';
+        head.append(cell);
+    }
+    const body = table.createTBody();
+    const commit = (control?: HTMLInputElement): void => {
+        const inputs = Array.from(body.querySelectorAll<HTMLInputElement>('input'));
+        // Validation covers the whole table; discard errors from earlier drafts.
+        inputs.forEach(input => input.setCustomValidity(''));
+        // An added row stays a draft until both cells have been entered.
+        if (inputs.some(input => !input.value.trim())) return;
+        try {
+            const command = model.commit(Array.from(body.rows).map(row => ({
+                at: Number(row.querySelector<HTMLInputElement>('[data-transition-time]')!.value),
+                value: row.querySelector<HTMLInputElement>('[data-transition-value]')!.value,
+            })));
+            sendTaskCommand(command.command, command.payload);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const invalid = error instanceof TransitionValidationError
+                ? body.rows[error.rowIndex]?.querySelector<HTMLInputElement>(`[data-transition-${error.field}]`)
+                : control;
+            invalid?.setCustomValidity(message);
+            invalid?.reportValidity();
+            showInspectorError(message);
+        }
+    };
+    const appendRow = (at: string, value: string): void => {
+        const row = body.insertRow();
+        const index = body.rows.length;
+        for (const [key, initial] of [['time', at], ['value', value]] as const) {
+            const input = document.createElement('input');
+            input.type = key === 'time' ? 'number' : 'text';
+            if (key === 'time') { input.min = '0'; input.step = 'any'; }
+            input.value = initial;
+            input.setAttribute(`data-transition-${key}`, '');
+            input.setAttribute('aria-label', `Transition ${index} ${key}`);
+            input.autocomplete = 'off';
+            input.spellcheck = false;
+            inspectorCommitters.set(input, () => commit(input));
+            input.addEventListener('change', () => commit(input));
+            input.addEventListener('input', () => input.setCustomValidity(''));
+            row.insertCell().append(input);
+        }
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'icon-button transition-action transition-delete';
+        remove.title = `Delete transition ${index}`;
+        remove.setAttribute('aria-label', remove.title);
+        remove.append(createElement(Trash2, { width: 14, height: 14, 'aria-hidden': 'true' }));
+        remove.addEventListener('click', () => { row.remove(); commit(); });
+        row.insertCell().append(remove);
+    };
+    for (const row of model.rows) appendRow(String(row.at), row.value);
+    const add = document.createElement('button');
+    add.id = 'add-transition';
+    add.type = 'button';
+    add.className = 'inspector-action transition-action';
+    add.dataset.actionAvailable = 'true';
+    add.textContent = 'Add transition';
+    add.addEventListener('click', () => {
+        appendRow('', '');
+        body.lastElementChild?.querySelector('input')?.focus();
+    });
+    wrapper.append(title, table, add);
+    return wrapper;
+}
+
+function renderPresetValueTable(model: NonNullable<AuthoringInspectorModel['valueTables']>[number]): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'inspector-field';
+    const title = document.createElement('label');
+    title.textContent = model.label;
+    const table = document.createElement('table');
+    table.className = 'transition-table preset-value-table';
+    table.setAttribute('aria-label', model.label);
+    const head = table.createTHead().insertRow();
+    for (const label of ['#', 'Value', '']) {
+        const cell = document.createElement('th');
+        cell.textContent = label;
+        cell.scope = 'col';
+        head.append(cell);
+    }
+    const body = table.createTBody();
+    const commit = (control?: HTMLInputElement): void => {
+        const inputs = Array.from(body.querySelectorAll<HTMLInputElement>('input'));
+        if (inputs.some(input => !input.value.trim())) return;
+        try {
+            const command = model.commit(inputs.map(input => input.value));
+            control?.setCustomValidity('');
+            sendTaskCommand(command.command, command.payload);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            control?.setCustomValidity(message);
+            control?.reportValidity();
+            showInspectorError(message);
+        }
+    };
+    const appendRow = (value: string): void => {
+        const row = body.insertRow();
+        const index = body.rows.length;
+        row.insertCell().textContent = String(index);
+        const input = document.createElement('input');
+        input.value = value;
+        input.placeholder = model.placeholder;
+        input.setAttribute('aria-label', `${model.label} ${index} value`);
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        inspectorCommitters.set(input, () => commit(input));
+        input.addEventListener('change', () => commit(input));
+        input.addEventListener('input', () => input.setCustomValidity(''));
+        row.insertCell().append(input);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'icon-button transition-action transition-delete';
+        remove.title = `Delete ${model.label.toLowerCase()} ${index}`;
+        remove.setAttribute('aria-label', remove.title);
+        remove.append(createElement(Trash2, { width: 14, height: 14, 'aria-hidden': 'true' }));
+        remove.addEventListener('click', () => { row.remove(); commit(); });
+        row.insertCell().append(remove);
+    };
+    for (const value of model.rows) appendRow(value);
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'inspector-action transition-action';
+    add.dataset.actionAvailable = 'true';
+    add.textContent = `Add ${model.label.toLowerCase().replace(/s$/, '')}`;
+    add.addEventListener('click', () => { appendRow(''); body.lastElementChild?.querySelector('input')?.focus(); });
+    wrapper.append(title, table, add);
+    return wrapper;
+}
+
+function renderTransactionTable(model: NonNullable<AuthoringInspectorModel['transactions']>): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'inspector-field';
+    const title = document.createElement('label');
+    title.textContent = 'Transactions';
+    const list = document.createElement('div');
+    list.className = 'transaction-list';
+    list.setAttribute('role', 'list');
+    list.setAttribute('aria-label', 'Bus transactions');
+    const rows = model.rows.map(row => ({ ...row, data: [...row.data], ...(row.expected ? { expected: [...row.expected] } : {}) }));
+    const submit = (control?: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): void => {
+        try {
+            const command = model.commit(rows);
+            control?.setCustomValidity('');
+            sendTaskCommand(command.command, command.payload);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            control?.setCustomValidity(message);
+            control?.reportValidity();
+            showInspectorError(message);
+        }
+    };
+    rows.forEach((row, index) => {
+        const item = document.createElement('div');
+        item.className = 'transaction-row';
+        item.setAttribute('role', 'listitem');
+        const heading = document.createElement('div');
+        heading.className = 'transaction-heading';
+        const count = document.createElement('span');
+        count.textContent = `#${index + 1}`;
+        const operation = document.createElement('select');
+        operation.setAttribute('aria-label', `Transaction ${index + 1} operation`);
+        for (const [value, label] of [['write', 'Write'], ['read', 'Read']]) {
+            const option = document.createElement('option');
+            option.value = value; option.textContent = label; operation.append(option);
+        }
+        operation.value = row.operation;
+        const payloadKey = (): 'data' | 'expected' => (model.role === 'initiator') === (row.operation === 'write') ? 'data' : 'expected';
+        operation.addEventListener('change', () => {
+            const previous = row[payloadKey()] ?? [];
+            row.operation = operation.value === 'read' ? 'read' : 'write';
+            row.data = []; delete row.expected;
+            row[payloadKey()] = previous;
+            submit(operation);
+        });
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.className = 'icon-button transition-action transition-delete';
+        remove.title = `Delete transaction ${index + 1}`; remove.setAttribute('aria-label', remove.title);
+        remove.append(createElement(Trash2, { width: 14, height: 14, 'aria-hidden': 'true' }));
+        remove.addEventListener('click', () => { rows.splice(index, 1); submit(); });
+        heading.append(count, operation, remove);
+        const addressLabel = document.createElement('label');
+        addressLabel.textContent = 'Address';
+        const address = document.createElement('input');
+        address.setAttribute('aria-label', `Transaction ${index + 1} address`);
+        address.value = row.address; address.placeholder = "32'h00000000";
+        address.autocomplete = 'off'; address.spellcheck = false;
+        const commitAddress = (): void => { row.address = address.value.trim(); submit(address); };
+        address.addEventListener('change', commitAddress);
+        address.addEventListener('input', () => address.setCustomValidity(''));
+        inspectorCommitters.set(address, commitAddress);
+        addressLabel.append(address);
+        const valueLabel = document.createElement('label');
+        valueLabel.textContent = payloadKey() === 'data'
+            ? row.operation === 'write' ? 'Write data' : 'Read response'
+            : row.operation === 'write' ? 'Expected write data' : 'Expected read data';
+        const value = model.burst ? document.createElement('textarea') : document.createElement('input');
+        value.setAttribute('aria-label', `Transaction ${index + 1} values`);
+        value.value = (row[payloadKey()] ?? []).join('\n');
+        value.placeholder = model.burst ? "32'h12345678\n32'habcdef00" : "32'h12345678";
+        value.spellcheck = false;
+        if (value instanceof HTMLTextAreaElement) { value.rows = 3; value.title = 'One data beat per line'; }
+        const commitValue = (): void => {
+            row[payloadKey()] = value.value.trim() ? value.value.split(/\r?\n/).map(text => text.trim()) : [];
+            submit(value);
+        };
+        value.addEventListener('change', commitValue);
+        value.addEventListener('input', () => value.setCustomValidity(''));
+        inspectorCommitters.set(value, commitValue);
+        if (value instanceof HTMLTextAreaElement) value.addEventListener('keydown', event => {
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); commitValue(); }
+        });
+        valueLabel.append(value);
+        item.append(heading, addressLabel, valueLabel);
+        if (model.burst) {
+            const hint = document.createElement('small');
+            hint.textContent = 'One beat per line. Ctrl+Enter to apply.';
+            item.append(hint);
+        }
+        list.append(item);
+    });
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'inspector-action transition-action';
+    add.dataset.actionAvailable = 'true'; add.textContent = 'Add transaction';
+    add.addEventListener('click', () => {
+        rows.push({ operation: 'write', address: '0', data: model.role === 'initiator' ? ['0'] : [],
+            ...(model.role === 'initiator' ? {} : { expected: ['0'] }) });
+        submit();
+    });
+    wrapper.append(title, list, add);
+    return wrapper;
 }
 
 function selectedNodeIds(cells: readonly Cell[]): string[] {
@@ -1626,11 +1970,51 @@ function updateViewportFromGraph(): void {
     }
 }
 
+// X6's non-scroller MiniMap fits only the cells, which can put the entire
+// viewport border outside a small graph's overview. Its navigation also retains
+// the pre-fit ratio. Fit cells plus the visible canvas and use that actual scale.
+class SchematicMiniMap extends MiniMap {
+    private sourceScale = 1;
+
+    protected override updatePaper(width: number, height: number): this;
+    protected override updatePaper(size: { width: number; height: number }): this;
+    protected override updatePaper(
+        _width: number | { width: number; height: number },
+        _height?: number
+    ): this {
+        this.targetGraph.resize(
+            this.options.width - 2 * this.options.padding,
+            this.options.height - 2 * this.options.padding
+        );
+        this.fitOverview();
+        return this;
+    }
+
+    protected override onModelUpdated(): void {
+        this.fitOverview();
+    }
+
+    protected override onTransform(): void {
+        const scale = this.sourceGraph.zoom();
+        if (scale < this.sourceScale) this.fitOverview();
+        this.sourceScale = scale;
+        this.updateViewport();
+    }
+
+    private fitOverview(): void {
+        const area = this.sourceGraph.getContentArea().union(this.sourceGraph.getGraphArea());
+        this.targetGraph.zoomToRect(area, { padding: 4, maxScale: 1 });
+        this.ratio = this.targetGraph.zoom();
+        this.sourceScale = this.sourceGraph.zoom();
+        this.updateViewport();
+    }
+}
+
 function setMinimapVisibility(): void {
     const wanted = currentLayout?.minimap === true && minimapAvailable;
     if (wanted && !minimapPlugin) {
         dom.minimap.hidden = false;
-        minimapPlugin = new MiniMap({
+        minimapPlugin = new SchematicMiniMap({
             container: dom.minimap,
             width: 180,
             height: 120,
@@ -2021,7 +2405,10 @@ function initialize(event: Extract<HostEvent, { type: 'initialize' }>): void {
         dom.moduleSelector.append(option);
     }
     selectedModuleKey = event.selectedModuleKey;
-    const nextArchDesignDocument = event.documentKind === 'arch-design';
+    simulationTaskDocument = event.documentKind === 'simulation-task';
+    capabilities = event.capabilities ?? {};
+    if (!simulationTaskDocument) currentTaskState = undefined;
+    const nextArchDesignDocument = event.documentKind === 'arch-design' || simulationTaskDocument;
     if (!nextArchDesignDocument) {
         archDesignLayoutSaveInFlight = false;
         queuedArchDesignLayoutSave = undefined;
@@ -2056,6 +2443,14 @@ function updateArchDesignState(
         authoringPending = queuedArchDesignCommand !== undefined;
         currentArchDesignState = event;
         archDesignEditable = true;
+        updateDiagnostics(event.validation.diagnostics.length, event.validation.warnings.length, [
+            ...event.validation.diagnostics.map(item => ({
+                severity: 'error' as const, code: item.code, message: `${item.path}: ${item.message}`,
+            })),
+            ...event.validation.warnings.map(item => ({
+                severity: 'warning' as const, code: item.code, message: `${item.path}: ${item.message}`,
+            })),
+        ]);
         renderInstanceModuleOptions(dom.instanceModuleFilter.value);
         updateSelectionStatus(selection.getSelectedCells(), false);
     } else {
@@ -2086,6 +2481,11 @@ function updateArchDesignState(
 
 function handleHostEvent(event: HostEvent): void {
     switch (event.type) {
+        case 'simulationTaskState':
+            currentRevision = event.revision;
+            currentTaskState = event.task;
+            updateArchDesignState({ ...event.projection, type: 'archDesignState', status: 'editable', revision: event.revision });
+            return;
         case 'initialize':
             initialize(event);
             return;
@@ -2139,14 +2539,16 @@ function handleHostEvent(event: HostEvent): void {
             renderSchematic(
                 event.graph,
                 layout,
-                preservedSelection,
+                pendingAddedNodeId && event.graph.nodes.some(node => node.id === pendingAddedNodeId)
+                    ? [pendingAddedNodeId] : preservedSelection,
                 event.fitOnFirstRender === true,
                 connectionLayout !== undefined
             );
+            if (pendingAddedNodeId && event.graph.nodes.some(node => node.id === pendingAddedNodeId)) pendingAddedNodeId = undefined;
             drainArchDesignWrites();
             return;
         case 'diagnostics':
-            updateDiagnostics(event.errors, event.warnings);
+            updateDiagnostics(event.errors, event.warnings, event.details);
             return;
         case 'archDesignState':
             updateArchDesignState(event);
@@ -2182,6 +2584,15 @@ function handleHostEvent(event: HostEvent): void {
             return;
         case 'hostError':
             connectionLayoutSnapshot = undefined;
+            if (simulationTaskDocument) {
+                authoringPending = false;
+                archDesignSemanticEditInFlight = false;
+                queuedArchDesignCommand = undefined;
+                pendingAddedNodeId = undefined;
+                showInspectorError(event.message);
+                setAuthoringControls();
+                return;
+            }
             setGraphControls(false);
             setCanvasState(event.message || 'Unable to render schematic');
             return;
@@ -2222,6 +2633,9 @@ function installIcons(): void {
         [dom.searchNextButton, ChevronDown],
         [dom.addInstanceButton, AddBox],
         [dom.addLogicButton, Component],
+        [dom.addSimulationButton, Activity],
+        [dom.runTaskButton, Play],
+        [dom.waveTaskButton, Waves],
         [dom.addPortButton, PanelTopOpen],
         [dom.connectButton, Cable],
         [dom.exportButton, FileOutput],
@@ -2605,6 +3019,42 @@ function showAddInstanceDialog(): boolean {
     return dom.addInstanceDialog.open;
 }
 
+dom.addSimulationButton.addEventListener('click', () => {
+    if (dom.addSimulationButton.disabled) return;
+    simulationNameAutomatic = true;
+    dom.simulationKindSelect.value = 'clock';
+    dom.simulationNameInput.value = generatedInstanceName('clock');
+    dom.simulationNameInput.setCustomValidity('');
+    showDialog(dom.addSimulationDialog, dom.simulationKindSelect);
+});
+dom.simulationKindSelect.addEventListener('change', () => {
+    if (simulationNameAutomatic) dom.simulationNameInput.value = generatedInstanceName(dom.simulationKindSelect.value);
+});
+dom.simulationNameInput.addEventListener('input', () => {
+    simulationNameAutomatic = false;
+    dom.simulationNameInput.setCustomValidity('');
+});
+dom.addSimulationForm.addEventListener('submit', event => {
+    event.preventDefault();
+    const kind = dom.simulationKindSelect.value;
+    const id = dom.simulationNameInput.value.trim();
+    if (!id || !['clock', 'reset', 'stimulus', 'uart', 'spi', 'apb', 'axis', 'i2c', 'axi4', 'axi4lite', 'rgb888'].includes(kind)) return;
+    if (currentArchDesignState?.design.instances.some(instance => instance.name === id)
+        || currentArchDesignState?.design.logic.some(logic => logic.name === id)) {
+        dom.simulationNameInput.setCustomValidity('This instance name is already in use.');
+        dom.simulationNameInput.reportValidity();
+        return;
+    }
+    pendingAddedNodeId = `instance:${id}`;
+    dom.addSimulationDialog.close();
+    if (!inspectorExpanded) { inspectorExpanded = true; updateInspectorToggle(); }
+    sendTaskCommand('addPreset', { id, preset: defaultSimulationPreset(kind as Parameters<typeof defaultSimulationPreset>[0]) });
+});
+dom.runTaskButton.addEventListener('click', () => sendTaskCommand(
+    currentTaskState?.execution.status === 'running' ? 'cancel' : 'run'
+));
+dom.waveTaskButton.addEventListener('click', () => sendTaskCommand('openWave'));
+
 dom.addInstanceButton.addEventListener('click', showAddInstanceDialog);
 dom.addLogicButton.addEventListener('click', showAddLogicDialog);
 
@@ -2642,6 +3092,9 @@ function showAddPortDialog(): boolean {
     if (dom.addPortButton.disabled) return false;
     dom.portNameInput.value = '';
     dom.portDirectionSelect.value = 'input';
+    dom.portInoutModeSelect.value = 'tristate';
+    dom.portInoutModeLabel.hidden = true;
+    dom.portInoutModeSelect.hidden = true;
     dom.portWidthInput.value = '1';
     showDialog(dom.addPortDialog, dom.portNameInput);
     return dom.addPortDialog.open;
@@ -2659,6 +3112,7 @@ function toggleConnectionMode(): boolean {
 function exportRtl(): boolean {
     if (dom.exportButton.disabled
         || !currentArchDesignState || !archDesignEditable || authoringPending) return false;
+    if (simulationTaskDocument) { sendTaskCommand('generateTestbench'); return true; }
     authoringPending = true;
     queuedArchDesignCommand = { type: 'export' };
     setAuthoringControls();
@@ -2675,6 +3129,15 @@ function deleteSelection(): boolean {
 
 dom.addPortButton.addEventListener('click', showAddPortDialog);
 dom.connectButton.addEventListener('click', toggleConnectionMode);
+for (const [button, severity] of [
+    [dom.errorCount, 'error'], [dom.warningCount, 'warning'],
+] as const) {
+    button.addEventListener('click', () => {
+        diagnosticFilter = severity;
+        renderDiagnosticDetails();
+        dom.diagnosticsDialog.showModal();
+    });
+}
 dom.exportButton.addEventListener('click', exportRtl);
 dom.deleteButton.addEventListener('click', deleteSelection);
 
@@ -2684,6 +3147,7 @@ dom.addInstanceForm.addEventListener('submit', event => {
     const selected = selectedInstanceModule();
     if (!name || !selected) return;
     dom.addInstanceDialog.close();
+    pendingAddedNodeId = `instance:${name}`;
     postArchDesignEdit({
         type: 'addInstance',
         instance: {
@@ -2696,6 +3160,11 @@ dom.addInstanceForm.addEventListener('submit', event => {
     });
 });
 
+dom.portDirectionSelect.addEventListener('change', () => {
+    const hidden = dom.portDirectionSelect.value !== 'inout';
+    dom.portInoutModeLabel.hidden = hidden;
+    dom.portInoutModeSelect.hidden = hidden;
+});
 dom.addPortForm.addEventListener('submit', event => {
     event.preventDefault();
     const name = dom.portNameInput.value.trim();
@@ -2707,7 +3176,11 @@ dom.addPortForm.addEventListener('submit', event => {
     dom.addPortDialog.close();
     postArchDesignEdit({
         type: 'addPort',
-        port: { name, direction, ...(width === undefined ? {} : { width }) },
+        port: { name, direction, ...(width === undefined ? {} : { width }),
+            ...(direction === 'inout' ? {
+                inoutMode: dom.portInoutModeSelect.value === 'direct' ? 'direct' : 'tristate',
+            } : {}),
+        },
     });
 });
 
@@ -2834,12 +3307,7 @@ graph.on('scale', updateViewportFromGraph);
 graph.on('translate', updateViewportFromGraph);
 
 graph.on('cell:dblclick', ({ cell }) => {
-    const command = navigationCommandForCell(navigationTargetForCell(cell), false);
-    if (command) post(command);
-});
-
-graph.on('node:open-definition' as never, ({ cell }: { cell: Cell }) => {
-    const command = navigationCommandForCell(navigationTargetForCell(cell), true);
+    const command = navigationCommandForCell(navigationTargetForCell(cell), archDesignDocument);
     if (command) post(command);
 });
 
@@ -2958,6 +3426,7 @@ function closeActiveDialog(): boolean {
     dialog.close();
     if (dialog === dom.addInstanceDialog) dom.addInstanceButton.focus();
     if (dialog === dom.addLogicDialog) dom.addLogicButton.focus();
+    if (dialog === dom.addSimulationDialog) dom.addSimulationButton.focus();
     if (dialog === dom.addPortDialog) dom.addPortButton.focus();
     return true;
 }
@@ -3063,6 +3532,7 @@ window.addEventListener('message', event => {
     if (!event.data || typeof event.data !== 'object') return;
     const type = (event.data as { type?: unknown }).type;
     if (type === 'initialize' || type === 'graph' || type === 'diagnostics'
+        || type === 'simulationTaskState'
         || type === 'archDesignState' || type === 'archDesignLayoutSaved'
         || type === 'archDesignRevisionChanged'
         || type === 'hostError') {

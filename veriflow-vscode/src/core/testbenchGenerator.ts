@@ -14,11 +14,6 @@ export interface TbModuleConfig {
     param_values: Record<string, string>;
 }
 
-function clog2(val: number): number {
-    if (val <= 0) { return 0; }
-    return Math.ceil(Math.log2(val));
-}
-
 function isValidVerilogIdentifier(name: string): boolean {
     return /^[A-Za-z_][A-Za-z0-9_$]*$/.test(name) || /^\\\S+$/.test(name);
 }
@@ -49,42 +44,28 @@ function ownValue(
         : fallback;
 }
 
-function replaceClog2(expr: string): string {
-    return expr.replace(/\$clog2\s*\(\s*([^)]+)\s*\)/g, (_match, inner) => {
-        const val = parseInt(inner.trim(), 10);
-        if (isNaN(val)) { return _match; }
-        return String(clog2(val));
+/** Preserve HDL arithmetic instead of evaluating it as JavaScript or guessing one bit. */
+function substituteParameters(expression: string, values: Record<string, string>, active = new Set<string>()): string {
+    return expression.replace(/[A-Za-z_$][A-Za-z0-9_$]*/g, token => {
+        if (!Object.prototype.hasOwnProperty.call(values, token)) return token;
+        if (active.has(token)) throw new Error(`Cyclic testbench parameter: ${token}`);
+        const next = new Set(active); next.add(token);
+        return `(${substituteParameters(values[token], values, next)})`;
     });
 }
-
-function evalExpr(expr: string, paramMap: Record<string, string>): number {
-    if (!expr) { return 1; }
-    expr = expr.trim();
-    if (/^\d+$/.test(expr)) { return parseInt(expr, 10); }
-    // Replace parameter references (longest first to avoid partial matches)
-    const sorted = Object.keys(paramMap).sort((a, b) => b.length - a.length);
-    for (const pname of sorted) {
-        const pval = paramMap[pname];
-        const re = new RegExp('\\b' + pname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'g');
-        expr = expr.replace(re, pval);
-    }
-    // Handle $clog2() function
-    expr = replaceClog2(expr);
-    try {
-        return Math.floor(new Function('return (' + expr + ')')());
-    } catch {
-        return 1;
-    }
+function resolvePortWidth(width: string | undefined, values: Record<string, string>): string | undefined {
+    return width ? substituteParameters(width, values) : undefined;
 }
-
-function resolvePortWidth(widthStr: string | undefined, paramMap: Record<string, string>): string | undefined {
-    if (!widthStr) { return undefined; }
-    const m = widthStr.match(/^\[(.+?):(.+?)\]$/);
-    if (!m) { return widthStr; }
-    const msbVal = evalExpr(m[1].trim(), paramMap);
-    const lsbVal = evalExpr(m[2].trim(), paramMap);
-    if (msbVal === 0 && lsbVal === 0) { return undefined; }
-    return `[${msbVal}:${lsbVal}]`;
+function timeSeconds(value: string): number {
+    const match = /^(1|10|100)(s|ms|us|ns|ps|fs)$/.exec(value);
+    if (!match) throw new Error(`Invalid timescale: ${value}`);
+    return Number(match[1]) * ({ s: 1, ms: 1e-3, us: 1e-6, ns: 1e-9, ps: 1e-12, fs: 1e-15 }[match[2]]!);
+}
+function positiveDelay(value: string, label: string): string {
+    if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+        throw new Error(`${label} must be a positive delay in timescale units`);
+    }
+    return value;
 }
 
 export interface TbConfig {
@@ -101,22 +82,31 @@ export interface TbConfig {
 
 export class TestbenchGenerator {
     generate(config: TbConfig, outputDir: string): string {
+        const filepath = path.join(outputDir, `${config.name || 'tb_top'}.v`);
+        fs.mkdirSync(outputDir, { recursive: true });
+        fs.writeFileSync(filepath, this.render(config), 'utf-8');
+        return filepath;
+    }
+
+    render(config: TbConfig): string {
         const name = config.name || 'tb_top';
         const timeUnit = config.time_unit || '1ns';
         const timePrecision = config.time_precision || '1ps';
         const clocksMhz = config.clocks_mhz || ['100'];
         const resetActiveHigh = config.reset_active_high !== false;
         const resetDuration = config.reset_duration || '100';
-        const modules = config.modules || [];
+        const originalModules = config.modules || [];
+        const modules = originalModules.map((mod, index) => ({ ...mod,
+            port_signals: Object.fromEntries(mod.ports.map(port => [port.name,
+                ownValue(normalizeStringRecord(mod.port_signals), port.name,
+                    originalModules.length > 1 ? `dut_${index}_${port.name.replace(/[^A-Za-z0-9_$]/g, '_')}` : port.name)])),
+        }));
         const waveFile = config.wave_file || `${name}.vcd`;
         const timeout = config.timeout || '1000000';
 
         const lines = this._build(name, timeUnit, timePrecision, clocksMhz, resetActiveHigh, resetDuration, modules, waveFile, timeout);
 
-        const filepath = path.join(outputDir, `${name}.v`);
-        fs.mkdirSync(outputDir, { recursive: true });
-        fs.writeFileSync(filepath, lines.join('\n'), 'utf-8');
-        return filepath;
+        return lines.join('\n');
     }
 
     private _build(
@@ -131,6 +121,11 @@ export class TestbenchGenerator {
         timeout: string
     ): string[] {
         const L: string[] = [];
+        const unitSeconds = timeSeconds(timeUnit);
+        const precisionSeconds = timeSeconds(timePrecision);
+        if (precisionSeconds > unitSeconds) throw new Error('Time precision must not exceed time unit');
+        positiveDelay(resetDuration, 'Reset duration');
+        positiveDelay(timeout, 'Timeout');
 
         L.push(`\`timescale ${timeUnit} / ${timePrecision}`);
         L.push('');
@@ -141,12 +136,17 @@ export class TestbenchGenerator {
         for (let i = 0; i < clocksMhz.length; i++) {
             const freq = clocksMhz[i];
             if (!freq) { continue; }
-            let freqVal = 100.0;
-            try { freqVal = parseFloat(freq); } catch { /* ignore */ }
-            const halfPeriod = 1000.0 / (2.0 * freqVal);
+            const freqVal = Number(freq);
+            if (!Number.isFinite(freqVal) || freqVal <= 0) throw new Error('Clock frequency must be positive MHz');
+            const halfSeconds = 1 / (2 * freqVal * 1e6);
+            const ticks = halfSeconds / precisionSeconds;
+            if (Math.abs(ticks - Math.round(ticks)) > Math.max(1, ticks) * 1e-9 || ticks < 1) {
+                throw new Error('Clock half-period cannot be represented by this time precision');
+            }
+            const halfPeriod = Number((halfSeconds / unitSeconds).toPrecision(12));
             const cname = i > 0 ? `clk_${i}` : 'clk';
             L.push(`    reg ${cname} = 0;`);
-            L.push(`    always #(${halfPeriod.toFixed(1)}) ${cname} = ~${cname};`);
+            L.push(`    always #(${halfPeriod}) ${cname} = ~${cname};`);
             L.push('');
         }
 
@@ -156,9 +156,7 @@ export class TestbenchGenerator {
         const rstValRelease = resetActiveHigh ? "1'b0" : "1'b1";
         L.push(`    reg ${rstSignal} = ${rstValInit};`);
         L.push('    initial begin');
-        let dur = 100;
-        try { dur = parseInt(resetDuration || '100', 10); } catch { /* ignore */ }
-        L.push(`        #(${dur}) ${rstSignal} = ${rstValRelease};`);
+        L.push(`        #(${resetDuration}) ${rstSignal} = ${rstValRelease};`);
         L.push('    end');
         L.push('');
 
@@ -191,10 +189,9 @@ export class TestbenchGenerator {
                 if (!existing) {
                     mergedSignals.set(sigName, { port, paramMap });
                 } else {
-                    const wOld = this._widthBits(existing.port, existing.paramMap);
-                    const wNew = this._widthBits(port, paramMap);
-                    if (wNew > wOld) {
-                        mergedSignals.set(sigName, { port, paramMap });
+                    if (this._getWidthStr(existing.port, existing.paramMap) !== this._getWidthStr(port, paramMap)
+                        || existing.port.direction !== port.direction) {
+                        throw new Error(`Conflicting explicitly shared DUT signal: ${sigName}`);
                     }
                 }
             }
@@ -265,7 +262,7 @@ export class TestbenchGenerator {
                 instanceName: instName,
                 parameters: params.map(param => ({
                     name: param.name,
-                    value: ownValue(paramValues, param.name, param.value),
+                    value: substituteParameters(ownValue(paramValues, param.name, param.value), Object.fromEntries(params.filter(p => p.name !== param.name).map(p => [p.name, ownValue(paramValues, p.name, p.value)]))),
                 })),
                 ports: ports.map(port => ({
                     name: port.name,
@@ -279,44 +276,20 @@ export class TestbenchGenerator {
 
         // ---- $dump ----
         L.push('    initial begin');
-        L.push(`        $dumpfile("${waveFile}");`);
+        L.push(`        $dumpfile("${waveFile.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r/g, '\\r').replace(/\n/g, '\\n')}");`);
         L.push(`        $dumpvars(0, ${name});`);
         L.push('    end');
         L.push('');
 
         // ---- Timeout ----
-        let t = 1000000;
-        try { t = parseInt(timeout || '1000000', 10); } catch { /* ignore */ }
         L.push('    initial begin');
-        L.push(`        #(${t}) $finish;`);
+        L.push(`        #(${timeout}) $finish;`);
         L.push('    end');
         L.push('');
         L.push('endmodule');
         L.push('');
 
         return L;
-    }
-
-    private _widthBits(port: Port, paramMap?: Record<string, string>): number {
-        if (paramMap && port.width) {
-            const resolved = resolvePortWidth(port.width, paramMap);
-            if (resolved) {
-                const m = resolved.match(/\[(\d+):(\d+)\]/);
-                if (m) {
-                    return Math.abs(parseInt(m[1], 10) - parseInt(m[2], 10)) + 1;
-                }
-            }
-        }
-        if (port.widthMsb !== undefined && port.widthLsb !== undefined) {
-            return Math.abs(port.widthMsb - port.widthLsb) + 1;
-        }
-        if (port.width) {
-            const m = port.width.match(/\[(\d+):(\d+)\]/);
-            if (m) {
-                return Math.abs(parseInt(m[1], 10) - parseInt(m[2], 10)) + 1;
-            }
-        }
-        return 1;
     }
 
     private _getWidthStr(port: Port, paramMap?: Record<string, string>): string | undefined {

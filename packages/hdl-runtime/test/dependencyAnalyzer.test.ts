@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
+import { pathToFileURL } from 'node:url';
 
 import { DependencyAnalyzer } from '@veriflow/hdl-runtime/dependencyAnalyzer';
 import type { WorkspaceHdlIndex } from '@veriflow/hdl-runtime/workspaceHdlIndex';
@@ -73,21 +75,23 @@ function indexOf(
 }
 
 test('dependency analyzer emits include-aware topological compile order', () => {
-    const top = definition('top', 'file:///workspace/top.sv', ['child']);
-    const child = definition('child', 'file:///workspace/child.sv', ['leaf']);
-    const leaf = definition('leaf', 'file:///workspace/leaf.sv');
+    const root = path.resolve('workspace');
+    const sourceUri = (filename: string) => pathToFileURL(path.join(root, filename)).toString();
+    const top = definition('top', sourceUri('top.sv'), ['child']);
+    const child = definition('child', sourceUri('child.sv'), ['leaf']);
+    const leaf = definition('leaf', sourceUri('leaf.sv'));
     const index = indexOf([top, child, leaf], {
-        [child.uri]: ['file:///workspace/child_defs.svh'],
+        [child.uri]: [sourceUri('child_defs.svh')],
     });
 
     const result = new DependencyAnalyzer(index).resolve(top.key);
 
     assert.deepEqual(result.files, [
-        '/workspace/leaf.sv',
-        '/workspace/child_defs.svh',
-        '/workspace/child.sv',
-        '/workspace/top.sv',
-    ]);
+        'leaf.sv',
+        'child_defs.svh',
+        'child.sv',
+        'top.sv',
+    ].map(filename => path.join(root, filename)));
     assert.deepEqual(result.depGraph, {
         top: ['child'],
         child: ['leaf'],

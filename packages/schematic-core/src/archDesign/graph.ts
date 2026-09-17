@@ -82,6 +82,8 @@ function graphPin(
         id: target.identity,
         name,
         direction: target.role,
+        ...(target.kind === 'instance' && target.role === 'bidirectional'
+            ? { side: 'left' as const } : {}),
         width: cloneWidth(target.width),
         readOnly: false,
         ...(interfaceState === undefined || member === undefined

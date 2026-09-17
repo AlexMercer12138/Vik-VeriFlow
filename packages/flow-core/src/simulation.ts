@@ -39,6 +39,7 @@ export interface SimulationArtifactRequest {
 export interface SimulationRequest {
     files: string[];
     runtimeFiles: string[];
+    includeFiles?: string[];
     includeDirs: string[];
     defines: Record<string, string | number | boolean>;
     plusargs: string[];
@@ -53,6 +54,7 @@ export interface SimulationRequest {
 export interface SimulationRequestInput {
     files: readonly string[];
     runtimeFiles?: readonly string[];
+    includeFiles?: readonly string[];
     includeDirs?: readonly string[];
     defines?: Readonly<Record<string, string | number | boolean>>;
     plusargs?: readonly string[];
@@ -110,6 +112,7 @@ export function createSimulationRequest(input: SimulationRequestInput): Simulati
     return {
         files: [...input.files],
         runtimeFiles: [...(input.runtimeFiles ?? [])],
+        ...(input.includeFiles === undefined ? {} : { includeFiles: [...input.includeFiles] }),
         includeDirs: [...(input.includeDirs ?? [])],
         defines: { ...(input.defines ?? {}) },
         plusargs: [...(input.plusargs ?? [])],

@@ -3,11 +3,12 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { canonicalizeSourceUri } from '@veriflow/hdl-core/preprocessor';
-import { HdlParserClient } from '@veriflow/hdl-runtime/parserClient';
-import { WorkspaceHdlIndex } from '@veriflow/hdl-runtime/workspaceHdlIndex';
-import { WorkspaceIndexStore } from '@veriflow/hdl-runtime/workspaceIndexStore';
+import { HdlParserClient } from './parserClient';
+import { WorkspaceHdlIndex } from './workspaceHdlIndex';
+import { WorkspaceIndexStore } from './workspaceIndexStore';
 
 const HDL_EXTENSIONS = new Set(['.v', '.sv', '.vh', '.svh']);
+const IGNORED_DIRECTORIES = new Set(['.git', '.trash', '.veriflow', 'node_modules']);
 
 class MemoryState {
     private readonly values = new Map<string, unknown>();
@@ -30,7 +31,8 @@ function fileUri(filepath: string): string {
     return canonicalizeSourceUri(pathToFileURL(filepath).toString());
 }
 
-async function discoverFiles(root: string): Promise<string[]> {
+async function discoverFiles(root: string, signal?: AbortSignal): Promise<string[]> {
+    signal?.throwIfAborted();
     let rootStat;
     try {
         rootStat = await stat(root);
@@ -47,8 +49,8 @@ async function discoverFiles(root: string): Promise<string[]> {
     const entries = await readdir(root, { withFileTypes: true });
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
         const filepath = path.join(root, entry.name);
-        if (entry.isDirectory()) {
-            found.push(...await discoverFiles(filepath));
+        if (entry.isDirectory() && !IGNORED_DIRECTORIES.has(entry.name)) {
+            found.push(...await discoverFiles(filepath, signal));
         } else if (entry.isFile() && HDL_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
             found.push(fileUri(filepath));
         }
@@ -56,18 +58,21 @@ async function discoverFiles(root: string): Promise<string[]> {
     return found;
 }
 
+export interface ParserRuntimePaths { workerPath: string; runtimeWasmPath: string; languageWasmPath: string }
+
 export class NodeWorkspaceHost {
     readonly index: WorkspaceHdlIndex;
     private readonly parser: HdlParserClient;
     private readonly searchDirectories: string[];
     private disposed = false;
+    private scanSignal?: AbortSignal;
 
-    constructor(searchDirectories: string[], defines: Record<string, string | true> = {}) {
+    constructor(searchDirectories: string[], defines: Record<string, string | true> = {}, parserPaths?: ParserRuntimePaths) {
         this.searchDirectories = [...new Set(searchDirectories.map(directory => (
             path.resolve(directory)
         )))];
-        this.parser = new HdlParserClient({
-            workerPath: require.resolve('@veriflow/hdl-runtime/parserWorker'),
+        this.parser = new HdlParserClient(parserPaths ?? {
+            workerPath: require.resolve('./parserWorker'),
             runtimeWasmPath: require.resolve('web-tree-sitter/web-tree-sitter.wasm'),
             languageWasmPath: require.resolve(
                 'tree-sitter-systemverilog/tree-sitter-systemverilog.wasm'
@@ -80,7 +85,7 @@ export class NodeWorkspaceHost {
             defines,
             findFiles: async roots => {
                 const groups = await Promise.all(roots.map(root => discoverFiles(
-                    new URL(root).protocol === 'file:' ? fileURLToPath(root) : root
+                    new URL(root).protocol === 'file:' ? fileURLToPath(root) : root, this.scanSignal
                 )));
                 return groups.flat();
             },
@@ -115,6 +120,8 @@ export class NodeWorkspaceHost {
     }
 
     async scan(signal?: AbortSignal): Promise<void> {
+        this.scanSignal = signal;
+        signal?.throwIfAborted();
         await this.index.scan(this.searchDirectories.map(fileUri), signal);
     }
 

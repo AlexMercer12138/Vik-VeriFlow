@@ -55,6 +55,31 @@ export type ArchDesignRtlExportResult =
 
 const GENERATED_MARKER = /^\/\/ vik-veriflow:generated arch-design schema=(\d+) fingerprint=(ad-v1-[0-9a-f]{16}) language=(verilog|systemverilog)(?:\r?\n|$)/;
 const DEFAULT_INTERFACE_PROTOCOL_CATALOG = createInterfaceProtocolCatalog();
+// Reject reserved words for both output languages so changing export language is safe.
+const RTL_RESERVED_NAMES = new Set(`
+accept_on alias always always_comb always_ff always_latch and assert assign assume automatic
+before begin bind bins binsof bit break buf bufif0 bufif1 byte
+case casex casez cell chandle checker class clocking cmos config const constraint context
+continue cover covergroup coverpoint cross deassign default defparam design disable dist do
+edge else end endcase endchecker endclass endclocking endconfig endfunction endgenerate
+endgroup endinterface endmodule endpackage endprimitive endprogram endproperty endsequence
+endspecify endtable endtask enum event eventually expect export extends extern final first_match
+for force foreach forever fork forkjoin function generate genvar global highz0 highz1 if iff
+ifnone ignore_bins illegal_bins implements implies import incdir include initial inout input
+inside instance int integer interconnect interface intersect join join_any join_none large let
+liblist library local localparam logic longint macromodule matches medium modport module nand
+negedge nettype new nexttime nmos nor noshowcancelled not notif0 notif1 null or output package
+packed parameter pmos posedge primitive priority program property protected pull0 pull1 pulldown
+pullup pulsestyle_ondetect pulsestyle_onevent pure rand randc randcase randsequence rcmos real
+realtime ref reg reject_on release repeat restrict return rnmos rpmos rtran rtranif0 rtranif1
+s_always s_eventually s_nexttime s_until s_until_with scalared sequence shortint shortreal
+showcancelled signed small soft solve specify specparam static string strong strong0 strong1
+struct super supply0 supply1 sync_accept_on sync_reject_on table tagged task this throughout
+time timeprecision timeunit tran tranif0 tranif1 tri tri0 tri1 triand trior trireg type typedef
+union unique unique0 unsigned until until_with untyped use uwire var vectored virtual void
+wait wait_order wand weak weak0 weak1 while wildcard wire with within wor xnor xor
+`.trim().split(/\s+/));
+
 
 export function parseArchDesignRtlMarker(text: string): ArchDesignRtlMarker | undefined {
     const match = GENERATED_MARKER.exec(text);
@@ -83,30 +108,56 @@ function rtlNameDiagnostics(
     resolution: ArchDesignResolution
 ): readonly ArchDesignDiagnostic[] {
     const diagnostics: ArchDesignDiagnostic[] = [];
-    const portNames = new Set<string>();
-    for (const item of resolution.ports) portNames.add(item.port.name);
+    const names = new Map<string, { description: string; identity?: string }>();
+    const reserve = (name: string, path: string, description: string, identity?: string): void => {
+        if (RTL_RESERVED_NAMES.has(name)) {
+            diagnostics.push({ path, code: 'AD_RTL_RESERVED_NAME',
+                message: `${description} ${name} is a reserved Verilog/SystemVerilog keyword; choose a different name` });
+        }
+        const previous = names.get(name);
+        if (previous) {
+            diagnostics.push({ path, code: 'AD_RTL_NAME_COLLISION',
+                message: `${description} ${name} collides with ${previous.description}` });
+        } else names.set(name, { description, identity });
+    };
+    for (const item of resolution.ports) {
+        reserve(item.port.name, `$.ports[${item.index}].name`, 'Top-level port',
+            item.port.direction !== 'inout' || item.port.inoutMode === 'direct'
+                ? `${item.nodeId}:value` : undefined);
+    }
     for (const endpoint of resolution.interfaces.endpoints) {
         if (endpoint.endpoint.kind !== 'port') continue;
-        endpoint.members.forEach((member, index) => {
-            if (portNames.has(member.port)) {
-                diagnostics.push(Object.freeze({
-                    path: `${endpoint.declarationPath}.members[${index}]`,
-                    code: 'AD_RTL_NAME_COLLISION',
-                    message: `Top-level interface member ${member.port} collides with another top-level port`,
-                }));
-            } else {
-                portNames.add(member.port);
-            }
-        });
+        endpoint.members.forEach((member, index) => reserve(member.port,
+            `${endpoint.declarationPath}.members[${index}]`, 'Top-level interface member',
+            member.targetIdentity));
     }
-    diagnostics.push(...resolution.instances.flatMap(item =>
-        portNames.has(item.instance.name)
-            ? [Object.freeze({
-                path: `$.instances[${item.index}].name`,
-                code: 'AD_RTL_NAME_COLLISION',
-                message: `Instance ${item.instance.name} collides with a top-level port`,
-            })]
-            : []));
+    for (const item of resolution.instances) {
+        reserve(item.instance.name, `$.instances[${item.index}].name`, 'Instance');
+    }
+    const reserveNet = (name: string, path: string, identities: readonly string[]): void => {
+        const previous = names.get(name);
+        if (previous?.identity && identities.includes(previous.identity)) return;
+        reserve(name, path, 'Signal');
+    };
+    for (const item of resolution.connections) {
+        reserveNet(item.connection.name, `$.connections[${item.index}].name`,
+            item.endpoints.map(endpoint => endpoint.identity));
+        for (const endpoint of item.endpoints) {
+            if (endpoint.kind !== 'port' || endpoint.role !== 'bidirectional') continue;
+            if (endpoint.port !== item.connection.name) diagnostics.push({
+                path: `$.connections[${item.index}].name`,
+                code: 'AD_RTL_INOUT_NET_NAME',
+                message: `Direct inout ${endpoint.port} requires connection name ${endpoint.port}; rename ${item.connection.name} to preserve a single synthesizable bidirectional net`,
+            });
+        }
+    }
+    for (const item of resolution.interfaces.connections) {
+        for (const binding of item.bindings) {
+            reserveNet(`${item.connection.name}_${binding.member}`,
+                `$.interfaceConnections[${item.index}].name`,
+                [binding.sender.targetIdentity, binding.receiver.targetIdentity]);
+        }
+    }
     return diagnostics;
 }
 
@@ -161,6 +212,7 @@ type RtlBindings = Readonly<{
     netByEndpoint: ReadonlyMap<string, string>;
     interfaceNets: readonly Readonly<{ name: string; width: WidthValue }>[];
     usedIdentifiers: Set<string>;
+    publicNames: ReadonlySet<string>;
 }>;
 
 function createBindings(resolution: ArchDesignResolution): RtlBindings {
@@ -170,21 +222,21 @@ function createBindings(resolution: ArchDesignResolution): RtlBindings {
         if (endpoint.endpoint.kind !== 'port') continue;
         for (const member of endpoint.members) used.add(member.port);
     }
+    const publicNames = new Set(used);
     for (const instance of resolution.instances) used.add(instance.instance.name);
     const netByConnection = new Map<number, string>();
     const netByEndpoint = new Map<string, string>();
     for (const connection of resolution.connections) {
-        const net = allocateIdentifier(`__vf_net_${connection.connection.name}`, used);
+        const net = connection.connection.name;
+        used.add(net);
         netByConnection.set(connection.index, net);
         for (const endpoint of connection.endpoints) netByEndpoint.set(endpoint.identity, net);
     }
     const interfaceNets: Array<{ name: string; width: WidthValue }> = [];
     for (const connection of resolution.interfaces.connections) {
         for (const binding of connection.bindings) {
-            const net = allocateIdentifier(
-                `__vf_if_${connection.connection.name}_${binding.member}`,
-                used
-            );
+            const net = `${connection.connection.name}_${binding.member}`;
+            used.add(net);
             interfaceNets.push({ name: net, width: binding.sender.width });
             netByEndpoint.set(binding.sender.targetIdentity, net);
             netByEndpoint.set(binding.receiver.targetIdentity, net);
@@ -195,6 +247,7 @@ function createBindings(resolution: ArchDesignResolution): RtlBindings {
         netByEndpoint,
         interfaceNets,
         usedIdentifiers: used,
+        publicNames,
     };
 }
 
@@ -469,15 +522,17 @@ function renderModule(resolution: ArchDesignResolution): string {
             ');',
         ];
     const declarations = [
-        ...resolution.connections.map(connection =>
+        ...resolution.connections.filter(connection =>
+            !bindings.publicNames.has(netByConnection.get(connection.index)!)).map(connection =>
             `wire ${resolvedPackedRange(connectionWidth(connection))}${netByConnection.get(connection.index)};`),
-        ...bindings.interfaceNets.map(item =>
+        ...bindings.interfaceNets.filter(item => !bindings.publicNames.has(item.name)).map(item =>
             `wire ${resolvedPackedRange(item.width)}${item.name};`),
     ];
     const targets = targetsByNode(resolution);
     const assignments: string[] = [];
     const generateBlocks: string[] = [];
     for (const item of resolution.ports) {
+        if (item.port.direction === 'inout' && item.port.inoutMode === 'direct') continue;
         if (item.port.direction === 'inout') {
             const logic = renderInoutLogic(
                 resolution,
@@ -496,19 +551,19 @@ function renderModule(resolution: ArchDesignResolution): string {
         const target = targets.get(item.nodeId)?.[0];
         const net = target ? netByEndpoint.get(target.identity) : undefined;
         if (item.port.direction === 'input') {
-            if (net) assignments.push(`assign ${net} = ${item.port.name};`);
+            if (net && net !== item.port.name) assignments.push(`assign ${net} = ${item.port.name};`);
             continue;
         }
         const binding = net ?? (target ? defaultByEndpoint.get(target.identity) : undefined);
-        if (binding) assignments.push(`assign ${item.port.name} = ${binding};`);
+        if (binding && binding !== item.port.name) assignments.push(`assign ${item.port.name} = ${binding};`);
     }
     for (const item of publicPorts) {
         if (item.kind !== 'interface') continue;
         const net = netByEndpoint.get(item.identity);
         const binding = net ?? defaultByEndpoint.get(item.identity);
         if (item.direction === 'input') {
-            if (net) assignments.push(`assign ${net} = ${item.name};`);
-        } else if (item.direction === 'output' && binding) {
+            if (net && net !== item.name) assignments.push(`assign ${net} = ${item.name};`);
+        } else if (item.direction === 'output' && binding && binding !== item.name) {
             assignments.push(`assign ${item.name} = ${binding};`);
         }
     }

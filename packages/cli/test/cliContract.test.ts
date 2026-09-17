@@ -131,7 +131,7 @@ function observedText(caseRoot: string, paths: string[]): JsonObject {
     return Object.fromEntries(paths.map(relative => {
         const filepath = path.join(caseRoot, relative);
         try {
-            return [relative, readFileSync(filepath, 'utf8')];
+            return [relative, readFileSync(filepath, 'utf8').replace(/\r\n/g, '\n')];
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [relative, null];
             throw error;
@@ -150,9 +150,16 @@ function normalizeTokenizedPathTails(value: string, token: string): string {
     ));
 }
 
+function normalizeAnalysisFileList(stdout: string): string {
+    if (process.platform !== 'win32') return stdout;
+    return stdout.replace(/(^Files \(\d+\):\n)((?:  [^\n]*\n)*)/gm,
+        (_match, heading: string, files: string) => heading + files.replace(/\\/g, '/'));
+}
+
 function normalize(value: unknown, replacements: Array<[string, string]>): unknown {
     if (typeof value === 'string') {
         let result = value;
+        const pathFlags = process.platform === 'win32' ? 'gi' : 'g';
         for (const [source, replacement] of replacements) {
             const encodedReplacement = JSON.stringify(replacement).slice(1, -1);
             const variants = [
@@ -168,15 +175,16 @@ function normalize(value: unknown, replacements: Array<[string, string]>): unkno
                 ];
                 for (const [candidate, normalized, separators] of forms) {
                     for (const separator of separators) {
-                        result = result
-                            .split(candidate + separator)
-                            .join(`${normalized}/`);
+                        result = result.replace(
+                            new RegExp(escapeRegExp(candidate + separator), pathFlags),
+                            () => `${normalized}/`
+                        );
                     }
                     const boundary = new RegExp(
                         `${escapeRegExp(candidate)}(?=$|[\\s"',)\\]}])`,
-                        'g'
+                        pathFlags
                     );
-                    result = result.replace(boundary, normalized);
+                    result = result.replace(boundary, () => normalized);
                 }
             }
             result = normalizeTokenizedPathTails(result, replacement);
@@ -250,6 +258,28 @@ test('contract normalization handles Windows separators without replacing lookal
         lookalike: String.raw`C:\contract\workspace-old`,
         diagnostic: String.raw`<CWD>/libs/project: escaped=\signal regex=\d+\w`,
     });
+});
+
+test('contract normalization respects filesystem case rules for path roots', () => {
+    const value = {
+        canonical: String.raw`c:\contract\workspace\RTL\top.v`,
+        root: String.raw`c:\contract\workspace`,
+        encoded: String.raw`"c:\\contract\\workspace\\RTL\\top.v"`,
+        lookalike: String.raw`c:\contract\workspace-old\top.v`,
+    };
+    assert.deepEqual(normalize(value, [[String.raw`C:\Contract\Workspace`, '<CWD>']]),
+        process.platform === 'win32' ? {
+            canonical: '<CWD>/RTL/top.v',
+            root: '<CWD>',
+            encoded: '"<CWD>/RTL/top.v"',
+            lookalike: value.lookalike,
+        } : value);
+});
+
+test('analysis listing normalization leaves diagnostic backslashes intact', () => {
+    const stdout = 'Files (1):\n  rtl\\top.v\n\nDiagnostic: \\signal\n';
+    assert.equal(normalizeAnalysisFileList(stdout), process.platform === 'win32'
+        ? 'Files (1):\n  rtl/top.v\n\nDiagnostic: \\signal\n' : stdout);
 });
 
 test('project new persists builtin simulation defaults', async () => {
@@ -770,7 +800,7 @@ for (const contractCase of configurationCases) {
             );
             const actual = normalize({
                 exit_code: exitCode,
-                stdout,
+                stdout: normalizeAnalysisFileList(stdout),
                 stderr,
                 observed_json: observedJson(caseRoot, contractCase.observe_json ?? []),
                 observed_text: observedText(caseRoot, contractCase.observe_json ?? []),

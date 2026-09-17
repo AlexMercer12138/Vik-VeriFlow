@@ -5,11 +5,13 @@ export type ArchDesignWidth = number | Readonly<{ expression: string }>;
 export type ArchDesignParameterValue = string | number | boolean;
 export type ArchDesignPortDirection = 'input' | 'output' | 'inout';
 export type ArchDesignLanguage = 'verilog' | 'systemverilog';
+export type ArchDesignInoutMode = 'tristate' | 'direct';
 export type ArchDesignInoutSignal = 'value' | 'i' | 'o' | 't';
 
 export type ArchDesignPort = Readonly<{
     name: string;
     direction: ArchDesignPortDirection;
+    inoutMode?: ArchDesignInoutMode;
     width?: ArchDesignWidth;
 }>;
 

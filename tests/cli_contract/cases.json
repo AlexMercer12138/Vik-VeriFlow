@@ -9,7 +9,7 @@
       "observe_json": [],
       "expected": {
         "exit_code": 0,
-        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
+        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n    task         validate and run Simulation Tasks\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
         "stderr": "",
         "observed_json": {},
         "observed_text": {},
@@ -27,7 +27,7 @@
       "observe_json": [],
       "expected": {
         "exit_code": 0,
-        "stdout": "VeriFlow 1.5.0\n",
+        "stdout": "VeriFlow 1.5.1\n",
         "stderr": "",
         "observed_json": {},
         "observed_text": {},
@@ -46,7 +46,7 @@
       "expected": {
         "exit_code": 2,
         "stdout": "",
-        "stderr": "usage: veriflow [-h] [-v] COMMAND ...\nveriflow: error: argument COMMAND: invalid choice: 'unknown' (choose from project, lib, top, analyze, sim, wave, ad)\n",
+        "stderr": "usage: veriflow [-h] [-v] COMMAND ...\nveriflow: error: argument COMMAND: invalid choice: 'unknown' (choose from project, lib, top, analyze, sim, wave, ad, task)\n",
         "observed_json": {},
         "observed_text": {},
         "process_calls": [],
@@ -1045,7 +1045,7 @@
       "observe_json": [],
       "expected": {
         "exit_code": 0,
-        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
+        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n    task         validate and run Simulation Tasks\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
         "stderr": "",
         "observed_json": {},
         "observed_text": {},
@@ -1063,7 +1063,7 @@
       "observe_json": [],
       "expected": {
         "exit_code": 0,
-        "stdout": "VeriFlow 1.5.0\n",
+        "stdout": "VeriFlow 1.5.1\n",
         "stderr": "",
         "observed_json": {},
         "observed_text": {},
@@ -1930,7 +1930,7 @@
       "observe_json": [],
       "expected": {
         "exit_code": 0,
-        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
+        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n    task         validate and run Simulation Tasks\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
         "stderr": "",
         "observed_json": {},
         "observed_text": {},
@@ -2062,7 +2062,7 @@
       "observe_json": [],
       "expected": {
         "exit_code": 0,
-        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
+        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n    task         validate and run Simulation Tasks\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
         "stderr": "",
         "observed_json": {},
         "observed_text": {},
@@ -2080,7 +2080,7 @@
       "observe_json": [],
       "expected": {
         "exit_code": 0,
-        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
+        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n    task         validate and run Simulation Tasks\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
         "stderr": "",
         "observed_json": {},
         "observed_text": {},
@@ -2098,7 +2098,7 @@
       "observe_json": [],
       "expected": {
         "exit_code": 0,
-        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
+        "stdout": "usage: veriflow [-h] [-v] COMMAND ...\n\nVeriFlow - Lightweight Verilog Simulation Manager\n\npositional arguments:\n  COMMAND\n    project      project management\n    lib          global library management\n    top          top module management\n    analyze      analyze dependencies\n    sim          compile and simulate\n    wave         open waveform viewer\n    ad           create, validate, and export Arch Designs\n    task         validate and run Simulation Tasks\n\noptions:\n  -h, --help     show this help message and exit\n  -v, --version  show program's version number and exit\n",
         "stderr": "",
         "observed_json": {},
         "observed_text": {},

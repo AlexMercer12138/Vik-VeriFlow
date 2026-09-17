@@ -450,8 +450,9 @@ test('maps external files to stable hashes of normalized parent directories', as
             runtimeFiles: [],
             includeDirs: [],
         });
+        const parent = path.dirname(path.normalize(externalFile));
         const digest = createHash('sha256')
-            .update(path.dirname(path.normalize(externalFile)))
+            .update(process.platform === 'win32' ? parent.replace(/\\/g, '/').toLowerCase() : parent)
             .digest('hex');
 
         assert.deepEqual(first.sources, [`external/${digest}/outside.v`]);
@@ -477,8 +478,9 @@ test('keeps external sources hashed when runtime files widen the workspace root'
             writeFile(runtimeFile, '2a\n'),
             writeFile(externalFile, 'module outside; endmodule\n'),
         ]);
+        const parent = path.dirname(externalFile);
         const digest = createHash('sha256')
-            .update(path.dirname(externalFile))
+            .update(process.platform === 'win32' ? parent.replace(/\\/g, '/').toLowerCase() : parent)
             .digest('hex');
 
         const workspace = await buildVirtualWorkspace({

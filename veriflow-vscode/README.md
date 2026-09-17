@@ -18,26 +18,29 @@ the project should invoke a local simulator or waveform application.
 ## HDL Workflow
 
 1. Open a workspace containing `.v` or `.sv` files.
-2. Open **VeriFlow** from the Activity Bar. Use **Design** to select the design top, browse the module library and design hierarchy, or create a graphical design.
-3. In **Simulation**, select **New Simulation Task** to use an existing Testbench or generate one for the current design. The generator opens in the main editor with port, parameter, clock and reset settings, plus an option to run after generation.
-4. Confirm the task's **Design under test** and **Simulation entry**, then select **Run Simulation Task**. For example, `soc_top` is the design and `tb_soc` is the simulation entry; these selections are stored independently.
-5. In **Results**, inspect the latest run status, recorded waveform and compile/run log.
+2. Open **VeriFlow** from the Activity Bar. **Module Browser** groups modules under workspace and external library directories, with subfolders and a fixed live filter above the tree. Click to open a declaration, or use **Add to Canvas** to add modules to the currently active AD/ST graphical editor.
+3. **Architecture Design** and **Simulation Task** list their own files with matching circuit-board icons and creation buttons. Expand a document to inspect its dependencies and exported HDL path.
+4. Create a `.st` by choosing its save location once. Use the shared Add instance dialog and Simulation Utility to add HDL/AD modules, Clock, Reset, Stimulus and protocol stimulus nodes (UART, SPI, I2C, APB, AXI-STREAM, AXI-Lite, AXI-Full, RGB). Configure addressed read/write transactions in the Inspector. RGB888 timing uses H/V total, active, syncstart and syncend boundaries.
+5. Generate Testbench exports readable Verilog-2005. Run executes the same generated TB; the run button becomes stop while running. Open the latest VCD with the waveform button.
 
-Tasks are saved in the extension's workspace state, with task switching, renaming, simulator configuration and waveform paths. Existing projects can continue using their selected simulation top. Graphical designs are validated and exported before task generation and execution. Changes to design ports or parameters prompt you to check the Testbench; the generator does not overwrite existing Testbench files.
-
-Results retain the task name and entry used for that run, even after switching tasks. Source changes mark results as outdated. **Run completed** means the simulator finished normally; functional verification requires checks in the Testbench. The current view shows the latest run; a run history list is not included yet.
+A `.st` stores references, presets, connections and task timing. Click blank canvas space to edit timescale, duration and waveform settings. Successful execution means simulation completed. Traditional HDL testbenches can also run directly without a `.st`.
 
 Open a `.vcd` file directly with **VeriFlow Waveform Viewer**. Run **Open as VeriFlow Schematic** on `.v` or `.sv` to inspect a read-only schematic with deterministic columns, orthogonal routing, search, zoom, minimap, network selection, and layout controls.
-
 ## Arch Design Editor
 
-In **Design**, select **Create Graphical Design**, enter the top-level module name, and choose where to save the `.ad` file. The new design opens directly in the visual editor. Its context menu can select it as the design top or create a simulation task.
+In **Architecture Design**, click the plus icon and choose where to save the `.ad` file. The empty design opens directly in the visual editor.
 
 Add module instances, top-level ports, and Logic Utilities from the toolbar. Logic Utilities cover explicit constants, NOT, AND/OR/XOR and their inverted forms, MUX, concat, slice, replicate, zero/sign extension, and AND/OR/XOR reductions. They are stored as first-class nodes in Arch Design schema v2 and export as continuous `assign` logic. To connect nodes, click either endpoint and then click the other endpoint; you can pan the canvas between clicks. Select an instance, utility, port, pin, network, or recognized interface to inspect and edit it.
 
 Undriven module and Logic Utility inputs use an effective zero during validation and RTL export; an unconnected inout `t` uses `1`. Effective defaults are shown in the Inspector but do not create constant boxes or branches on the canvas. Add an explicit Constant Logic Utility when a visible, reusable constant source is required.
 
-Errors and warnings update live in the E/W counters and the Problems panel. The editor has one in-editor export action: **Export RTL** in the canvas toolbar. Validate and export are also available from each file's **Design** context menu and the Command Palette. Verilog is exported to a sibling `.v` file by default; SystemVerilog and a relative `.sv` output can be selected in the Inspector. Existing hand-written RTL is never overwritten.
+Input pins can connect to other inputs as long as the resulting network has at most one definite driver. Click the E/W counters to read diagnostic details; warnings also appear in VS Code Problems.
+
+Top-level inout ports support **Direct** (one bidirectional pin) and **Tri-state** (i/o/t) modes. Exposing a module inout automatically creates a Direct port; manually added ports default to Tri-state. Disconnect a port before changing its mode. Direct connections use the same name as the top-level port, and renaming that port updates its matching network. Existing tri-state ports keep their behavior.
+
+RTL export preserves scalar network names and uses `connection_member` for interface signals, without internal prefixes. Connected top-level ports with the same name are reused; naming conflicts produce explicit export errors.
+
+Errors and warnings update live in the E/W counters and the Problems panel. The editor has one in-editor export action: **Export RTL** in the canvas toolbar. Validate and export are also available from each file's **Architecture Design** context menu and the Command Palette. Verilog is exported to a sibling `.v` file by default; SystemVerilog and a relative `.sv` output can be selected in the Inspector. Existing hand-written RTL is never overwritten.
 
 `.ad` is the VeriFlow Arch Design format and does not claim Vivado Block Design compatibility. Schema-v1 files remain readable and are migrated to the schema-v2 model when edited.
 
@@ -57,11 +60,11 @@ Project-defined protocol JSON files use the same recognition and export path as 
 
 ## Other Commands
 
-- **Select Simulation Entry (Testbench)**
+- **Run Current Testbench**
 - **Scan Modules**
 - **Instantiate Module**
 - **Open VCD in VeriFlow Viewer**
-- **Generate Testbench** to configure a new simulation task in the main editor
+- **Insert HDL Template** inserts clock, reset, waveform and timeout templates at the current HDL cursor
 
 ## Settings
 
@@ -113,3 +116,25 @@ then reparses and verifies the output before returning an edit. Grammar errors o
 unsupported constructs cause a warning and leave the document unchanged. This is
 not a semantic rewrite or a full SystemVerilog compiler. Styles in rtl-repo differ
 in exact column widths; VeriFlow applies one deterministic shared column policy.
+## Simulation Task files
+
+Clock exposes `clk` and configures frequency in MHz plus its initial level.
+Reset exposes `reset` and configures active level plus duration. Stimulus exposes
+`out` and configures width, an initial sized Verilog value and strictly increasing
+absolute time/value rows. Presets use typed Inspector fields and are connected
+explicitly on the shared AD/ST canvas. Logic Utility and interface connections
+use the same controls as AD; ST has no external top-level ports.
+
+Generate Testbench and Run share one generator. The exported TB includes preset
+helpers and AD wrappers, while DUT HDL remains an ordinary project dependency.
+Run does not overwrite exported files. Simulator and waveform tools are configured
+in VS Code settings; CLI project settings are selected with `--project`.
+
+The Module Browser title has refresh and new-file icons. AD/ST titles each have
+only the same plus icon, with matching empty-state create buttons. Module addition
+requires the current custom AD/ST editor; there is no remembered-target picker,
+custom sidebar filter or cross-view module drag-and-drop.
+
+See [the guide](../docs/simulation-tasks.md) and
+[basic.st](../examples/simulation-task/basic.st). Older task documents containing
+case matrices, embedded source assets or verification bindings are not supported.

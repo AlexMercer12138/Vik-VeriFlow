@@ -55,7 +55,7 @@ type AppliedReplacement = {
 
 type ProviderHarness = {
     messages: HostEvent[];
-    diagnostics: Array<{ uri: string; count: number }>;
+    diagnostics: Array<{ uri: string; count: number; items: Array<{ severity: number; message: string }> }>;
     informationMessages: string[];
     errorMessages: string[];
     exportEvents: string[];
@@ -138,7 +138,8 @@ async function createHarness(
     initialText: string,
     initialDefinitions: HdlDefinitionSummary[] = [],
     initialProtocolGeneration = 0,
-    autoReady = true
+    autoReady = true,
+    keepNotificationsOpen = false
 ): Promise<ProviderHarness> {
     const extensionRoot = path.resolve(__dirname, '..', '..');
     const resource = FakeUri.parse('file:///workspace/soc.ad');
@@ -266,10 +267,10 @@ async function createHarness(
         languages: {
             createDiagnosticCollection() {
                 return {
-                    set(uri: FakeUri, items: unknown[]): void {
+                    set(uri: FakeUri, items: Array<{ severity: number; message: string }>): void {
                         const value = uri.toString();
                         const next = diagnostics.filter(item => item.uri !== value);
-                        next.push({ uri: value, count: items.length });
+                        next.push({ uri: value, count: items.length, items });
                         diagnostics.splice(0, diagnostics.length, ...next);
                     },
                     delete(uri: FakeUri): void {
@@ -307,10 +308,12 @@ async function createHarness(
         window: {
             showErrorMessage(message: string): Promise<undefined> {
                 errorMessages.push(message);
+                if (keepNotificationsOpen) return new Promise(() => {});
                 return Promise.resolve(undefined);
             },
             showInformationMessage(message: string): Promise<undefined> {
                 informationMessages.push(message);
+                if (keepNotificationsOpen) return new Promise(() => {});
                 return Promise.resolve(undefined);
             },
         },
@@ -1811,6 +1814,95 @@ async function testRelayoutRejectsStaleArchDesignRevision(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+    const unrelated = await createHarness(sourceDesign({
+        instances: [{ name: 'a', module: 'core' }, { name: 'b', module: 'core' }],
+        connections: [{ name: 'broken', endpoints: [
+            { kind: 'instance', instance: 'a', port: 'data_o' },
+            { kind: 'instance', instance: 'b', port: 'data_o' },
+        ] }],
+    }), [moduleDefinition()]);
+    try {
+        const state = unrelated.messages.find(event => event.type === 'archDesignState');
+        assert.ok(state?.type === 'archDesignState');
+        unrelated.send({ type: 'editArchDesign', revision: state.revision, edit: {
+            type: 'connect', source: { kind: 'instance', instance: 'a', port: 'clk' },
+            target: { kind: 'instance', instance: 'b', port: 'clk' },
+        } });
+        await waitFor(() => unrelated.errorMessages.length > 0 || unrelated.replacements.length > 0,
+            'unrelated network edit');
+        assert.strictEqual(unrelated.replacements.length, 1);
+        assert.deepStrictEqual(unrelated.errorMessages, []);
+    } finally { await unrelated.dispose(); }
+    const joined = await createHarness(sourceDesign({
+        instances: [{ name: 'a', module: 'core' }, { name: 'b', module: 'core' }],
+        connections: ['a', 'b'].map(instance => ({
+            name: `net_${instance}`,
+            endpoints: [{ kind: 'instance' as const, instance, port: 'data_o' },
+                { kind: 'instance' as const, instance, port: 'clk' }],
+        })),
+    }), [moduleDefinition()]);
+    try {
+        const state = joined.messages.find(event => event.type === 'archDesignState');
+        assert.ok(state?.type === 'archDesignState');
+        joined.send({ type: 'editArchDesign', revision: state.revision, edit: {
+            type: 'connect',
+            source: { kind: 'instance', instance: 'a', port: 'clk' },
+            target: { kind: 'instance', instance: 'b', port: 'clk' },
+        } });
+        await waitFor(() => joined.errorMessages.length > 0 || joined.replacements.length > 0,
+            'network merge validation');
+        assert.strictEqual(joined.replacements.length, 0);
+        assert.match(joined.errorMessages[0], /driver/i);
+    } finally {
+        await joined.dispose();
+    }
+    const repeated = await createHarness(sourceDesign(), [], 0, true, true);
+    try {
+        let finished = false;
+        void repeated.exportRtl().then(() => { finished = true; });
+        await waitFor(() => finished, 'export completes while success notification remains open');
+        repeated.setNextSaveDocument(sourceDesign({ module: 'edited_soc' }), 2);
+        await repeated.exportRtl();
+        assert.strictEqual(repeated.exportRequests.length, 2);
+        assert.strictEqual(repeated.exportRequests[1].design.module, 'edited_soc');
+        repeated.failNextExport(new Error('Temporary write failure'));
+        let failedExportFinished = false;
+        void repeated.exportRtl().then(() => { failedExportFinished = true; });
+        await waitFor(() => failedExportFinished, 'export completes while error notification remains open');
+        await repeated.exportRtl();
+        assert.strictEqual(repeated.exportRequests.length, 4);
+    } finally {
+        await repeated.dispose();
+    }
+    const warned = await createHarness(sourceDesign({
+        instances: [{ name: 'u_tx', module: 'tx' }, { name: 'u_rx', module: 'rx' }],
+        interfaceConnections: [{
+            name: 'stream',
+            master: { kind: 'instance', instance: 'u_tx', interface: 'BUS' },
+            slave: { kind: 'instance', instance: 'u_rx', interface: 'BUS' },
+        }],
+    }), ['tx', 'rx'].map((name, index) => ({
+        ...moduleDefinition(), key: `module:file:///workspace/${name}.sv:0`, name,
+        ports: [
+            { name: 'BUS_TDATA', direction: index === 0 ? 'output' : 'input',
+                width: { kind: 'known', bits: index === 0 ? 32 : 16 } },
+            { name: 'BUS_TVALID', direction: index === 0 ? 'output' : 'input',
+                width: { kind: 'known', bits: 1 } },
+            { name: 'BUS_TREADY', direction: index === 0 ? 'input' : 'output',
+                width: { kind: 'known', bits: 1 } },
+        ],
+    })));
+    try {
+        const graph = warned.messages.find(event => event.type === 'graph');
+        assert.ok(graph?.type === 'graph');
+        const warnings = graph.graph.diagnostics.filter(item => item.severity === 'warning');
+        assert.ok(warnings.length > 0);
+        assert.strictEqual(warned.diagnostics[0].items.filter(item => item.severity === 1).length,
+            warnings.length);
+        assert.ok(warned.diagnostics[0].items.some(item => item.message.includes(warnings[0].message)));
+    } finally {
+        await warned.dispose();
+    }
     await testSourceAwareAddInstancePersistsDefinitionKey();
     await testPublishesSourceAwareDuplicateModuleChoices();
     await testMigratesLegacyAbsoluteDefinitionKeyOnOpen();

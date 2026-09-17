@@ -108,6 +108,56 @@ function assertNoDifferentNetworkCollinearOverlap(route: RoutedSchematic): void 
     }
 }
 
+function assertNetworkTreesAreAcyclic(route: RoutedSchematic): void {
+    for (const network of route.networks) {
+        const points = new Map<string, Readonly<{ x: number; y: number }>>();
+        const add = (x: number, y: number): void => {
+            points.set(`${x},${y}`, { x, y });
+        };
+        for (const segment of network.segments) {
+            if (segment.orientation === 'horizontal') {
+                add(segment.x1, segment.y);
+                add(segment.x2, segment.y);
+                for (const vertical of network.segments) {
+                    if (vertical.orientation === 'vertical'
+                        && vertical.x >= segment.x1 && vertical.x <= segment.x2
+                        && segment.y >= vertical.y1 && segment.y <= vertical.y2) {
+                        add(vertical.x, segment.y);
+                    }
+                }
+            } else {
+                add(segment.x, segment.y1);
+                add(segment.x, segment.y2);
+            }
+        }
+        const parents = new Map([...points.keys()].map(key => [key, key]));
+        const root = (key: string): string => {
+            while (parents.get(key) !== key) key = parents.get(key)!;
+            return key;
+        };
+        for (const segment of network.segments) {
+            const onSegment = [...points.entries()]
+                .filter(([, point]) => segmentContainsTestPoint(segment, point))
+                .sort(([, left], [, right]) => left.x - right.x || left.y - right.y);
+            for (let index = 1; index < onSegment.length; index += 1) {
+                const left = root(onSegment[index - 1][0]);
+                const right = root(onSegment[index][0]);
+                assert.notEqual(left, right, `${network.id} contains a closed wire loop`);
+                parents.set(left, right);
+            }
+        }
+        if (parents.size) assert.equal(new Set([...parents.keys()].map(root)).size, 1);
+        const tree: RoutedSchematic['networks'][number]['segments'][number][] = [];
+        for (const path of network.paths) {
+            if (path.from.kind === 'tree') assert.ok(tree.some(segment =>
+                segmentContainsTestPoint(segment, path.from.point)));
+            const to = terminalPoint(route, path.to);
+            assertOrderedPathTraversal([path.from.point, to], path.segments);
+            tree.push(...path.segments);
+        }
+    }
+}
+
 function assertEveryAllocatedTrackReferenced(route: RoutedSchematic): void {
     const segments = route.networks.flatMap(network => network.segments);
     const referencesX = (track: number): boolean => segments.some(segment =>
@@ -263,6 +313,99 @@ test('removes duplicate points and redundant bends before materialization', () =
         'vertical',
     ]);
     assertOrderedPathTraversal(points, segments);
+});
+
+test('erases a rectangular self-crossing before materializing an endpoint escape', () => {
+    const points = [
+        { x: 68, y: 48 }, { x: 22, y: 48 },
+        { x: 22, y: 6 }, { x: 34, y: 6 },
+        { x: 34, y: 160 }, { x: 68, y: 160 },
+    ];
+    const segments = orderedPathSegments('network:loop', points);
+    assert.deepEqual(segments, [
+        { orientation: 'horizontal', networkId: 'network:loop', y: 48, x1: 34, x2: 68 },
+        { orientation: 'vertical', networkId: 'network:loop', x: 34, y1: 48, y2: 160 },
+        { orientation: 'horizontal', networkId: 'network:loop', y: 160, x1: 34, x2: 68 },
+    ]);
+    assertOrderedPathTraversal(points, segments);
+});
+
+for (const sameModule of [false, true]) {
+    test(`keeps feedback fan-out acyclic with ${sameModule ? 'two pins on one load' : 'separate loads'}`, () => {
+        const source = routingNode('source', 1, 0, 80);
+        const firstLoad = routingNode('load-a', 1, 1, 80);
+        const secondLoad = routingNode('load-b', 1, 2, 80);
+        const nodes = sameModule ? [source, {
+            ...firstLoad,
+            pinAnchors: [
+                { id: 'a', x: 0, y: 20 },
+                { id: 'b', x: 0, y: 60 },
+            ],
+        }] : [source, firstLoad, secondLoad];
+        const networks: RoutingNetworkRequest[] = [{
+            id: 'network:feedback-fanout',
+            terminals: [
+                { nodeId: 'source', pinId: 'left', role: 'driver' },
+                { nodeId: 'load-a', pinId: sameModule ? 'a' : 'left', role: 'load' },
+                { nodeId: sameModule ? 'load-a' : 'load-b', pinId: sameModule ? 'b' : 'left', role: 'load' },
+            ],
+        }];
+        const route = routeNetworks(nodes, networks, { columnCount: 3 });
+        assertEveryTerminalAnchorConnected(route, networks);
+        assertNetworkTreesAreAcyclic(route);
+        const path = route.networks[0].paths[0];
+        assert.deepEqual(path.segments.map(segment => segment.orientation), [
+            'horizontal', 'vertical', 'horizontal',
+        ]);
+        const from = path.from.point;
+        const to = terminalPoint(route, path.to);
+        for (const segment of route.networks[0].segments) {
+            assert.equal(route.grid.nodes.some(node =>
+                segmentIntersectsRectangleInterior(segment, node.bounds)
+            ), false);
+        }
+        assert.equal(path.segments.some(segment => segment.orientation === 'vertical'
+            && (segment.y1 < Math.min(from.y, to.y)
+                || segment.y2 > Math.max(from.y, to.y))), false);
+    });
+}
+
+test('keeps fan-out trees connected and acyclic across pin sides and obstacles', () => {
+    for (const dense of [false, true]) {
+        for (let sourceColumn = 0; sourceColumn < 3; sourceColumn += 1) {
+            for (let firstColumn = 0; firstColumn < 3; firstColumn += 1) {
+                for (let secondColumn = 0; secondColumn < 3; secondColumn += 1) {
+                    for (let sides = 0; sides < 8; sides += 1) {
+                        const terminals = [sourceColumn, firstColumn, secondColumn]
+                            .map((column, row) => ({
+                                nodeId: `n${column}${row}`,
+                                pinId: sides & (1 << row) ? 'left' : 'right',
+                                role: row === 0 ? 'driver' as const : 'load' as const,
+                            }));
+                        const nodes = Array.from({ length: 9 }, (_, index) =>
+                            routingNode(`n${Math.floor(index / 3)}${index % 3}`,
+                                Math.floor(index / 3), index % 3, 80)
+                        ).filter(node => dense || terminals.some(terminal =>
+                            terminal.nodeId === node.id));
+                        const networks: RoutingNetworkRequest[] = [{
+                            id: 'network:variants', terminals,
+                        }];
+                        const route = routeNetworks(nodes, networks, { columnCount: 3 });
+                        assertEveryTerminalAnchorConnected(route, networks);
+                        assertNetworkTreesAreAcyclic(route);
+                        for (const segment of route.networks[0].segments) {
+                            assert.equal(route.grid.nodes.some(node =>
+                                segmentIntersectsRectangleInterior(segment, node.bounds)
+                            ), false);
+                        }
+                        assert.deepEqual(routeNetworks([...nodes].reverse(), [{
+                            id: networks[0].id, terminals: [...terminals].reverse(),
+                        }], { columnCount: 3 }).networks, route.networks);
+                    }
+                }
+            }
+        }
+    }
 });
 
 test('keeps every routed segment out of every module interior', () => {
@@ -432,6 +575,54 @@ test('routes equal-height fan-out without losing path traversal order', () => {
     assert.equal(route.networks[0].paths.length, 2);
     assertEveryTerminalAnchorConnected(route, networks);
     assertEveryAllocatedTrackReferenced(route);
+});
+
+test('keeps an aligned fan-out trunk straight across a clear intervening column', () => {
+    const networks: RoutingNetworkRequest[] = [{
+        id: 'network:clear-fanout',
+        terminals: [
+            { nodeId: 'source', pinId: 'right', role: 'driver' },
+            { nodeId: 'sink-upper', pinId: 'left', role: 'load' },
+            { nodeId: 'sink-lower', pinId: 'left', role: 'load' },
+        ],
+    }];
+    const route = routeNetworks([
+        routingNode('source', 0, 0),
+        routingNode('sink-upper', 2, 0),
+        routingNode('sink-lower', 2, 1),
+    ], networks);
+
+    assert.deepEqual(route.networks[0].paths[0].segments.map(segment =>
+        segment.orientation
+    ), ['horizontal']);
+    assertEveryTerminalAnchorConnected(route, networks);
+});
+
+test('keeps a clear cross-column shortcut when its source drives multiple loads', () => {
+    const networks: RoutingNetworkRequest[] = [{
+        id: 'network:shortcut-fanout',
+        terminals: [
+            { nodeId: 'source', pinId: 'right', role: 'driver' },
+            { nodeId: 'sink-upper', pinId: 'left', role: 'load' },
+            { nodeId: 'sink-lower', pinId: 'left', role: 'load' },
+        ],
+    }];
+    const route = routeNetworks([
+        routingNode('source', 0, 0),
+        routingNode('middle', 1, 0, 40, 80),
+        routingNode('sink-upper', 2, 0, 40, 80),
+        routingNode('sink-lower', 2, 1),
+    ], networks);
+
+    assert.deepEqual(route.networks[0].paths[0].segments.map(segment =>
+        segment.orientation
+    ), ['horizontal', 'vertical', 'horizontal']);
+    assertEveryTerminalAnchorConnected(route, networks);
+    for (const segment of route.networks[0].segments) {
+        assert.equal(route.grid.nodes.some(node =>
+            segmentIntersectsRectangleInterior(segment, node.bounds)
+        ), false);
+    }
 });
 
 test('reuses one adjacent channel trunk for same-network fan-out', () => {
@@ -632,7 +823,7 @@ test('balances equal-cost feedback networks across top then bottom lanes', () =>
     ));
 });
 
-test('uses distinct endpoint tracks when both ends share one channel', () => {
+test('shortens a same-channel path at its own crossing', () => {
     const route = routeFixture({
         nodes: [
             routingNode('upper', 0, 0),
@@ -651,11 +842,12 @@ test('uses distinct endpoint tracks when both ends share one channel', () => {
     assert.equal(route.grid.channels[0].trackX.length, 2);
     assert.deepEqual(
         route.networks[0].paths[0].segments.map(segment => segment.orientation),
-        ['horizontal', 'vertical', 'horizontal', 'vertical', 'horizontal']
+        ['horizontal', 'vertical', 'horizontal']
     );
+    assertNetworkTreesAreAcyclic(route);
 });
 
-test('gives same-channel feedback endpoints distinct escapes to the outer lane', () => {
+test('shortens same-channel feedback escapes at their crossing', () => {
     const route = routeFixture({
         nodes: [
             routingNode('driver', 0, 0),
@@ -674,8 +866,9 @@ test('gives same-channel feedback endpoints distinct escapes to the outer lane',
     assert.equal(route.grid.channels[0].trackX.length, 2);
     assert.deepEqual(
         route.networks[0].paths[0].segments.map(segment => segment.orientation),
-        ['horizontal', 'vertical', 'horizontal', 'vertical', 'horizontal']
+        ['horizontal', 'vertical', 'horizontal']
     );
+    assertNetworkTreesAreAcyclic(route);
 });
 
 test('chooses the nearest stable internal corridor by terminal rows', () => {
@@ -1492,7 +1685,7 @@ test('orders ordinary source and target legs before a feedback endpoint', () => 
         );
         assert.equal(
             terminalLegX(route, ordinaryId, networks[1].terminals[1]),
-            tracks[1]
+            tracks[0]
         );
         assert.equal(
             terminalLegX(route, feedbackId, networks[0].terminals[0]),
@@ -1507,7 +1700,7 @@ test('orders ordinary source and target legs before a feedback endpoint', () => 
     assert.doesNotThrow(() => routeWithIds('z', 'a'));
 });
 
-test('keeps same-network source and target legs distinct in one channel', () => {
+test('joins same-network endpoint legs where they cross in one channel', () => {
     const networks: RoutingNetworkRequest[] = [{
         id: 'ordinary',
         terminals: [
@@ -1532,8 +1725,9 @@ test('keeps same-network source and target legs distinct in one channel', () => 
 
     assert.equal(tracks.length, 2);
     assert.equal(terminalLegX(route, 'ordinary', networks[0].terminals[0]), tracks[0]);
-    assert.equal(terminalLegX(route, 'ordinary', networks[0].terminals[1]), tracks[1]);
+    assert.equal(terminalLegX(route, 'ordinary', networks[0].terminals[1]), tracks[0]);
     assertEveryTerminalAnchorConnected(route, networks);
+    assertNetworkTreesAreAcyclic(route);
 });
 
 test('globally orders mixed ordinary and feedback channel legs', () => {
@@ -1582,9 +1776,10 @@ test('globally orders mixed ordinary and feedback channel legs', () => {
         terminalLegX(route, 'right-ordinary', networks[1].terminals[0]),
         terminalLegX(route, 'right-ordinary', networks[1].terminals[1]),
         terminalLegX(route, 'feedback', networks[2].terminals[0]),
-    ], tracks);
+    ], [tracks[0], tracks[0], tracks[3], tracks[3], tracks[4]]);
     assertNoDifferentNetworkCollinearOverlap(route);
     assertEveryTerminalAnchorConnected(route, networks);
+    assertNetworkTreesAreAcyclic(route);
 });
 
 test('orders a feedback source before both attachments of a shared leg', () => {
@@ -1636,7 +1831,7 @@ test('orders a feedback source before both attachments of a shared leg', () => {
     assert.doesNotThrow(() => routeWithIds('z', 'a'));
 });
 
-test('preserves channel-leg multiplicity across one network tree', () => {
+test('retains allocation constraints while removing same-network crossing loops', () => {
     const networks: RoutingNetworkRequest[] = [{
         id: 'tree',
         terminals: [
@@ -1658,9 +1853,10 @@ test('preserves channel-leg multiplicity across one network tree', () => {
     assert.equal(route.grid.channels[0].trackX.length, 3);
     assert.equal(new Set(networks[0].terminals.map(terminal =>
         terminalLegX(route, 'tree', terminal)
-    )).size, 3);
-    assert.equal(committedChannelLegIntents, 3);
+    )).size, 1);
+    assert.equal(committedChannelLegIntents, 4);
     assertEveryTerminalAnchorConnected(route, networks);
+    assertNetworkTreesAreAcyclic(route);
 });
 
 test('chooses feedback lane using realized added wire length', () => {
@@ -2023,11 +2219,14 @@ test('orders global legs and isolates a rejected fallback branch', () => {
     assert.equal(
         route.grid.outer.top.trackY.length
             + route.grid.outer.bottom.trackY.length,
-        1
+        2
     );
     assert.equal(route.networks.some(network =>
         network.paths[0].segments.length === 5
     ), true);
+
+    assertNetworkTreesAreAcyclic(route);
+    assertNoDifferentNetworkCollinearOverlap(route);
 
     // A true preflight failure must leave the committed journal unchanged.
     const result = probeRoutingAllocationTransactionForTesting([

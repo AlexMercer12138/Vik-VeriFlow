@@ -171,6 +171,7 @@ type MutableDesign = {
     ports: Array<{
         name: string;
         direction: string;
+        inoutMode?: ArchDesignPort['inoutMode'];
         width?: number | { expression: string };
     }>;
     instances: Array<{
@@ -536,8 +537,18 @@ function applyConnect(
     const sourceIndex = sourceMemberships[0];
     const targetIndex = targetMemberships[0];
     if (sourceIndex === undefined && targetIndex === undefined) {
+        const directPorts = [source, target].flatMap(endpoint => {
+            if (endpoint.kind !== 'port') return [];
+            const port = design.ports.find(item => item.name === endpoint.port);
+            return port?.direction === 'inout' && port.inoutMode === 'direct' ? [port.name] : [];
+        });
+        if (new Set(directPorts).size > 1) {
+            throw new ArchDesignEditError('Direct inout boundary ports must use a single shared name');
+        }
+        const name = directPorts[0] ?? nextNetworkName(design.connections);
+        assertUnused(design.connections, connection => connection.name === name, 'Connection', name);
         design.connections.push({
-            name: nextNetworkName(design.connections),
+            name,
             endpoints: [cloneEndpoint(source), cloneEndpoint(target)],
         });
         return;
@@ -818,8 +829,31 @@ export function applyArchDesignEdit(
                 edit.port.name,
                 index
             );
+            const previous = mutable.ports[index];
+            const previousSplit = previous.direction === 'inout' && previous.inoutMode !== 'direct';
+            const nextSplit = edit.port.direction === 'inout' && edit.port.inoutMode !== 'direct';
+            if (previousSplit !== nextSplit) {
+                if (mutable.connections.some(connection => connection.endpoints.some(endpoint =>
+                    endpoint.kind === 'port' && endpoint.port === edit.name))) {
+                    throw new ArchDesignEditError('Disconnect the port before changing its inout mode');
+                }
+                mutable.defaults = removeDictionaryPrefix(mutable.defaults, `${edit.name}.`) ?? {};
+                for (const connection of mutable.connections) {
+                    connection.defaults = removeDictionaryPrefix(connection.defaults, `${edit.name}.`);
+                }
+            }
             mutable.ports[index] = JSON.parse(JSON.stringify(edit.port));
             if (edit.name !== edit.port.name) {
+                if (previous.direction === 'inout' && previous.inoutMode === 'direct') {
+                    const namedConnection = mutable.connections.find(connection =>
+                        connection.name === edit.name && connection.endpoints.some(endpoint =>
+                            endpoint.kind === 'port' && endpoint.port === edit.name));
+                    if (namedConnection) {
+                        assertUnused(mutable.connections, connection =>
+                            connection.name === edit.port.name, 'Connection', edit.port.name);
+                        namedConnection.name = edit.port.name;
+                    }
+                }
                 for (const connection of mutable.connections) {
                     for (const endpoint of connection.endpoints) {
                         if (endpoint.kind === 'port' && endpoint.port === edit.name) {
@@ -903,7 +937,10 @@ export function applyArchDesignEdit(
                     `Source port is already occupied: ${edit.source.instance}.${edit.source.port}`
                 );
             }
-            mutable.ports.push(JSON.parse(JSON.stringify(edit.port)));
+            mutable.ports.push(JSON.parse(JSON.stringify({
+                ...edit.port,
+                ...(edit.port.direction === 'inout' ? { inoutMode: 'direct' } : {}),
+            })));
             mutable.connections.push({
                 name: edit.connection,
                 endpoints: [cloneEndpoint(edit.source), { kind: 'port', port: edit.port.name }],

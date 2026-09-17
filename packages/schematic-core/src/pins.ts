@@ -44,6 +44,7 @@ export function resolvePinSides(
         key: PinKey;
         node: GraphNode;
         direction: GraphNode['pins'][number]['direction'];
+        side?: PinSide;
     }> = [];
     const networksByPin = new Map<PinKey, OrderedEndpoint[][]>();
     const nodeIndexes = new Map<string, number>();
@@ -55,7 +56,7 @@ export function resolvePinSides(
         nodesById.set(node.id, node);
         node.pins.forEach((pin, pinIndex) => {
             const key = pinKey(node.id, pin.id);
-            orderedPins.push({ key, node, direction: pin.direction });
+            orderedPins.push({ key, node, direction: pin.direction, side: pin.side });
             pinIndexes.set(key, pinIndex);
         });
     });
@@ -88,7 +89,9 @@ export function resolvePinSides(
     const resolved = new Map<PinKey, PinSide>();
     for (const candidate of orderedPins) {
         const boundary = boundaryPinSide(candidate.node, candidate.direction);
-        if (boundary) {
+        if (candidate.side) {
+            resolved.set(candidate.key, candidate.side);
+        } else if (boundary) {
             resolved.set(candidate.key, boundary);
         } else if (candidate.direction === 'driver') {
             resolved.set(candidate.key, 'right');

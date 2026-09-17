@@ -43,6 +43,10 @@ async function main(){
   assert.equal(outputCleared,0,'simulation must retain earlier analysis output');assert.ok(shown.includes(true));
   await controller.openWave(target);assert.ok(fs.existsSync(openedWave));
   (mock.workspace as any).textDocuments=[{uri:Uri.file(target.fsPath.toUpperCase()),isDirty:true,getText:()=>text+' '}];
+  if(process.platform!=='win32') {
+   await controller.openWave(target);assert.equal(controller.execution(target).canOpenWave,true,'a differently cased POSIX path is a distinct source');
+   (mock.workspace as any).textDocuments=[{uri:target,isDirty:true,getText:()=>text+' '}];
+  }
   await assert.rejects(controller.openWave(target),/Sources changed/);assert.equal(controller.execution(target).canOpenWave,false);
   (mock.workspace as any).textDocuments=[];
   backendFailure=true;await assert.rejects(controller.run(document),/compile failed/);assert.equal(controller.execution(target).status,'failed');assert.equal(controller.execution(target).canOpenWave,false);assert.equal(disposed,3);

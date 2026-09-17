@@ -48924,6 +48924,9 @@
     }
     if (second.kind !== "scalar") return void 0;
     if (currentGraph && canConnectScalarPins(currentGraph, first.pin, second.pin)) {
+      if (second.pin.direction === "driver" || first.pin.direction === "load" && second.pin.direction === "bidirectional") {
+        return { source: second, target: first };
+      }
       return { source: first, target: second };
     }
     return void 0;

@@ -998,6 +998,12 @@ function normalizeConnectionTerminals(
     }
     if (second.kind !== 'scalar') return undefined;
     if (currentGraph && canConnectScalarPins(currentGraph, first.pin, second.pin)) {
+        // Preserve driver-to-load orientation regardless of click order, while
+        // retaining load-to-load network joins and direct bidirectional links.
+        if (second.pin.direction === 'driver'
+            || (first.pin.direction === 'load' && second.pin.direction === 'bidirectional')) {
+            return { source: second, target: first };
+        }
         return { source: first, target: second };
     }
     return undefined;

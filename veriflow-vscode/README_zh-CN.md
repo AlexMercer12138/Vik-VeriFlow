@@ -98,4 +98,4 @@ Clock 提供 `clk` 输出，配置 MHz 频率和初值；Reset 提供 `reset` �
 
 Module Browser 标题只有刷新和新建文件图标；AD/ST 标题只有相同的加号，空状态使用相同样式的创建按钮。添加模块必须有当前活动的 AD/ST 图形编辑器，不使用记忆目标或目标选择器，不提供侧栏过滤弹窗或跨视图模块拖放。
 
-详见[仿真任务指南](../docs/simulation-tasks.md)与[basic.st](../examples/simulation-task/basic.st)。旧的用例矩阵、内嵌源码资产和验证绑定格式不受支持。
+旧的用例矩阵、内嵌源码资产和验证绑定格式不受支持。

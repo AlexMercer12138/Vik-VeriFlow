@@ -135,6 +135,5 @@ only the same plus icon, with matching empty-state create buttons. Module additi
 requires the current custom AD/ST editor; there is no remembered-target picker,
 custom sidebar filter or cross-view module drag-and-drop.
 
-See [the guide](../docs/simulation-tasks.md) and
-[basic.st](../examples/simulation-task/basic.st). Older task documents containing
+Older task documents containing
 case matrices, embedded source assets or verification bindings are not supported.

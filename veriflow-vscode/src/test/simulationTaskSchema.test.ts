@@ -23,12 +23,6 @@ const externalPort = { ...task, connections: [{ name: 'bad', endpoints: [{ kind:
 assert.equal(validate(externalPort), false, 'ST has no top-level ports');
 const empty = createSimulationTask();
 assert.equal(validate(empty), true, JSON.stringify(validate.errors));
-const examplePath = path.resolve(__dirname, '../../../examples/simulation-task/basic.st');
-if (fs.existsSync(examplePath)) {
-    const example = JSON.parse(fs.readFileSync(examplePath, 'utf8'));
-    assert.equal(validate(example), true, JSON.stringify(validate.errors));
-    parseSimulationTask(JSON.stringify(example));
-}
 console.log('Simulation Task schema and runtime shape tests passed');
 for (const template of PROTOCOL_PRESET_TEMPLATES) {
     const preset = createProtocolPreset(template.protocol, template.role);

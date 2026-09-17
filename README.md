@@ -93,11 +93,11 @@ Module Browser 按工作区、外部库和子目录组织模块，顶部固定�
 Generate Testbench 导出可读 Verilog-2005；运行使用同一生成器，完成后可打开最新波形。一次任务运行一个 TB，完成表示仿真结束。传统 `.v/.sv` TB 仍可直接运行；HDL 右键 VeriFlow 菜单保留光标处模板插入。
 
 ```bash
-veriflow task validate examples/simulation-task/basic.st
-veriflow task run examples/simulation-task/basic.st --project project.json
+veriflow task validate simulation.st
+veriflow task run simulation.st --project project.json
 ```
 
-默认使用 builtin；custom 外部工具由 VS Code 设置或显式项目配置提供。详见[仿真任务指南](docs/simulation-tasks.md)和[基础示例](examples/simulation-task/basic.st)。
+上述命令使用在 Simulation Task 中创建并保存的 `simulation.st`。默认使用 builtin；custom 外部工具由 VS Code 设置或显式项目配置提供。
 ## 开发
 
 ```bash

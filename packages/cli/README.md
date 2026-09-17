@@ -46,11 +46,12 @@ One Simulation Task (`.st`) describes one graphical Testbench with HDL/AD
 sources, connections, parameter overrides and Clock/Reset/Stimulus presets:
 
 ```bash
-veriflow task validate examples/simulation-task/basic.st
-veriflow task run examples/simulation-task/basic.st
+veriflow task validate simulation.st
+veriflow task run simulation.st
 veriflow task run simulation.st --project project.json
 ```
 
+Create and save `simulation.st` in the VS Code Simulation Task editor first.
 `validate` resolves exact source references and generates the TB for validation
 without executing HDL. `run` invokes the selected backend once, explicitly
 selecting the generated TB top. Both use the same generator as the VS Code

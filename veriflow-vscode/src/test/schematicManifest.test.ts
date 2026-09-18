@@ -44,11 +44,11 @@ assert.deepStrictEqual(
 // VS Code >= 1.74 automatically activates contributed views, commands and editors.
 assert.ok(manifest.contributes.views.veriflow.some((view: any) => view.id === 'veriflow.design'));
 assert.ok(manifest.contributes.commands.some((command: any) => command.command === 'veriflow.createArchDesign'));
-const archDesignLanguage = (manifest.contributes.languages ?? []).find(
-    (item: any) => item.id === 'arch-design'
+const canvasLanguage = (manifest.contributes.languages ?? []).find(
+    (item: any) => item.id === 'json'
 );
-assert.ok(archDesignLanguage, 'Arch Design language contribution is missing');
-assert.deepStrictEqual(archDesignLanguage.extensions, ['.ad']);
+assert.ok(canvasLanguage, 'Canvas JSON language association is missing');
+assert.deepStrictEqual(canvasLanguage.extensions, ['.ad', '.st']);
 const workflowViews = manifest.contributes.views.veriflow;
 assert.deepStrictEqual(
     workflowViews.map((item: any) => item.id),

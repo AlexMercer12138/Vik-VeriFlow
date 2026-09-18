@@ -1,6 +1,6 @@
 # 1.5.2 修复记录（正式发布暂缓）
 
-本次修复 Simulation Task 快速仿真波形打开与直接导出，并完成开发计划中的 CLI 规范、命令面板整理及可选画布图标主题。大组件方案见 [Simulation Task 组件化设计草案](simulation-components-design.md)。按所有者要求，正式发布暂缓，待 README 完善；本轮仅准备 GIF 录制用 VSIX，不重新打包 npm 产品。
+本次修复 Simulation Task 快速仿真波形打开与直接导出，并完成命令面板整理及 `.ad` / `.st` 的统一 JSON 关联；已移除先前多余的自定义图标主题。CLI 入口重设计见 [CLI 设计草案](cli-command-spec.md)，新命令尚未实现。大组件方案见 [Simulation Task 组件化设计草案](simulation-components-design.md)。按所有者要求，正式发布暂缓，待 README 完善；本轮仅准备 GIF 录制用 VSIX，不重新打包 npm 产品。
 
 ## 验证状态
 
@@ -14,6 +14,7 @@
 - 前一轮 `npm run release -- --all 1.5.2` 曾停在两个 desktop AD Inspector 测试。本轮已定位并修复，两项聚焦回归均通过；不重跑正式发布打包流程。
 - 本轮 schematic-core 404 项测试、desktop 29 项测试全部通过；schematic-webview 类型检查与测试、生成资源一致性检查通过。
 - 本轮扩展 59 个测试文件全部通过（包括隔离 VSIX 打包检查）。Windows 重命名瞬时错误及并行构建引起的隔离检查冲突已通过重建、串行验证排除。
+- 后续统一 JSON 关联及移除主题后，重新通过 TypeScript 编译和全部 59 个扩展测试文件，包含隔离 VSIX 打包检查；日志见 `.artifacts/vscode-canvas-association.log`。
 
 原失败项及修复：
 

@@ -90,17 +90,9 @@
     ],
     "languages": [
       {
-        "id": "arch-design",
-        "aliases": [
-          "Arch Design"
-        ],
-        "extensions": [
-          ".ad"
-        ]
-      },
-      {
         "id": "json",
         "extensions": [
+          ".ad",
           ".st"
         ]
       },
@@ -697,13 +689,6 @@
         "language": "systemverilog",
         "scopeName": "source.systemverilog",
         "path": "./syntaxes/systemverilog.tmLanguage.json"
-      }
-    ],
-    "iconThemes": [
-      {
-        "id": "veriflow-canvas",
-        "label": "VeriFlow Canvas",
-        "path": "./themes/canvas-icons.json"
       }
     ]
   },

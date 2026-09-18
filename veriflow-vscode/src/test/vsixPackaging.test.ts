@@ -285,14 +285,6 @@ function run(): void {
         assert.ok(packagedManifest.contributes.commands.some(
             (item: { command?: string }) => item.command === 'veriflow.createArchDesign'
         ));
-        const iconTheme = packagedManifest.contributes.iconThemes.find(
-            (item: { id?: string }) => item.id === 'veriflow-canvas'
-        );
-        const icons = JSON.parse(entryText(`extension/${iconTheme.path.replace(/^\.\//, '')}`));
-        assert.equal(icons.fileExtensions.st, icons.fileExtensions.ad);
-        assert.ok(entryText('extension/media/canvas-file.svg'));
-        assert.ok(entryText('extension/media/file.svg'));
-        assert.ok(entryText('extension/media/folder.svg'));
         assert.ok(
             packagedManifest.contributes.viewsWelcome.some(
                 (item: { view?: string; contents?: string }) =>

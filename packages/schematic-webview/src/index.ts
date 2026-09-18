@@ -41,6 +41,7 @@ import {
     SCHEMATIC_NETWORK_LABEL_LAYOUT,
     SCHEMATIC_NODE_LAYOUT,
     SCHEMATIC_TEXT_STYLES,
+    schematicPinTextStyle,
     type GraphNode,
     type GraphNodeKind,
     type GraphPin,
@@ -572,8 +573,8 @@ function pinItems(
                         ? 'veriflow-pin-label'
                         : 'veriflow-pin-label veriflow-interface-label',
                     fontFamily: 'var(--vscode-font-family, sans-serif)',
-                    fontSize: SCHEMATIC_TEXT_STYLES.pin.fontSize,
-                    fontWeight: SCHEMATIC_TEXT_STYLES.pin.fontWeight,
+                    fontSize: schematicPinTextStyle(source).fontSize,
+                    fontWeight: schematicPinTextStyle(source).fontWeight,
                     textAnchor: pin.side === 'left' ? 'start' : 'end',
                     textVerticalAnchor: 'middle',
                     pointerEvents: 'none',

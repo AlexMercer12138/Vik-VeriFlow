@@ -2406,12 +2406,15 @@ test('Arch Design interface pins drive Inspector actions and survive graph refre
         );
         assert.notEqual(selectedColors.label, labelStylesBefore.fill);
         assert.notEqual(selectedLabelBackground, labelBackgroundBefore);
-        assert.equal(await aggregateLabelText.evaluate(element => {
+        const aggregateLabelGeometry = await aggregateLabelText.evaluate(element => {
             const clip = element.closest('svg.veriflow-pin-clip');
             const bounds = (element as SVGGraphicsElement).getBBox();
             const clipWidth = Number(clip?.getAttribute('width') ?? 0);
-            return bounds.x >= -0.5 && bounds.x + bounds.width <= clipWidth + 0.5;
-        }), true);
+            return { x: bounds.x, width: bounds.width, clipWidth, fontWeight: getComputedStyle(element).fontWeight };
+        });
+        assert.ok(aggregateLabelGeometry.x >= -0.5
+            && aggregateLabelGeometry.x + aggregateLabelGeometry.width <= aggregateLabelGeometry.clipWidth + 0.5,
+            JSON.stringify(aggregateLabelGeometry));
         assert.equal(await aggregateLabelText.evaluate(element =>
             getComputedStyle(element).fontWeight
         ), labelStylesBefore.fontWeight);
@@ -2704,6 +2707,9 @@ test('Arch Design interface Inspector edits defaults, overrides, and top-level s
             false
         );
 
+        // The fixture restores a fixed viewport; this lower-row node is outside
+        // the canvas on Windows. Use the same Fit action available to users.
+        await page.locator('#fit-button').click();
         await pin('instance:u_master_connected', fixture.interfaceIds.masterConnected).click();
         await page.locator('#inspector[data-kind="interface"]').waitFor();
         assert.equal(await page.locator('#interface-peer').textContent(), 'u_slave_connected.S_LINK');

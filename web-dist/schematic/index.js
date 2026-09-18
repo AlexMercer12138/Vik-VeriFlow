@@ -2302,6 +2302,7 @@
       "use strict";
       Object.defineProperty(exports2, "__esModule", { value: true });
       exports2.SCHEMATIC_TEXT_STYLES = exports2.SCHEMATIC_NODE_LAYOUT = void 0;
+      exports2.schematicPinTextStyle = schematicPinTextStyle2;
       exports2.measureSchematicNode = measureSchematicNode;
       exports2.measureSchematicNodeSize = measureSchematicNodeSize;
       exports2.fitSchematicNode = fitSchematicNode;
@@ -2326,8 +2327,12 @@
       exports2.SCHEMATIC_TEXT_STYLES = {
         title: { fontSize: 12, fontWeight: 600 },
         subtitle: { fontSize: 10, fontWeight: 400 },
-        pin: { fontSize: 10, fontWeight: 400 }
+        pin: { fontSize: 10, fontWeight: 400 },
+        interfacePin: { fontSize: 10, fontWeight: 600 }
       };
+      function schematicPinTextStyle2(pin2) {
+        return pin2?.interface ? exports2.SCHEMATIC_TEXT_STYLES.interfacePin : exports2.SCHEMATIC_TEXT_STYLES.pin;
+      }
       var LAYOUT_CHARACTER_WIDTH = 7;
       function measuredWidth(measure, text4, style2) {
         const width2 = measure(text4, style2);
@@ -2388,8 +2393,8 @@
         const isPort = node.kind === "port";
         const title2 = node.kind === "instance" && node.subtitle ? `${node.subtitle} ${node.label}` : node.label;
         const subtitle = node.kind === "instance" ? void 0 : node.subtitle;
-        const leftNatural = isPort ? 0 : Math.max(0, ...leftPins.map((pin2) => measuredWidth(measure, pin2.source.name, exports2.SCHEMATIC_TEXT_STYLES.pin)));
-        const rightNatural = isPort ? 0 : Math.max(0, ...rightPins.map((pin2) => measuredWidth(measure, pin2.source.name, exports2.SCHEMATIC_TEXT_STYLES.pin)));
+        const leftNatural = isPort ? 0 : Math.max(0, ...leftPins.map((pin2) => measuredWidth(measure, pin2.source.name, schematicPinTextStyle2(pin2.source))));
+        const rightNatural = isPort ? 0 : Math.max(0, ...rightPins.map((pin2) => measuredWidth(measure, pin2.source.name, schematicPinTextStyle2(pin2.source))));
         const headingWidth = Math.max(measuredWidth(measure, title2, exports2.SCHEMATIC_TEXT_STYLES.title), measuredWidth(measure, subtitle ?? "", exports2.SCHEMATIC_TEXT_STYLES.subtitle)) + 2 * exports2.SCHEMATIC_NODE_LAYOUT.horizontalPadding;
         const pinWidth = leftNatural + rightNatural + exports2.SCHEMATIC_NODE_LAYOUT.minimumCenterGap + 2 * exports2.SCHEMATIC_NODE_LAYOUT.pinLabelInset;
         const naturalWidth = isPort ? exports2.SCHEMATIC_NODE_LAYOUT.portWidth : Math.min(exports2.SCHEMATIC_NODE_LAYOUT.maximumWidth, Math.max(exports2.SCHEMATIC_NODE_LAYOUT.minimumWidth, headingWidth, pinWidth));
@@ -2431,7 +2436,7 @@
             width: labelWidth,
             height: Math.min(exports2.SCHEMATIC_NODE_LAYOUT.labelHeight, height2)
           };
-          const fitted = isPort ? { visibleText: "", truncated: false } : fitText(source.name, clipBounds.width, measure, exports2.SCHEMATIC_TEXT_STYLES.pin);
+          const fitted = isPort ? { visibleText: "", truncated: false } : fitText(source.name, clipBounds.width, measure, schematicPinTextStyle2(source));
           return {
             source,
             side,
@@ -48590,8 +48595,8 @@
             fill: source?.interface === void 0 ? "var(--schematic-text)" : interfaceColor,
             class: source?.interface === void 0 ? "veriflow-pin-label" : "veriflow-pin-label veriflow-interface-label",
             fontFamily: "var(--vscode-font-family, sans-serif)",
-            fontSize: import_schematic_core.SCHEMATIC_TEXT_STYLES.pin.fontSize,
-            fontWeight: import_schematic_core.SCHEMATIC_TEXT_STYLES.pin.fontWeight,
+            fontSize: (0, import_schematic_core.schematicPinTextStyle)(source).fontSize,
+            fontWeight: (0, import_schematic_core.schematicPinTextStyle)(source).fontWeight,
             textAnchor: pin2.side === "left" ? "start" : "end",
             textVerticalAnchor: "middle",
             pointerEvents: "none"

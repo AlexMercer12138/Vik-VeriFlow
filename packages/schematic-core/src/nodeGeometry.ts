@@ -79,7 +79,12 @@ export const SCHEMATIC_TEXT_STYLES = {
     title: { fontSize: 12, fontWeight: 600 },
     subtitle: { fontSize: 10, fontWeight: 400 },
     pin: { fontSize: 10, fontWeight: 400 },
+    interfacePin: { fontSize: 10, fontWeight: 600 },
 } as const satisfies Record<string, TextMeasurementStyle>;
+
+export function schematicPinTextStyle(pin: GraphPin | undefined): TextMeasurementStyle {
+    return pin?.interface ? SCHEMATIC_TEXT_STYLES.interfacePin : SCHEMATIC_TEXT_STYLES.pin;
+}
 
 const LAYOUT_CHARACTER_WIDTH = 7;
 
@@ -182,7 +187,7 @@ function calculateSchematicNode(
         ...leftPins.map(pin => measuredWidth(
             measure,
             pin.source.name,
-            SCHEMATIC_TEXT_STYLES.pin
+            schematicPinTextStyle(pin.source)
         ))
     );
     const rightNatural = isPort ? 0 : Math.max(
@@ -190,7 +195,7 @@ function calculateSchematicNode(
         ...rightPins.map(pin => measuredWidth(
             measure,
             pin.source.name,
-            SCHEMATIC_TEXT_STYLES.pin
+            schematicPinTextStyle(pin.source)
         ))
     );
     const headingWidth = Math.max(
@@ -290,7 +295,7 @@ function calculateSchematicNode(
                 source.name,
                 clipBounds.width,
                 measure,
-                SCHEMATIC_TEXT_STYLES.pin
+                schematicPinTextStyle(source)
             );
         return {
             source,

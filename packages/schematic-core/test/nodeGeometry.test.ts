@@ -108,6 +108,24 @@ test('fits real font widths inside the deterministic layout size', () => {
     );
 });
 
+test('fits aggregate and member interface labels using their rendered semibold weight', () => {
+    for (const kind of ['aggregate', 'member'] as const) {
+        const node = instance('instance:interface', ['M_FREE', 'REQUEST'.repeat(10), 'irq']);
+        for (const pin of node.pins.slice(0, 2)) pin.interface = {
+            id: 'bus', protocol: 'test.link', protocolName: 'Test Link', role: 'master',
+            roleSource: 'declared', kind, topLevel: false, collapsed: kind === 'aggregate',
+        };
+        const sideMap = sides(node, ['right', 'left', 'right']);
+        const measure: TextMeasurer = (text, style) => text.length * (style.fontWeight === 600 ? 9 : 5);
+        const fitted = fitSchematicNode(node, sideMap, measureSchematicNodeSize(node, sideMap), measure);
+        for (const pin of fitted.pins) {
+            const renderedWidth = pin.visibleLabel.length * (pin.source.interface ? 9 : 5);
+            assert.ok(renderedWidth <= pin.clipBounds.width, `${kind}: ${pin.visibleLabel} exceeds its clip`);
+        }
+        assert.equal(fitted.pins[1].truncated, true);
+    }
+});
+
 test('accounts for headings and both pin-label columns in node width', () => {
     const node = instance(
         'instance:wide',

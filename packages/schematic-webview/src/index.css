@@ -563,10 +563,6 @@ dialog::backdrop {
     vector-effect: non-scaling-stroke;
 }
 
-.veriflow-interface-label {
-    font-weight: 600;
-}
-
 .x6-port-body.veriflow-pin-selected [data-selector="portBody"],
 .x6-port-body.veriflow-pin-selected {
     fill: var(--schematic-selection) !important;

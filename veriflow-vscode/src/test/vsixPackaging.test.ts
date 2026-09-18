@@ -252,12 +252,6 @@ function run(): void {
             selector: [{ filenamePattern: '*.ad' }],
             priority: 'default',
         });
-        assert.ok(
-            packagedManifest.activationEvents.includes(
-                'onCustomEditor:veriflow.archDesignEditor'
-            ),
-            'VSIX manifest does not activate the Arch Design editor'
-        );
         for (const command of [
             'veriflow.createArchDesign',
             'veriflow.refreshArchDesigns',
@@ -287,16 +281,18 @@ function run(): void {
             packagedManifest.contributes.views.veriflow[0].name,
             'Module Browser'
         );
-        assert.ok(
-            packagedManifest.activationEvents.includes('onView:veriflow.design'),
-            'VSIX manifest does not activate the Arch Designs view'
+        // Contributed views/commands activate implicitly on the supported VS Code versions.
+        assert.ok(packagedManifest.contributes.commands.some(
+            (item: { command?: string }) => item.command === 'veriflow.createArchDesign'
+        ));
+        const iconTheme = packagedManifest.contributes.iconThemes.find(
+            (item: { id?: string }) => item.id === 'veriflow-canvas'
         );
-        assert.ok(
-            packagedManifest.activationEvents.includes(
-                'onCommand:veriflow.createArchDesign'
-            ),
-            'VSIX manifest does not activate Arch Design creation'
-        );
+        const icons = JSON.parse(entryText(`extension/${iconTheme.path.replace(/^\.\//, '')}`));
+        assert.equal(icons.fileExtensions.st, icons.fileExtensions.ad);
+        assert.ok(entryText('extension/media/canvas-file.svg'));
+        assert.ok(entryText('extension/media/file.svg'));
+        assert.ok(entryText('extension/media/folder.svg'));
         assert.ok(
             packagedManifest.contributes.viewsWelcome.some(
                 (item: { view?: string; contents?: string }) =>

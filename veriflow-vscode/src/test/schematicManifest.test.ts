@@ -41,19 +41,9 @@ assert.deepStrictEqual(
     archDesignEditor.selector.map((item: any) => item.filenamePattern),
     ['*.ad']
 );
-assert.ok(
-    manifest.activationEvents.includes('onCustomEditor:veriflow.archDesignEditor'),
-    'Arch Design custom editor activation is missing'
-);
-for (const activation of [
-    'onView:veriflow.design',
-    'onCommand:veriflow.createArchDesign',
-]) {
-    assert.ok(
-        manifest.activationEvents.includes(activation),
-        `${activation} activation is missing`
-    );
-}
+// VS Code >= 1.74 automatically activates contributed views, commands and editors.
+assert.ok(manifest.contributes.views.veriflow.some((view: any) => view.id === 'veriflow.design'));
+assert.ok(manifest.contributes.commands.some((command: any) => command.command === 'veriflow.createArchDesign'));
 const archDesignLanguage = (manifest.contributes.languages ?? []).find(
     (item: any) => item.id === 'arch-design'
 );

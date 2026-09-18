@@ -3,7 +3,7 @@
   "displayName": "Verilog Design Flow",
   "description": "Verilog design workflow for VS Code: analyze, compile, simulate, edit schematics, view waveforms, and generate testbenches",
   "icon": "media/icon.png",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "publisher": "Vikai-mercer",
   "license": "MIT",
   "engines": {
@@ -464,6 +464,148 @@
           "command": "veriflow.runTraditionalTestbench",
           "group": "2_simulation@1"
         }
+      ],
+      "commandPalette": [
+        {
+          "command": "veriflow.analyze",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.simulate",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.openWave",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.openVcdViewer",
+          "when": "true"
+        },
+        {
+          "command": "veriflow.formatHdl",
+          "when": "editorLangId == verilog || editorLangId == systemverilog"
+        },
+        {
+          "command": "veriflow.openSchematic",
+          "when": "editorLangId == verilog || editorLangId == systemverilog"
+        },
+        {
+          "command": "veriflow.openSchematicFromExplorer",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.scanModules",
+          "when": "true"
+        },
+        {
+          "command": "veriflow.instantiateModule",
+          "when": "editorLangId == verilog || editorLangId == systemverilog"
+        },
+        {
+          "command": "veriflow.showOutput",
+          "when": "true"
+        },
+        {
+          "command": "veriflow.createArchDesign",
+          "when": "true"
+        },
+        {
+          "command": "veriflow.refreshArchDesigns",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.openArchDesign",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.validateArchDesign",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.exportArchDesign",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.newSimulationTask",
+          "when": "true"
+        },
+        {
+          "command": "veriflow.generateTestbench",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.runSimulationTask",
+          "when": "activeCustomEditorId == veriflow.simulationTask"
+        },
+        {
+          "command": "veriflow.openSimulationTask",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.cancelSimulationTask",
+          "when": "activeCustomEditorId == veriflow.simulationTask"
+        },
+        {
+          "command": "veriflow.insertHdlTemplate",
+          "when": "editorLangId == verilog || editorLangId == systemverilog"
+        },
+        {
+          "command": "veriflow.insertHdlTemplate.clock",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.insertHdlTemplate.reset",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.insertHdlTemplate.timeout",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.insertHdlTemplate.waveform",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.runTraditionalTestbench",
+          "when": "editorLangId == verilog || editorLangId == systemverilog"
+        },
+        {
+          "command": "veriflow.selectTraditionalTestbench",
+          "when": "true"
+        },
+        {
+          "command": "veriflow.cancelTraditionalTestbench",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.previewArchDesignRtl",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.openModuleBrowserModule",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.copyInstantiation",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.newHdlFile",
+          "when": "true"
+        },
+        {
+          "command": "veriflow.addModuleToCanvas",
+          "when": "false"
+        },
+        {
+          "command": "veriflow.exportSimulationTestbench",
+          "when": "activeCustomEditorId == veriflow.simulationTask"
+        },
+        {
+          "command": "veriflow.openSimulationTaskWave",
+          "when": "activeCustomEditorId == veriflow.simulationTask"
+        }
       ]
     },
     "configuration": {
@@ -556,6 +698,13 @@
         "scopeName": "source.systemverilog",
         "path": "./syntaxes/systemverilog.tmLanguage.json"
       }
+    ],
+    "iconThemes": [
+      {
+        "id": "veriflow-canvas",
+        "label": "VeriFlow Canvas",
+        "path": "./themes/canvas-icons.json"
+      }
     ]
   },
   "scripts": {
@@ -574,12 +723,12 @@
   },
   "dependencies": {
     "@antv/x6": "3.1.7",
-    "@veriflow/flow-core": "1.5.1",
-    "@veriflow/hdl-core": "1.5.1",
-    "@veriflow/hdl-runtime": "1.5.1",
-    "@veriflow/schematic-core": "1.5.1",
-    "@veriflow/simulator-iverilog-wasm": "1.5.1",
-    "@veriflow/waveform-runtime": "1.5.1",
+    "@veriflow/flow-core": "1.5.2",
+    "@veriflow/hdl-core": "1.5.2",
+    "@veriflow/hdl-runtime": "1.5.2",
+    "@veriflow/schematic-core": "1.5.2",
+    "@veriflow/simulator-iverilog-wasm": "1.5.2",
+    "@veriflow/waveform-runtime": "1.5.2",
     "lucide": "1.28.0",
     "web-tree-sitter": "0.26.11"
   },

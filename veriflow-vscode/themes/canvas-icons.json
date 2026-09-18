@@ -1,0 +1,10 @@
+{
+  "iconDefinitions": {
+    "canvas": { "iconPath": "../media/canvas-file.svg" },
+    "file": { "iconPath": "../media/file.svg" },
+    "folder": { "iconPath": "../media/folder.svg" }
+  },
+  "file": "file",
+  "folder": "folder",
+  "fileExtensions": { "st": "canvas", "ad": "canvas" }
+}

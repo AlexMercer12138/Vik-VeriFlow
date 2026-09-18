@@ -2,6 +2,17 @@
 
 ## 1.5.x 功能补全计划
 
+### 1.5.2 落地情况（2026-09-18）
+
+- 修复 Simulation Task 快速仿真波形自动打开、布局变化误判结果过期；Testbench 直接导出到 `.st` 同目录。
+- 第 5 项：新增可选 **VeriFlow Canvas** 文件图标主题，统一 `.st` / `.ad` 图标；使用方式和第三方主题边界见 [VS Code 命令与图标](vscode-command-surface.md)。
+- 第 6 项：完成 [CLI 命令规范](cli-command-spec.md)。
+- 第 7 项：完成命令面板入口整理，保留右键菜单和命令 ID，按 HDL/ST 上下文显示常用操作。
+- 第 1 项：完成 [Monitor / Driver / Sequencer 设计草案](simulation-components-design.md)，待评审后分期实现。
+- 第 2、3 项涉及模板配置契约和格式化语义，第 4 项 GIF 需要录制实际交互，留待后续迭代。
+
+### 原始需求
+
 1. 添加更多仿真功能模块，实现在画布快速搭建完整的简易 Testbench
 
 - 实现 Monitor 组件（整合现有接口的从机或接收端）

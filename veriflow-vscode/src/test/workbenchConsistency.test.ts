@@ -4,6 +4,13 @@ import * as path from 'node:path';
 
 const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8'));
 const contributes = manifest.contributes;
+const palette = contributes.menus.commandPalette;
+assert.equal(palette.length, contributes.commands.length);
+assert.equal(palette.find((item: any) => item.command === 'veriflow.simulate').when, 'false');
+assert.equal(palette.find((item: any) => item.command === 'veriflow.selectTraditionalTestbench').when, 'true');
+assert.equal(palette.find((item: any) => item.command === 'veriflow.runSimulationTask').when, 'activeCustomEditorId == veriflow.simulationTask');
+assert.equal(palette.find((item: any) => item.command === 'veriflow.insertHdlTemplate.clock').when, 'false');
+assert.ok(contributes.languages.find((item: any) => item.id === 'json').extensions.includes('.st'), 'ST keeps JSON schema support');
 assert.deepEqual(contributes.views.veriflow.map((view: any) => view.name), ['Module Browser', 'Architecture Design', 'Simulation Task']);
 assert.equal(contributes.views.veriflow[1].icon, contributes.views.veriflow[2].icon);
 const titleActions = (view: string) => contributes.menus['view/title'].filter((item: any) => item.when === `view == ${view}`);

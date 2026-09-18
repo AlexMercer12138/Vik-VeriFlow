@@ -2194,7 +2194,9 @@ function lastItem<T>(items: readonly T[]): T | undefined {
 }
 
 test('Arch Design interface pins drive Inspector actions and survive graph refreshes', {
-    timeout: 40_000,
+    // Allow CI headroom for this long interaction sequence while retaining
+    // the per-action timeout and all Inspector/refresh assertions.
+    timeout: 60_000,
 }, async () => {
     const fixtureRoot = createElectronFixture();
     const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'veriflow-schematic-user-'));

@@ -33,13 +33,7 @@
   "activationEvents": [
     "workspaceContains:**/*.v",
     "workspaceContains:**/*.sv",
-    "onCustomEditor:veriflow.waveformEditor",
-    "onCustomEditor:veriflow.schematicEditor",
-    "onCustomEditor:veriflow.archDesignEditor",
-    "onView:veriflow.design",
-    "onCommand:veriflow.createArchDesign",
-    "workspaceContains:**/*.st",
-    "onCustomEditor:veriflow.simulationTask"
+    "workspaceContains:**/*.st"
   ],
   "main": "./dist/extension.js",
   "contributes": {

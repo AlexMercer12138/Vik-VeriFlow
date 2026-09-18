@@ -6,10 +6,10 @@
 
 - 修复 Simulation Task 快速仿真波形自动打开、布局变化误判结果过期；Testbench 直接导出到 `.st` 同目录。
 - 第 5 项：按最新约定将 `.st` / `.ad` 统一关联 JSON，移除自定义图标主题；默认仍打开画布，说明见 [VS Code 命令与文件关联](vscode-command-surface.md)。
-- 第 6 项：完成 [CLI 命令重设计草案](cli-command-spec.md)，以工作区模块、AD、ST 的创建和打开入口为主；新命令尚未实现。
+- 第 6 项：CLI 功能维护已延期到 1.8.x，本版本不修改 CLI；[CLI 命令重设计草案](cli-command-spec.md)仅保留为后续参考。
 - 第 7 项：完成命令面板入口整理，保留右键菜单和命令 ID，按 HDL/ST 上下文显示常用操作。
 - 第 1 项：完成 [Monitor / Driver / Sequencer 设计草案](simulation-components-design.md)，待评审后分期实现。
-- 第 2、3 项涉及模板配置契约和格式化语义，第 4 项 GIF 需要录制实际交互，留待后续迭代。
+- 第 2、3 项涉及模板配置契约和格式化语义，留待后续迭代；第 4 项中文 README 与 GIF 已由作者完成，英文 README 同步中文内容。
 
 ### 原始需求
 
@@ -41,24 +41,53 @@ module module_name (
 
     wire    [1:0]                           net1        ;
 
-    reg     [7:0]                           ff          ;
+    reg     signed  [7:0]                   ff          ;
+
+    reg     [15:0]                          ram [0:255] ;
 
     assign  net1                            = data[1:0] ;
     assign  dout                            = cfg_data[7:0]; // 当对齐列被占用时不进行对齐
 
-    // 过程块不参与对齐
+    // 过程块按照第一列的对齐参数进行每行缩进
+    |   |   |
     initial begin
-        //...
+        if () begin
+            if begin
+                //...
+            end else if begin
+                //...
+            end else begin
+                //...
+            end
+        end
     end
 
     generate
-        //...
+        if () begin
+            if begin
+                //...
+            end else if begin
+                //...
+            end else begin
+                //...
+            end
+        end
     endgenerate
 
     always @(posedge clk) begin
-        //...
+        if () begin
+            if begin
+                //...
+            end else if begin
+                //...
+            end else begin
+                //...
+            end
+        end
     end
 
+    // 例化左侧按照第一列的对齐参数缩进，右侧与第四、五列对齐
+    |   |                                   |           |
     fifo                                    #(
         .DATA_WIDTH                         (16         ),
         .FIFO_DEPTH                         (1024       ))
@@ -79,6 +108,10 @@ endmodule
 
 5. 统一 .st 和 .ad 的 VS Code 文件浏览器图标，目前 .st 仍是 json 图标，.ad 是下箭头图标，统一为一个更符合两者画布身份的图标
 
+~~6. 制定 CLI 命令规范文档，规范 CLI 的命令~~ 工作量巨大，放到后续大版本进行 CLI 维护
+
+7. 整理 VS Code 命令，仅保留右键菜单以及部分有用的命令
+
 ## 1.6.x 完整编程语言扩展计划
 
 1. 支持 Verilog/SystemVerilog/XDC/SDC 等文件格式的语法高亮，快速模板等
@@ -94,3 +127,7 @@ endmodule
 2. 扩展内置波形器的支持格式，支持常见格式以及自定义格式，支持列表参考 Surfur
 
 3. 优化波形查看器界面，已发现问题有在高对比度主题下亮度过高，在信号列表拖动信号时总会插入偏下的位置
+
+## 1.8.x CLI功能完善计划
+
+1. 设计一套新的 CLI 命令来适应当前的核心功能，确保可通过 CLI 使用 AD、ST 和右键菜单的各项功能

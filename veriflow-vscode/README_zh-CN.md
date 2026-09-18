@@ -2,100 +2,91 @@
 
 [English](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/veriflow-vscode/README.md)
 
-Verilog Design Flow 将模块扫描、依赖分析、编译仿真、波形查看、原理图浏览和可视化架构设计集成到 VS Code。
-
-![VeriFlow 功能预览](https://img.cdn1.vip/i/6a0a6a9964326_1779067545.webp)
+**Verilog Design Flow** 将完整的 Verilog/SystemVerilog 工作流集成到 VS Code：模块扫描、快速仿真、波形查看、图形化 HDL 设计。
 
 ## 环境要求
 
-- VS Code `1.82.0` 或更高版本
-- 无需安装外部仿真器，默认使用内置 WASM 版 Icarus Verilog
-- 无需安装外部波形工具，默认使用内置 VCD 查看器
+* VS Code **1.82.0+**
 
-内置仿真器目标为 Verilog-2005。需要调用本机工具时，在设置中选择
-`custom` 并填写命令模板。
+* 无需外部仿真器：默认使用内置 **WASM 版 Icarus Verilog** 仿真器
 
-## HDL 工作流
+* 无需外部波形工具：默认使用内置 **VCD 波形查看器**
 
-1. 打开包含 `.v` 或 `.sv` 文件的工作区。
-2. 从活动栏进入 **VeriFlow**。**Module Browser** 按工作区、外部库和子目录组织模块，顶部固定过滤框实时筛选；点击跳到声明，右键“Add to Canvas”只作用于当前活动的 AD/ST 图形编辑器。
-3. **Architecture Design** 和 **Simulation Task** 分别列出各自文件，使用相同电路板图标和创建按钮。展开文件可查看依赖与实际导出路径。
-4. 新建 `.st` 只选择一次保存位置。通过与 AD 相同的添加实例对话框加入 HDL/AD，通过 Simulation Utility 加入 Clock、Reset、Stimulus 或 UART、SPI、I2C、APB、AXI-STREAM、AXI-Lite、AXI-Full、RGB 接口激励，在画布接线并在右侧配置属性。总线事务逐条填写读写、地址和数据；RGB888 时序使用 H/V total、active、syncstart、syncend。
-5. Generate Testbench 导出可读 Verilog-2005；运行使用同一生成器，运行期间按钮变成停止，完成后可打开最新 VCD。
+* 可通过配置命令调用本地工具
 
-`.st` 保存来源、预设、连接和任务时间设置。点击空白处编辑 timescale、结束时间及波形选项。运行完成表示仿真进程结束。传统 HDL Testbench 仍可直接运行，无需先创建 `.st`。
+## 快速开始
 
-`.vcd` 文件可直接使用 **VeriFlow Waveform Viewer** 打开。对 `.v` 或 `.sv` 文件执行 **Open as VeriFlow Schematic**，可查看支持稳定列布局、正交布线、搜索、缩放、minimap、整网选择和布局调整的只读原理图。
-## 架构设计编辑器
+1. 打开 `.v` / `.sv` 文件。
 
-在 **Architecture Design** 点击加号，选择 `.ad` 文件保存位置，空白设计会直接在可视化编辑器中打开。
+2. 在文件内右键 -> VeriFlow -> 插入模板 / 例化模块 / 格式化文档 / 运行仿真。
 
-使用工具栏添加模块实例、顶层端口和 Logic Utility（逻辑工具）。Logic Utility 包含显式常量、非、与/或/异或及其反相形式、MUX、拼接、切片、复制、零/符号扩展，以及与/或/异或归约。它们作为 Arch Design schema v2 的一等节点保存，并以连续 `assign` 逻辑导出。连线时先单击任意一侧端点，再单击另一侧端点；两次单击之间可以平移画布。选中模块、逻辑工具、端口、引脚、网络或识别出的接口，可在右侧属性栏查看和修改对应内容。
+3. 从活动栏进入 **VeriFlow**。
 
-模块和 Logic Utility 的未驱动输入仅在验证与 RTL 导出时采用等效常量 `0`；未连接的 inout `t` 采用 `1`。这些等效默认值会显示在属性栏中，但不会在画布上生成常量框或分支。需要可见、可复用的常量源时，应显式添加 Constant Logic Utility。
+4. 侧边栏包括：浏览模块 → 图形化顶层设计 → 图形化测试平台设计。
 
-错误和警告会实时显示在 E/W 计数与 Problems 面板中。编辑器内只保留画布工具栏的 **Export RTL** 导出入口；每个文件的 **Architecture Design** 右键菜单和命令面板也可执行验证与导出。默认导出同目录、同名的 `.v` 文件；可在属性栏选择 SystemVerilog 和相对 `.sv` 输出路径。扩展不会覆盖手写 RTL。
+## 功能
 
-`.ad` 是 VeriFlow 的 Arch Design 格式，不表示兼容 Vivado Block Design。schema v1 文件仍可读取，并会在编辑时迁移到 schema v2 模型。
+### 1. 一键仿真
 
-编辑器可根据 HDL 端口名称和方向识别内置的 AXI4、AXI-Stream、APB 与 AHB-Lite 接口，AXI4-Lite 按成员不完整的 AXI4 处理。接口可折叠、展开、从 Master 连接到 Slave，或整体提升为顶层接口；展开后的成员仍可作为普通引脚单独提升。无法自动推断角色时，可在属性栏指定 Master 或 Slave。
+在 Testbench 文件内右键 -> VeriFlow -> Run Current Testbench，自动以当前文件作为顶层，执行依赖分析 -> 文件编译 -> 运行仿真 -> 打开波形的流程。
 
-协议接口固定一对一连接，一对多应使用专门的互联模块。已有输出找不到对端输入时保持悬空；已有输入找不到对端输出时使用属性栏显示的连接自定义值或协议默认值。协议定义不包含位宽，位宽始终取自 HDL 端口；Master 与 Slave 位宽不一致时显示警告，但不阻止 RTL 导出。
+![一键仿真](https://i.imgs.ovh/2026/09/18/95096c5e37272e6e89f23df5d97af5f5.gif)
 
-项目自定义协议与内置协议使用相同的识别和导出流程。在 `project.json` 中引用相对工作区的协议文件：
+### 2. 架构设计
 
-```json
-{
-  "schematic": {
-    "interface_protocols": ["protocols/my-bus.json"]
-  }
-}
-```
+在侧边栏的 **Architecture Design** 下选择 **Create Architecture Design** 来新建一个架构设计画布，在画布内添加 Verilog / SystemVerilog 模块并连线来快速设计项目顶层。
 
-## 其他命令
+- 自动识别 **APB、AHB、AXI** 总线接口，实现主从快速连接
+- 内置常用组合逻辑模块 **Logic Utility**，提高连接灵活性
 
-- **Run Current Testbench**
-- **Scan Modules**
-- **Instantiate Module**
-- **Open VCD in VeriFlow Viewer**
-- **Insert HDL Template**（在当前光标处插入时钟、复位、波形和结束时间模板）
+![图形化架构设计](https://i.imgs.ovh/2026/09/18/3254e83e61781f004e33ccb05d88f7f3.gif)
+
+### 3. 仿真任务
+
+在侧边栏的 **Simulation Task** 下选择 **Create Simulation Task** 来新建一个仿真任务画布，在画布内添加 Verilog / SystemVerilog 模块并连线来快速设计测试平台。
+
+- 内置 **UART、SPI、I2C、APB、AXI-STREAM、AXI-Lite、AXI-Full、RGB888** 常见接口激励
+- 可直接从 **Simulation Task** 快速运行仿真并查看波形
+
+![图形化测试平台](https://i.imgs.ovh/2026/09/18/b2092a9a5e1dc50dc859305a20f7a7e2.gif)
+
+### 4. 常用工具
+
+在 Verilog / SystemVerilog 文件内右键 -> VeriFlow ->
+
+- Insert HDL template 插入常见 HDL 模板。
+- Instantiate Module 一键例化列表中的模块。
+- Format Verilog / SystemVerilog 一键格式化你的代码。
+
+![常用工具](https://i.imgs.ovh/2026/09/18/13ab5c06bfd09baba83b1bb979a5c353.gif)
 
 ## 常用设置
 
 | 设置 | 用途 |
-|---|---|
+| ------------------ | ---------------- |
 | `veriflow.libDirs` | HDL 库目录 |
 | `veriflow.defines` | SystemVerilog 预处理宏 |
-| `veriflow.simulator` | `builtin`（内置 Icarus Verilog WASM）或 `custom` |
-| `veriflow.waveViewer` | `builtin`（内置 VeriFlow VCD 查看器）或 `custom` |
+| `veriflow.simulator` | 仿真器选择 |
+| `veriflow.simulatorCompileCmd` / `simulatorRunCmd` | 自定义仿真器命令 |
+| `veriflow.waveViewer` | 波形工具选择 |
+| `veriflow.waveViewerCmd` | 自定义波形工具命令 |
 | `veriflow.waveFileTemplate` | 波形文件路径模板 |
 | `veriflow.testbenchOutputDir` | 工作区相对 Testbench 输出目录 |
 
-自定义命令可在 VS Code 设置中配置，以下是常见工具的模板示例：
+命令模板示例：
 
-```text
-Icarus Verilog 编译：iverilog -g2005 -o "{output}" {files}
-Icarus Verilog 运行：vvp "{output}"
-VCS 编译：          vcs -full64 -o "{output}" {files}
-VCS 运行：          ./"{output}"
-XSim 编译：         xvlog {files} && xelab {top_module} -snapshot "{output}"
-XSim 运行：         xsim "{output}" --runall
-Surfer：            surfer "{wave_file}"
-GTKWave：           gtkwave "{wave_file}"
+```
+Icarus Verilog: iverilog -g2012 -o "{output}" {files}   ·   vvp "{output}"
+
+VCS:            vcs -full64 -o "{output}" {files}       ·   ./"{output}"
+
+XSim:           xvlog {files} && xelab {top_module} -snapshot "{output}"   ·   xsim "{output}" --runall
+
+Surfer:         surfer "{wave_file}"
+
+GTKWave:        gtkwave "{wave_file}"
 ```
 
 ## 许可证
 
-VeriFlow 扩展主体代码采用 MIT 许可证。内置 Icarus Verilog WASM 运行时采用
-`GPL-2.0-or-later`，许可证与对应源码获取方式见
-[Icarus Verilog WASM 说明](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/licenses/iverilog-wasm.md)。
-
-## 图形仿真任务
-
-Clock 提供 `clk` 输出，配置 MHz 频率和初值；Reset 提供 `reset` 输出，配置有效电平及持续时间；Stimulus 提供可设位宽的 `out` 输出，配置初始 Verilog 数值和严格递增的绝对时间/数值表。预设使用右侧类型化属性表，添加后手工接线。Logic Utility、接口连线和撤销重做沿用 AD，ST 没有外部顶层端口。
-
-生成和运行共用一个生成器，输出包含预设辅助模块与 AD 包装，DUT HDL 保留为工程依赖。运行不覆盖已导出的文件。VS Code 设置选择仿真器与波形工具；CLI 用 `--project` 指定项目配置。
-
-Module Browser 标题只有刷新和新建文件图标；AD/ST 标题只有相同的加号，空状态使用相同样式的创建按钮。添加模块必须有当前活动的 AD/ST 图形编辑器，不使用记忆目标或目标选择器，不提供侧栏过滤弹窗或跨视图模块拖放。
-
-旧的用例矩阵、内嵌源码资产和验证绑定格式不受支持。
+扩展主体代码采用 MIT 许可证。内置 Icarus Verilog WASM 运行时采用 `GPL-2.0-or-later`，许可证与对应源码获取方式见 [Icarus Verilog WASM 说明](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/licenses/iverilog-wasm.md)。

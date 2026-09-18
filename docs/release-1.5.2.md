@@ -1,6 +1,6 @@
 # 1.5.2 修复记录（正式发布暂缓）
 
-本次修复 Simulation Task 快速仿真波形打开与直接导出，并完成命令面板整理及 `.ad` / `.st` 的统一 JSON 关联；已移除先前多余的自定义图标主题。CLI 入口重设计见 [CLI 设计草案](cli-command-spec.md)，新命令尚未实现。大组件方案见 [Simulation Task 组件化设计草案](simulation-components-design.md)。按所有者要求，正式发布暂缓，待 README 完善；本轮仅准备 GIF 录制用 VSIX，不重新打包 npm 产品。
+本次修复 Simulation Task 快速仿真波形打开与直接导出，并完成命令面板整理及 `.ad` / `.st` 的统一 JSON 关联；已移除先前多余的自定义图标主题。插入 HDL 模板、例化模块、格式化命令继续按 HDL 编辑器上下文显示，原有右键菜单保留。CLI 功能维护已延期至 1.8.x，本版本不修改 CLI，[CLI 设计草案](cli-command-spec.md)仅作后续参考。大组件方案见 [Simulation Task 组件化设计草案](simulation-components-design.md)。中文 README 和 GIF 已由作者完成，英文版同步中文内容；正式发布仍暂缓，仅更新预览 VSIX，不重新打包 npm 产品。
 
 ## 验证状态
 

@@ -55,4 +55,3 @@ module module_name #(
         .locked                             (locked     ));
 
 endmodule
-

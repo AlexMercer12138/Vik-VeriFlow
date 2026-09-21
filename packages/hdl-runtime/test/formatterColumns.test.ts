@@ -104,7 +104,8 @@ test('parameter headers without explicit keyword still align names and equals', 
 test('the complete development-plan example formats to the reviewed fixture', async () => {
     const fixtures = path.resolve(__dirname, '../../test/fixtures');
     const input = readFileSync(path.join(fixtures, 'formatter-columns-input.v'), 'utf8').replace(/\r\n/g, '\n');
-    const expected = readFileSync(path.join(fixtures, 'formatter-columns-expected.v'), 'utf8').replace(/\r\n/g, '\n');
+    // The printer retains one blank after a module; represent it explicitly to keep the fixture whitespace-clean.
+    const expected = readFileSync(path.join(fixtures, 'formatter-columns-expected.v'), 'utf8').replace(/\r\n/g, '\n') + '\n';
     const result = await formatHdl(input, options);
     assert.equal(result, expected);
     assert.equal(await formatHdl(result, options), expected);

@@ -56,6 +56,41 @@ Right-click inside a Verilog / SystemVerilog file → **VeriFlow** →
 
 ## Common Settings
 
+### HDL Templates and Formatting
+
+Open VeriFlow settings and edit `veriflow.hdlTemplates` in settings.json. Settings can be scoped to the user, workspace or workspace folder and are read for the active document each time you insert a template. Built-ins remain available by default; a matching ID overrides one, a new ID adds one, and `enabled: false` hides one. Remove an override to restore its built-in definition.
+
+```json
+{
+  "veriflow.hdlTemplates": {
+    "register": {
+      "label": "Register",
+      "description": "Named register with a configurable width",
+      "languages": ["verilog", "systemverilog"],
+      "body": ["reg [{{1:7}}:0] {{2:data}};", "{{0}}"]
+    },
+    "clock": { "body": ["reg {{1:clk}} = 1'b0;", "always #{{2:5}} {{1}} = ~{{1}};"] },
+    "timeout": { "enabled": false }
+  },
+  "veriflow.formatting.alignment": "columns",
+  "veriflow.formatting.columns": [4, 12, 20, 44, 56]
+}
+```
+
+`body` accepts a string or an array of lines. `{{1:default}}` creates an editable placeholder, `{{1}}` mirrors it, and `{{0}}` sets the final cursor. Defaults cannot contain `}`. Other text, including `$display`, `$finish` and backslashes, stays literal; native snippet variables are not evaluated. Invalid entries produce one configuration warning while valid templates remain usable. Each insertion is one undo step and preserves the document's line endings.
+
+Format Document and **Format Verilog/SystemVerilog** use the same formatting settings. Columns are zero-based space offsets: `4` means four preceding spaces (editor column 5). Supply five increasing integers; the first is also the indent size (1–8), and no column may exceed 240. Language-specific overrides are supported. Use `"adaptive"` for the previous alignment style. Invalid columns fall back to defaults without changing a valid alignment mode.
+
+For example, `localparam [31:0] BAUD_RATE=115200;` in a module becomes:
+
+```verilog
+    localparam      [31:0]                  BAUD_RATE   = 115200;
+```
+
+Port and signal names start at offset 44; parameter names also use offset 44 and their `=` uses offset 56. Long content keeps minimum separating whitespace instead of pushing other lines right. Nested blocks indent by the first offset. Formatting preserves comments, macros, line endings and syntax; unsupported or invalid source is left unchanged. Template insertion, instance insertion/copy and AD/ST export do not automatically apply these settings; format the resulting document explicitly.
+
+### Other Settings
+
 | Setting | Purpose |
 | --- | --- |
 | `veriflow.libDirs` | HDL library directories |

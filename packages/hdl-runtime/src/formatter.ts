@@ -1,9 +1,11 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import TreeSitter = require('web-tree-sitter');
 import { printHdlTree } from './formatterPrinter';
+import { validateAlignmentColumns, type HdlAlignmentColumns } from './formatterColumns';
 
 export interface HdlFormatOptions {
     indentSize?: number;
+    alignmentColumns?: HdlAlignmentColumns;
     runtimeWasmPath?: string;
     languageWasmPath?: string;
 }
@@ -13,7 +15,9 @@ const languages = new Map<string, Promise<TreeSitter.Language>>();
 
 /** Format original source, never the preprocessed/semantic projection. */
 export async function formatHdl(source: string, options: HdlFormatOptions = {}): Promise<string> {
-    const indentSize = options.indentSize ?? 4;
+    const columns = options.alignmentColumns === undefined ? undefined : validateAlignmentColumns(options.alignmentColumns);
+    const indentSize = options.indentSize ?? columns?.[0] ?? 4;
+    if (columns && indentSize !== columns[0]) throw new Error('HDL indentation must match the first alignment column');
     if (!Number.isInteger(indentSize) || indentSize < 1 || indentSize > 8) {
         throw new Error('HDL indentation must be between 1 and 8 spaces');
     }
@@ -41,7 +45,7 @@ export async function formatHdl(source: string, options: HdlFormatOptions = {}):
         if (!tree || tree.rootNode.hasError) {
             throw new Error('Cannot safely format HDL containing syntax errors or unsupported syntax');
         }
-        const result = printHdlTree(source, tree.rootNode, indentSize);
+        const result = printHdlTree(source, tree.rootNode, indentSize, columns);
         verified = parser.parse(result);
         if (!verified || verified.rootNode.hasError
             || fingerprint(tree.rootNode) !== fingerprint(verified.rootNode)) {

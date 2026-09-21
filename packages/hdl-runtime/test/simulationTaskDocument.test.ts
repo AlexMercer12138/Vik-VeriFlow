@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createSimulationTask, parseSimulationTask, describePreset, generateTestbench } from '../src/simulationTask';
+import { createEmptyArchDesign, parseArchDesignValue } from '@veriflow/schematic-core/arch-design';
+
+test('module parameter drafts accept exactly the AD value types', () => {
+    for (const value of ['unfinished +', '(', '', '"a string"', 8, true, false, null, {}, []]) {
+        const task = createSimulationTask();
+        const parameters = { WIDTH: value };
+        const ad = parseArchDesignValue({ ...createEmptyArchDesign('demo'), instances: [{ name: 'dut', module: 'dut', parameters }] });
+        const text = JSON.stringify({ ...task, instances: [{ id: 'dut', source: { kind: 'hdl', path: 'dut.v', module: 'dut' }, parameters }] });
+        if (ad.status === 'editable') assert.deepEqual((parseSimulationTask(text).instances[0] as any).parameters, parameters);
+        else assert.throws(() => parseSimulationTask(text));
+    }
+});
 
 test('empty task is editable and old product fields are rejected', () => {
     const task = createSimulationTask();

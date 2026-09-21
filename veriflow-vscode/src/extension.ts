@@ -332,13 +332,51 @@ export function activate(context: vscode.ExtensionContext): void {
         },
         openWave: (file, uri) => _openWaveFile(file, getSettings(uri), () => !hdlStopping),
     }, coordinator);
-    const designDefinitions = async (uri: vscode.Uri): Promise<readonly HdlDefinitionSummary[]> => {
-        const owner = {};
-        try { return (await _getSchematicIndex(context, uri, owner))?.getAllDefinitions('module') ?? []; }
-        finally { _releaseSchematicIndex(owner); }
+    const designDefinitions = async (uri: vscode.Uri, retainedOwner?: object, refreshUris: readonly vscode.Uri[] = []): Promise<readonly HdlDefinitionSummary[]> => {
+        const owner = retainedOwner ?? {};
+        const externalOwners: object[] = [];
+        try {
+            const index = await _getSchematicIndex(context, uri, owner);
+            const entry = schematicIndexOwners.get(owner);
+            const definitions = new Map<string, HdlDefinitionSummary>();
+            if (entry) {
+                // Export must observe just-saved sources even before the file watcher delivers them.
+                const rooted = refreshUris.filter(source => entry.rootUris.some(root => isSourceUriWithinRoot(source.toString(), root)));
+                await Promise.all(rooted.filter(_isHdlUri).map(source => _queueSchematicIndexWatchEvent(entry, source, false)));
+                if (entry.pendingEvents.size) await _flushSchematicIndexWatchEvents(entry);
+                await entry.updateTail;
+                // ST source references can point outside the workspace and configured libraries.
+                // Resolve those directories independently instead of rescanning the main workspace.
+                const externalDirectories = new Set<string>();
+                for (const source of refreshUris) {
+                    if (rooted.includes(source)) continue;
+                    const directory = source.with({ path: path.posix.dirname(source.path) }).toString();
+                    if (externalDirectories.has(directory)) continue;
+                    externalDirectories.add(directory);
+                    const externalOwner = {}; externalOwners.push(externalOwner);
+                    const externalIndex = await _getSchematicIndex(context, source, externalOwner);
+                    const externalEntry = schematicIndexOwners.get(externalOwner);
+                    if (externalEntry) {
+                        const siblings = refreshUris.filter(item => _isHdlUri(item)
+                            && item.with({ path: path.posix.dirname(item.path) }).toString() === directory);
+                        await Promise.all(siblings.map(item => _queueSchematicIndexWatchEvent(externalEntry, item, false)));
+                        if (externalEntry.pendingEvents.size) await _flushSchematicIndexWatchEvents(externalEntry);
+                        await externalEntry.updateTail;
+                    }
+                    for (const definition of externalIndex?.getAllDefinitions('module') ?? []) definitions.set(definition.key, definition);
+                }
+            }
+            for (const definition of index?.getAllDefinitions('module') ?? []) definitions.set(definition.key, definition);
+            return [...definitions.values()];
+        }
+        finally {
+            externalOwners.forEach(_releaseSchematicIndex);
+            if (!retainedOwner) _releaseSchematicIndex(owner);
+        }
     };
     simulationTaskController = new SimulationTaskController(context, {
         definitions: designDefinitions,
+        releaseDefinitions: owner => _releaseSchematicIndex(owner),
         onDidInvalidate: listener => {
             schematicIndexInvalidationListeners.add(listener);
             return vscode.Disposable.from({ dispose: () => schematicIndexInvalidationListeners.delete(listener) }, interfaceProtocolLoader.onDidInvalidate(listener));

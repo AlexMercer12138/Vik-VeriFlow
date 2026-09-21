@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { formatHdl } from '@veriflow/hdl-runtime';
+import { DEFAULT_HDL_ALIGNMENT_COLUMNS, formatHdl, validateAlignmentColumns, type HdlFormatOptions } from '@veriflow/hdl-runtime';
 
 export function registerHdlFormatting(context: vscode.ExtensionContext): vscode.Disposable {
     let disposed = false;
@@ -15,7 +15,19 @@ export function registerHdlFormatting(context: vscode.ExtensionContext): vscode.
         const version = document.version;
         const source = document.getText();
         try {
-            const formatted = await formatHdl(source, options);
+            const configuration = vscode.workspace.getConfiguration('veriflow.formatting', document);
+            const alignment = configuration.get<string>('alignment', 'columns');
+            let formatting: HdlFormatOptions;
+            try {
+                if (alignment !== 'columns' && alignment !== 'adaptive') throw new Error('HDL alignment must be columns or adaptive');
+                const columns = validateAlignmentColumns(configuration.get('columns', DEFAULT_HDL_ALIGNMENT_COLUMNS));
+                formatting = alignment === 'columns' ? { alignmentColumns: columns } : { indentSize: columns[0] };
+            } catch (error) {
+                formatting = alignment === 'adaptive' ? { indentSize: DEFAULT_HDL_ALIGNMENT_COLUMNS[0] }
+                    : { alignmentColumns: DEFAULT_HDL_ALIGNMENT_COLUMNS };
+                void vscode.window.showWarningMessage(`Invalid VeriFlow formatting settings; using default columns. ${error instanceof Error ? error.message : String(error)}`);
+            }
+            const formatted = await formatHdl(source, { ...options, ...formatting });
             if (disposed || token?.isCancellationRequested || document.isClosed
                 || document.version !== version || formatted === source) return [];
             return [vscode.TextEdit.replace(new vscode.Range(document.positionAt(0), document.positionAt(source.length)), formatted)];

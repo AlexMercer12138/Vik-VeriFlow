@@ -1,4 +1,4 @@
-import { createEmptyArchDesign, projectArchDesignGraph, type ArchDesign, type ArchDesignModuleDefinition } from '@veriflow/schematic-core/arch-design';
+import { createEmptyArchDesign, projectArchDesignGraph, reconcileArchDesignInstanceParameters, type ArchDesign, type ArchDesignModuleDefinition } from '@veriflow/schematic-core/arch-design';
 import { createInterfaceProtocolCatalog, type InterfaceProtocolCatalog } from '@veriflow/schematic-core/interfaces';
 import { describePreset, deriveTaskModuleName, resolveProtocolPresetPorts, type SimulationTaskDocument, type TaskModuleDefinition } from '@veriflow/hdl-runtime/simulationTask';
 import { archDesignLayout, projectArchDesignInspectorData } from '../archDesign/editorSupport';
@@ -24,7 +24,12 @@ export function projectSimulationTask(task: SimulationTaskDocument, modules: rea
         ports: module.ports.map(port => ({ name: port.name, direction: port.direction, width: typeof port.width === 'number'
             ? { kind: 'known', bits: port.width } : typeof port.width === 'string' ? { kind: 'symbolic', expression: port.width } : { kind: 'unknown' } })),
     }));
-    const design = taskDesign(task, modules, decodeURIComponent(uri));
+    const originalDesign = taskDesign(task, modules, decodeURIComponent(uri));
+    const design = reconcileArchDesignInstanceParameters(originalDesign, catalog);
+    if (design !== originalDesign) {
+        task = { ...task, instances: task.instances.map((instance, index) => 'source' in instance
+            ? { ...instance, parameters: design.instances[index].parameters ?? {} } : instance) };
+    }
     const projected = projectArchDesignGraph(design, catalog, { fileUri: uri, interfaceCatalog });
     const projection: SchematicEditorProjection = { design, catalog, validation: projected.validation,
         inspector: projectArchDesignInspectorData(design, catalog, interfaceCatalog),
@@ -39,5 +44,5 @@ export function projectSimulationTask(task: SimulationTaskDocument, modules: rea
             : { clock: 'Clock', reset: 'Reset', stimulus: 'Stimulus' }[preset.kind];
         return { ...presetNode, subtitle: title };
     }) };
-    return { projection, graph, layout: archDesignLayout(design, graph) };
+    return { task, projection, graph, layout: archDesignLayout(design, graph) };
 }

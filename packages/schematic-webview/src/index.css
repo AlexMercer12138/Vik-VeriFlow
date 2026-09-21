@@ -743,7 +743,6 @@ dialog::backdrop {
 
 #authoring-actions button[hidden] { display: none; }
 
-.inspector-error { color: var(--vscode-errorForeground, #c42b1c); margin: 4px 0; }
 .transition-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
 .transition-table th { text-align: left; font-weight: 500; }
 .transition-table td { padding: 3px 2px; }

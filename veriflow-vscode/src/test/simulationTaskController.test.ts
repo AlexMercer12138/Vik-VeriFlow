@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createSimulationTask} from '@veriflow/hdl-runtime/simulationTask';
+import {createInterfaceProtocolCatalog} from '@veriflow/schematic-core/interfaces';
+import {createEmptyArchDesign} from '@veriflow/schematic-core/arch-design';
 import {prepareSimulationTaskWorkspace} from '@veriflow/hdl-runtime/simulationTaskWorkspace';
 import {SimulationRunCoordinator} from '../workbench/simulationRunCoordinator';
 import {IverilogWasmBackend} from '@veriflow/simulator-iverilog-wasm';
@@ -12,20 +14,20 @@ class Emitter {event=()=>({dispose(){}});fire(){}dispose(){}}
 class Uri { constructor(readonly fsPath:string){} get path(){return this.fsPath.replace(/\\/g,'/');} static file(file:string){return new Uri(file);} static parse(uri:string){return Uri.file(fileURLToPath(uri));} static joinPath(uri:Uri,...parts:string[]){return Uri.file(path.join(uri.fsPath,...parts));} toString(){return pathToFileURL(this.fsPath).toString();} }
 async function main(){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vf-st-controller-'));const target=Uri.file(path.join(root,'sample.st')), exported=Uri.file(path.join(root,'sample_tb.v'));
- const commands=new Map<string,any>(),opened:any[]=[],errors:string[]=[];let saveTarget=target,disposed=0,captured='',backendFailure=false,openedWave=''; const disposable={dispose(){}};
+ const commands=new Map<string,any>(),opened:any[]=[],errors:string[]=[],notifications:string[]=[];let saveTarget=target,disposed=0,captured='',backendFailure=false,openedWave='',openedText=0; const disposable={dispose(){}};
  const channels:string[]=[], printed:string[]=[], shown:any[]=[];let outputCleared=0,outputDisposed=0,saveDialogs=0,extraInput:string|undefined;
  let text='',version=1; const document={uri:target,get version(){return version;},getText:()=>text,positionAt:(n:number)=>n,save:async()=>{fs.writeFileSync(document.uri.fsPath,text);return true;}};
  const mock={Uri,EventEmitter:Emitter,Position:class{},Range:class{},ProgressLocation:{Notification:1},
   WorkspaceEdit:class {operations:any[]=[];createFile(uri:Uri){this.operations.push(['create',uri]);}insert(uri:Uri,_position:any,content:string){this.operations.push(['write',uri,content]);}replace(uri:Uri,_range:any,content:string){this.operations.push(['write',uri,content]);}},
   commands:{registerCommand:(key:string,action:any)=>{commands.set(key,action);return disposable;},executeCommand:async(...args:any[])=>{opened.push(args);}},
-  window:{createOutputChannel:(name:string)=>{channels.push(name);return {dispose(){outputDisposed++;},clear(){outputCleared++;},show(preserveFocus:any){shown.push(preserveFocus);},appendLine(line:string){printed.push(line);}};},showSaveDialog:async()=>{saveDialogs++;return saveTarget;},showErrorMessage:async(message:string)=>errors.push(message),showTextDocument:async()=>{},withProgress:async(_options:any,action:any)=>action({}, {isCancellationRequested:false,onCancellationRequested:()=>disposable})},
+  window:{createOutputChannel:(name:string)=>{channels.push(name);return {dispose(){outputDisposed++;},clear(){outputCleared++;},show(preserveFocus:any){shown.push(preserveFocus);},appendLine(line:string){printed.push(line);}};},showSaveDialog:async()=>{saveDialogs++;return saveTarget;},showInformationMessage:async(message:string)=>notifications.push(message),showErrorMessage:async(message:string)=>errors.push(message),showTextDocument:async()=>{openedText++;},withProgress:async(_options:any,action:any)=>action({}, {isCancellationRequested:false,onCancellationRequested:()=>disposable})},
   workspace:{onDidChangeConfiguration:()=>disposable,createFileSystemWatcher:()=>({...disposable,onDidChange:()=>disposable,onDidCreate:()=>disposable,onDidDelete:()=>disposable}),onDidChangeTextDocument:()=>disposable,isTrusted:true,workspaceFolders:[{uri:Uri.file(root)}],getWorkspaceFolder:()=>({uri:Uri.file(root)}),saveAll:async()=>true,openTextDocument:async()=>document,
    applyEdit:async(edit:any)=>{for(const [kind,uri,content] of edit.operations){if(kind==='create'&&fs.existsSync(uri.fsPath))return false;if(kind==='write'){text=content;version++;}}return true;},fs:{writeFile:async(uri:Uri,data:Uint8Array)=>fs.writeFileSync(uri.fsPath,data)}}};
  const loader=Module as typeof Module & {_load:any},original=loader._load;
  loader._load=function(request:string,...args:any[]){return request==='vscode'?mock:original.call(this,request,...args);};
  try{
   const {SimulationTaskController}=require('../simulationTask/taskController');const coordinator=new SimulationRunCoordinator();
-  const services={definitions:async()=>[],interfaces:async()=>undefined,coordinator,openWave:async(file:string)=>{openedWave=file;},
+  const services={definitions:async()=>[{key:'probe',kind:'module',name:'probe',uri:Uri.file(path.join(root,'probe.v')).toString(),ports:[],parameters:[],dependencies:[],declarationStart:0,declarationLine:1,modelFingerprint:'probe'}],interfaces:async()=>createInterfaceProtocolCatalog(),coordinator,openWave:async(file:string)=>{openedWave=file;},
    prepare:async(task:any,uri:Uri,signal?:AbortSignal)=>{const value=await prepareSimulationTaskWorkspace(task,uri.fsPath,signal);if(extraInput)value.inputFiles.push(extraInput);const cleanup=value.dispose;value.dispose=async()=>{disposed++;await cleanup();};return value;},
    backend:async()=>({compileAndRun:async(request:any)=>{captured=fs.readFileSync(request.files[0],'utf8');assert.equal(request.topModule,'sample_tb');
     const staged=[...request.files,...request.runtimeFiles,...(request.includeFiles??[])].map((file:string)=>process.platform==='win32'?path.resolve(file).toLowerCase():path.resolve(file));
@@ -39,9 +41,12 @@ async function main(){
   const task=JSON.parse(text);task.instances.push({id:'probe',source:{kind:'hdl',path:'probe.v',module:'probe'},parameters:{}});text=JSON.stringify(task);version++;await document.save();
   const beforeExportDialogs=saveDialogs;
   const oldLocation=JSON.parse(text);oldLocation.settings.exportPath='elsewhere/old.v';text=JSON.stringify(oldLocation);version++;await document.save();
-  saveTarget=exported;await controller.generate(document);assert.equal(JSON.parse(text).settings.exportPath,'sample_tb.v');assert.equal(disposed,1);
+  saveTarget=exported;await Promise.all([controller.generate(document),controller.generate(document)]);assert.equal(JSON.parse(text).settings.exportPath,'sample_tb.v');assert.equal(disposed,0,'export must not create a simulation workspace or parser');
+  assert.equal(notifications.length,1,'concurrent exports must share one operation and notification');
+  assert.ok(notifications[0].includes(exported.fsPath));
+  assert.equal(openedText,0,'export must keep focus on the canvas, like AD');
   assert.equal(saveDialogs,beforeExportDialogs,'export writes beside the ST without a save dialog');
-  const emitted=fs.readFileSync(exported.fsPath,'utf8');await controller.run(document);assert.equal(captured,emitted);assert.equal(disposed,2);assert.equal(controller.execution(target).status,'completed');
+  const emitted=fs.readFileSync(exported.fsPath,'utf8');await controller.run(document);assert.equal(captured,emitted);assert.equal(disposed,1);assert.equal(controller.execution(target).status,'completed');
   assert.ok(openedWave && fs.existsSync(openedWave),'successful quick simulation opens the waveform automatically');
   assert.deepEqual(channels,['VeriFlow'],'ST must reuse the existing extension output channel');
   assert.ok(printed.includes('done'),'simulator stdout reaches the shared output');
@@ -57,13 +62,24 @@ async function main(){
   }
   await assert.rejects(controller.openWave(target),/Sources changed/);assert.equal(controller.execution(target).canOpenWave,false);
   (mock.workspace as any).textDocuments=[];
-  backendFailure=true;await assert.rejects(controller.run(document),/compile failed/);assert.equal(controller.execution(target).status,'failed');assert.equal(controller.execution(target).canOpenWave,false);assert.equal(disposed,3);
+  backendFailure=true;await assert.rejects(controller.run(document),/compile failed/);assert.equal(controller.execution(target).status,'failed');assert.equal(controller.execution(target).canOpenWave,false);assert.equal(disposed,2);
   assert.equal(printed.filter(line=>line.includes('compile failed')).length,1,'simulator stderr reaches the shared output exactly once');
+  const probeDefinitions=services.definitions;
+  services.definitions=async()=>[...await probeDefinitions(),{key:'exported',kind:'module',name:'sample_tb',uri:exported.toString(),ports:[],parameters:[],dependencies:[],declarationStart:0,declarationLine:1,modelFingerprint:'exported'}];
   await controller.generate(document);
   assert.equal(fs.readFileSync(exported.fsPath,'utf8'),emitted,'re-export replaces this task\'s generated file');
   fs.writeFileSync(exported.fsPath,'// hand-written testbench\nmodule sample_tb; endmodule\n');
   await assert.rejects(controller.generate(document),/Cannot overwrite/);
   assert.match(fs.readFileSync(exported.fsPath,'utf8'),/hand-written/);
+  services.definitions=probeDefinitions;
+  const {prepareTaskExport}=require('../simulationTask/taskExport');
+  const architecture={...createEmptyArchDesign('wrapped_probe'),instances:[{name:'probe_inst',module:'probe',definitionKey:'module:workspace:/probe.v#probe'}]};
+  fs.writeFileSync(path.join(root,'probe.ad'),JSON.stringify(architecture));
+  const adTask=createSimulationTask('nested.st');adTask.instances.push({id:'dut',source:{kind:'ad',path:'probe.ad'},parameters:{}});
+  const direct=await prepareTaskExport(adTask,path.join(root,'nested.st'),await probeDefinitions(),createInterfaceProtocolCatalog(),root);
+  const staged=await prepareSimulationTaskWorkspace(adTask,path.join(root,'nested.st'),undefined,{workspaceRoot:root});
+  try{assert.equal(direct.generatedTestbench.text,staged.generatedTestbench.text,'AD wrappers must match actual simulation output');}
+  finally{await staged.dispose();}
   const noWave=JSON.parse(text);noWave.settings.waveform.enabled=false;text=JSON.stringify(noWave);version++;await document.save();
   backendFailure=false;openedWave='';await controller.run(document);
   assert.equal(controller.execution(target).status,'completed');assert.equal(controller.execution(target).canOpenWave,false);assert.equal(openedWave,'');

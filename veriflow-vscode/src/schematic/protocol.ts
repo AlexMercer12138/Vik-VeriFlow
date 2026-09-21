@@ -70,6 +70,7 @@ export type WebviewCommand =
 
 export type HostEvent =
     | { type: 'simulationTaskState'; revision: string; projection: SchematicEditorProjection; task: SimulationTaskViewState }
+    | { type: 'simulationTaskExecution'; execution: SimulationTaskViewState['execution'] }
 
     | {
         type: 'initialize';

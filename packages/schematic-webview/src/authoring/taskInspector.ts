@@ -104,9 +104,7 @@ export function projectSimulationTaskInspector(
     const id = model.fields.find(field => field.id === 'instance-name')?.value;
     const instance = task.instances.find(instance => instance.id === id);
     if (!instance) return model;
-    if ('source' in instance) return { ...model, fields: [
-        ...model.fields, readonly('instance-source', 'Source', instance.source.path),
-    ] };
+    if ('source' in instance) return model;
     const preset = instance.preset.kind === 'protocol' ? normalizeProtocolPreset(instance.preset) : instance.preset;
     const update = (next: SimulationPreset): TaskInspectorCommand => ({
         type: 'task', command: 'updatePreset', payload: { id: instance.id, preset: next },

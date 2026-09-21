@@ -20,4 +20,11 @@ assert.throws(() => applyTaskEdit(task, modules, { type: 'addPort', port: { name
 task = applyTaskEdit(task, modules, { type: 'removeInstance', name: 'clk_source' });
 assert.equal(task.instances.length, 1);
 assert.ok(!task.connections.some(c => c.endpoints.some(p => p.kind === 'instance' && p.instance === 'clk_source')));
+const parameterModules = [{ ...modules[0], parameters: [{ name: 'WIDTH', defaultValue: '8' }] }];
+for (const value of ['(', 'unfinished +', 4, true, false]) {
+    task = applyTaskEdit(task, parameterModules, { type: 'setInstanceParameter', instance: 'u_dut', parameter: 'WIDTH', value });
+    assert.equal((task.instances[0] as any).parameters.WIDTH, value, 'ST must preserve the same parameter drafts and value types as AD');
+}
+task = applyTaskEdit(task, parameterModules, { type: 'setInstanceParameter', instance: 'u_dut', parameter: 'WIDTH' });
+assert.deepEqual((task.instances[0] as any).parameters, {}, 'clearing an override restores the module default');
 console.log('ST uses AD graph editing while preserving source and preset identities');

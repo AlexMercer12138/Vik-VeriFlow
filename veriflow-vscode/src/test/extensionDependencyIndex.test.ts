@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import Module = require('module');
 import * as path from 'path';
+import type { SimulationTaskServices } from '../simulationTask/taskController';
 
 import {
     createHdlParserClient,
@@ -175,6 +176,7 @@ class FakeWorkspaceHdlIndex {
 }
 
 type ExtensionHarness = {
+    taskServices(): SimulationTaskServices;
     events: string[];
     existingUris: Set<string>;
     files: Map<string, string>;
@@ -280,6 +282,7 @@ function createExtensionHarness(
     let nextExactWatcherFailure: { filename: string; error: Error } | undefined;
     let latestScanResult: ModuleScanResult | null = null;
     let workspaceReady = false;
+    let taskServices!: SimulationTaskServices;
     const context = {
         extensionPath: useRealIndex
             ? path.resolve(__dirname, '..', '..')
@@ -428,6 +431,7 @@ function createExtensionHarness(
             },
         },
         workspace: {
+            getWorkspaceFolder: (uri: FakeUri) => uri.path.startsWith(folder.uri.path + '/') ? folder : undefined,
             onDidChangeTextDocument: () => ({ dispose() {} }),
             workspaceFolders: [folder],
             fs: {
@@ -655,6 +659,7 @@ function createExtensionHarness(
         './moduleInstantiationCommand': { showModuleInstantiationPicker: async () => undefined },
         './simulationTask/taskController': {
             SimulationTaskController: class {
+                constructor(_context: unknown, services: SimulationTaskServices) { taskServices = services; }
                 onDidChange = (_listener: () => void) => disposable;
                 simulationView = {}; resultsView = {}; editor = { dispose() {}, async addModules() {} };
                 refresh() {}
@@ -726,6 +731,7 @@ function createExtensionHarness(
     moduleLoader._load = originalLoad;
 
     return {
+        taskServices: () => taskServices,
         events,
         existingUris,
         files,
@@ -1206,7 +1212,30 @@ async function testAbsoluteIncludeReviewCases(): Promise<void> {
     }
 }
 
+async function testTaskExportRefreshesExternalSources(): Promise<void> {
+    const harness = createExtensionHarness({}, true);
+    const owner = {};
+    try {
+        const taskUri = FakeUri.parse('file:///workspace/demo.st');
+        const externalUri = FakeUri.parse('file:///shared/dut.v');
+        harness.setFile(externalUri.toString(), 'module dut(input old_port); endmodule');
+        const services = harness.taskServices();
+        await services.definitions(taskUri as any, owner);
+        let definitions = await services.definitions(taskUri as any, undefined, [externalUri as any]);
+        assert.deepStrictEqual(definitions.find(item => item.name === 'dut')?.ports.map(item => item.name), ['old_port'],
+            'export resolves explicitly referenced HDL outside workspace and library roots');
+        harness.setFile(externalUri.toString(), 'module dut(input new_port); endmodule');
+        definitions = await services.definitions(taskUri as any, undefined, [externalUri as any]);
+        assert.deepStrictEqual(definitions.find(item => item.name === 'dut')?.ports.map(item => item.name), ['new_port'],
+            'export sees saved source changes before a file watcher notification');
+    } finally {
+        harness.taskServices().releaseDefinitions?.(owner);
+        await harness.dispose();
+    }
+}
+
 async function main(): Promise<void> {
+    await testTaskExportRefreshesExternalSources();
     await testCoreStubSupportsExtensionSimulationImports();
     await testRejectedIndexLoadCanRetry();
     await testProvisionalWatcherFailureDisposesCandidateAndRetries();

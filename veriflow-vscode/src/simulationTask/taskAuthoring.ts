@@ -10,7 +10,7 @@ export function applyTaskEdit(task: SimulationTaskDocument, modules: readonly Ta
         const originalId = edit.type === 'renameInstance' && instance.name === edit.nextName ? edit.name : instance.name;
         const previous = task.instances.find(item => item.id === originalId);
         if (previous && 'preset' in previous) return { ...previous, id: instance.name };
-        const parameters = Object.fromEntries(Object.entries(instance.parameters ?? {}).map(([key, value]) => [key, String(value)]));
+        const parameters = instance.parameters ?? {};
         if (previous && 'source' in previous) return { ...previous, id: instance.name, parameters };
         const definition = modules.find(item => taskModuleKey(item.source, item.module) === instance.definitionKey);
         if (!definition) throw new Error('Select a module with an exact source identity.');

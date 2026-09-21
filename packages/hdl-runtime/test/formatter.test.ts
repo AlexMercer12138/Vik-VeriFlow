@@ -80,3 +80,44 @@ test('blank lines follow trailing comments and precede next block comments', asy
     assert.match(result, /end \/\/ process\n\nendmodule/);
     assert.equal(await formatHdl(result), result);
 });
+
+test('separates parameter, signal, assign groups and every process or instance without accumulating blanks', async () => {
+    const source = `module m;
+parameter P=1; localparam Q=2;
+wire a; reg b;
+assign a=b; assign c=a;
+initial begin b=0; end // initialization
+// update
+always @* b=a;
+initial begin b=1; end
+generate if (P) begin : g x u(); x v(); end endgenerate
+final begin $display("done"); end
+x w(); x z();
+endmodule`;
+    for (const options of [{}, { alignmentColumns: [4, 12, 20, 44, 56] as const }]) {
+        const result = await formatHdl(source, options);
+        const normalized = result.split('\n').map(line => line.trim().replace(/ +/g, ' ')).join('\n');
+        assert.match(normalized, /parameter[^\n]*\nlocalparam[^\n]*;\n\nwire/);
+        assert.match(normalized, /wire[^\n]*\nreg[^\n]*;\n\nassign/);
+        assert.match(normalized, /assign[^\n]*\nassign[^\n]*;\n\ninitial/);
+        assert.match(normalized, /end \/\/ initialization\n\n\/\/ update\nalways/);
+        assert.match(normalized, /b = a;\n\ninitial/);
+        assert.match(normalized, /end\n\ngenerate/);
+        assert.match(normalized, /endgenerate\n\nfinal/);
+        assert.match(normalized, /end\n\nx w/);
+        assert.match(normalized, /x u[^;]*;\n\nx v/);
+        assert.match(normalized, /x w[^;]*;\n\nx z/);
+        assert.ok(!result.includes('\n\n\n'));
+        assert.equal(await formatHdl(result, options), result);
+        assert.equal(await formatHdl(source.replace(/\n/g, '\r\n'), options), result.replace(/\n/g, '\r\n'));
+    }
+});
+
+test('separates task and function bodies without inserting whitespace inside literal text', async () => {
+    const source = 'module m; function f; input a; begin f=a; end endfunction task t; begin $display("initial; end; assign"); end endtask initial t; endmodule';
+    const result = await formatHdl(source);
+    assert.match(result, /endfunction\n\n    task/);
+    assert.match(result, /endtask\n\n    initial/);
+    assert.ok(result.includes('"initial; end; assign"'));
+    assert.equal(await formatHdl(result), result);
+});

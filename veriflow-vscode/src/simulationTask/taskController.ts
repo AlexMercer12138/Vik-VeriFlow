@@ -12,9 +12,11 @@ import { SimulationRunCoordinator } from '../workbench/simulationRunCoordinator'
 import { getActiveCanvas } from '../workbench/moduleTargets';
 import { SimulationTaskEditorProvider, replaceTaskDocument, type TaskEditorServices, type TaskExecutionState } from './taskEditorProvider';
 import * as output from '../output';
+import { prepareTaskExport } from './taskExport';
 interface InputFingerprint { hash: string; taskDocument: boolean }
 export interface SimulationTaskServices {
-    definitions(uri: vscode.Uri): Promise<readonly HdlDefinitionSummary[]>;
+    definitions(uri: vscode.Uri, owner?: object, refreshUris?: readonly vscode.Uri[]): Promise<readonly HdlDefinitionSummary[]>;
+    releaseDefinitions?(owner: object): void;
     onDidInvalidate?(listener: () => void): vscode.Disposable;
     interfaces(uri: vscode.Uri): Promise<InterfaceProtocolCatalog>;
     prepare(task: SimulationTaskDocument, uri: vscode.Uri, signal?: AbortSignal): Promise<PreparedSimulationTask>;
@@ -25,11 +27,14 @@ export interface SimulationTaskServices {
 export class SimulationTaskController implements vscode.Disposable, TaskEditorServices {
     private readonly emitter = new vscode.EventEmitter<void>();
     readonly onDidChange = this.emitter.event;
-    private readonly subscriptions: vscode.Disposable[] = [this.emitter];
+    private readonly invalidationEmitter = new vscode.EventEmitter<void>();
+    readonly onDidInvalidate = this.invalidationEmitter.event;
+    private readonly subscriptions: vscode.Disposable[] = [this.emitter, this.invalidationEmitter];
     private readonly states = new Map<string, TaskExecutionState & { wave?: string; fingerprints?: Map<string, InputFingerprint> }>();
     private configurationRevision = 0;
     private readonly artifactDirectories = new Set<string>();
     private runningTask?: { uri: vscode.Uri; abort: AbortController };
+    private readonly exportsInFlight = new Map<string, Promise<void>>();
     readonly editor: SimulationTaskEditorProvider;
     constructor(private readonly context: vscode.ExtensionContext, private readonly services: SimulationTaskServices) {
         this.editor = new SimulationTaskEditorProvider(context, this);
@@ -46,11 +51,12 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
         const watcher = vscode.workspace.createFileSystemWatcher('**/*.{st,ad,v,sv,vh,svh}');
         this.subscriptions.push(watcher, watcher.onDidChange(invalidate), watcher.onDidCreate(invalidate), watcher.onDidDelete(invalidate),
             vscode.workspace.onDidChangeTextDocument(event => invalidate(event.document.uri)));
-        const invalidation = this.services.onDidInvalidate?.(() => this.emitter.fire());
+        const invalidation = this.services.onDidInvalidate?.(() => this.invalidationEmitter.fire());
         if (invalidation) this.subscriptions.push(invalidation);
         this.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
             if (!event.affectsConfiguration('veriflow')) return;
             this.configurationRevision++;
+            this.invalidationEmitter.fire();
             for (const [key, state] of this.states) if (state.canOpenWave) this.states.set(key, { status: 'idle', canOpenWave: false, error: 'Settings changed. Run the task again.' });
             this.emitter.fire();
         }));
@@ -67,7 +73,8 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
         }));
     }
     dispose(): void { this.runningTask?.abort.abort(); this.subscriptions.forEach(item => item.dispose()); for (const directory of this.artifactDirectories) void rm(directory, { recursive: true, force: true }).catch(() => {}); this.artifactDirectories.clear(); }
-    definitions(uri: vscode.Uri): Promise<readonly HdlDefinitionSummary[]> { return this.services.definitions(uri); }
+    definitions(uri: vscode.Uri, owner?: object): Promise<readonly HdlDefinitionSummary[]> { return this.services.definitions(uri, owner); }
+    releaseDefinitions(owner: object): void { this.services.releaseDefinitions?.(owner); }
     interfaces(uri: vscode.Uri): Promise<InterfaceProtocolCatalog> { return this.services.interfaces(uri); }
     execution(uri: vscode.Uri): TaskExecutionState { const state = this.states.get(uri.toString()); return state ? { status: state.status, canOpenWave: state.canOpenWave, ...(state.error ? { error: state.error } : {}) } : { status: 'idle', canOpenWave: false }; }
     cancel(uri: vscode.Uri): void { this.services.coordinator.cancel({ kind: 'st', uri: uri.toString() }); }
@@ -89,34 +96,51 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
         if (active?.kind !== 'st') throw new Error('Open a Simulation Task canvas first.');
         await action(await vscode.workspace.openTextDocument(active.uri));
     }
-    async generate(document: vscode.TextDocument): Promise<void> {
+    generate(document: vscode.TextDocument): Promise<void> {
+        const key = document.uri.toString(), pending = this.exportsInFlight.get(key);
+        if (pending) return pending;
+        const operation = this.exportTestbench(document).finally(() => {
+            if (this.exportsInFlight.get(key) === operation) this.exportsInFlight.delete(key);
+        });
+        this.exportsInFlight.set(key, operation);
+        return operation;
+    }
+    private async exportTestbench(document: vscode.TextDocument): Promise<void> {
+        const changedSources = vscode.workspace.textDocuments?.filter(item => item.isDirty && /\.(v|sv|vh|svh)$/i.test(item.uri.path)).map(item => item.uri) ?? [];
         if (!await vscode.workspace.saveAll()) throw new Error('Save the task and its sources before generating the testbench.');
         const version = document.version, task = parseSimulationTask(document.getText());
-        const prepared = await this.services.prepare(task, document.uri);
-        try {
-            const filename = `${path.basename(document.uri.fsPath, path.extname(document.uri.fsPath))}_tb.v`;
-            const uri = vscode.Uri.file(path.join(path.dirname(document.uri.fsPath), filename));
-            if (document.version !== version) throw new Error('The task changed while preparing the testbench. Generate it again.');
-            if (prepared.inputFiles.some(file => inputKey(file) === inputKey(uri.fsPath))) throw new Error('The testbench cannot overwrite a source module.');
-            if (vscode.workspace.textDocuments?.some(item => inputKey(item.uri.fsPath) === inputKey(uri.fsPath) && item.isDirty)) throw new Error('Save the exported testbench before generating it again.');
-            const existing = await lstat(uri.fsPath).catch(error => {
-                if (error.code === 'ENOENT') return undefined;
-                throw error;
-            });
-            if (existing) {
-                const marker = `// Generated Simulation Task: ${prepared.generatedTestbench.moduleName}`;
-                if (!existing.isFile() || existing.isSymbolicLink()
-                    || (await readFile(uri.fsPath, 'utf8')).split(/\r?\n/, 1)[0] !== marker) {
-                    throw new Error(`Cannot overwrite an existing file that was not generated for this task: ${filename}`);
-                }
+        const filename = `${path.basename(document.uri.fsPath, path.extname(document.uri.fsPath))}_tb.v`;
+        const uri = vscode.Uri.file(path.join(path.dirname(document.uri.fsPath), filename));
+        const referencedSources = task.instances.flatMap(item => 'source' in item
+            ? [vscode.Uri.file(path.resolve(path.dirname(document.uri.fsPath), item.source.path))] : []);
+        const [definitions, catalog] = await Promise.all([
+            this.services.definitions(document.uri, undefined, [...changedSources, ...referencedSources]), this.services.interfaces(document.uri),
+        ]);
+        const exportDefinitions = definitions.filter(item => inputKey(vscode.Uri.parse(item.uri).fsPath) !== inputKey(uri.fsPath));
+        const prepared = await prepareTaskExport(task, document.uri.fsPath, exportDefinitions, catalog,
+            vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath);
+        if (document.version !== version) throw new Error('The task changed while preparing the testbench. Generate it again.');
+        if (prepared.inputFiles.some(file => inputKey(file) === inputKey(uri.fsPath))) throw new Error('The testbench cannot overwrite a source module.');
+        if (vscode.workspace.textDocuments?.some(item => inputKey(item.uri.fsPath) === inputKey(uri.fsPath) && item.isDirty)) throw new Error('Save the exported testbench before generating it again.');
+        const existing = await lstat(uri.fsPath).catch(error => {
+            if (error.code === 'ENOENT') return undefined;
+            throw error;
+        });
+        if (existing) {
+            const marker = `// Generated Simulation Task: ${prepared.generatedTestbench.moduleName}`;
+            if (!existing.isFile() || existing.isSymbolicLink()
+                || (await readFile(uri.fsPath, 'utf8')).split(/\r?\n/, 1)[0] !== marker) {
+                throw new Error(`Cannot overwrite an existing file that was not generated for this task: ${filename}`);
             }
-            task.settings.exportPath = filename;
-            parseSimulationTask(JSON.stringify(task));
-            if (existing) await vscode.workspace.fs.writeFile(uri, Buffer.from(prepared.generatedTestbench.text));
-            else await writeFile(uri.fsPath, prepared.generatedTestbench.text, { flag: 'wx' });
-            await replaceTaskDocument(document, task); await document.save(); this.emitter.fire();
-            await vscode.window.showTextDocument(uri, { preview: true });
-        } finally { await prepared.dispose(); }
+        }
+        task.settings.exportPath = filename;
+        parseSimulationTask(JSON.stringify(task));
+        if (document.version !== version) throw new Error('The task changed while preparing the testbench. Generate it again.');
+        if (existing) await vscode.workspace.fs.writeFile(uri, Buffer.from(prepared.generatedTestbench.text));
+        else await writeFile(uri.fsPath, prepared.generatedTestbench.text, { flag: 'wx' });
+        await replaceTaskDocument(document, task, version);
+        if (!await document.save()) throw new Error('Unable to save Simulation Task after testbench export.');
+        void vscode.window.showInformationMessage(`Simulation Task testbench exported: ${uri.fsPath}`);
     }
     async run(document: vscode.TextDocument): Promise<void> {
         if (!vscode.workspace.isTrusted) throw new Error('Trust this workspace before running HDL or external simulator commands.');

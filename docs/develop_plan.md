@@ -6,10 +6,18 @@
 
 - 修复 Simulation Task 快速仿真波形自动打开、布局变化误判结果过期；Testbench 直接导出到 `.st` 同目录。
 - 第 5 项：按最新约定将 `.st` / `.ad` 统一关联 JSON，移除自定义图标主题；默认仍打开画布，说明见 [VS Code 命令与文件关联](vscode-command-surface.md)。
-- 第 6 项：CLI 功能维护已延期到 1.8.x，本版本不修改 CLI；[CLI 命令重设计草案](cli-command-spec.md)仅保留为后续参考。
+- 第 6 项：CLI 功能维护已延期，本版本不修改 CLI；[CLI 命令重设计草案](cli-command-spec.md)仅保留为后续参考。
 - 第 7 项：完成命令面板入口整理，保留右键菜单和命令 ID，按 HDL/ST 上下文显示常用操作。
 - 第 1 项：完成 [Monitor / Driver / Sequencer 设计草案](simulation-components-design.md)，待评审后分期实现。
 - 第 2、3 项涉及模板配置契约和格式化语义，留待后续迭代；第 4 项中文 README 与 GIF 已由作者完成，英文 README 同步中文内容。
+
+### 第 2、3 项落地情况（2026-09-21）
+
+- 已按补充的参数声明示例更新 [HDL 自定义模板与五列格式化方案](hdl-templates-formatting-design.md) 和 [实施计划](hdl-templates-formatting-plan.md)，用户确认后完成实现。
+- 第 2 项：`veriflow.hdlTemplates` 支持按文档作用域新增、覆盖、禁用模板，保留旧命令、占位符、字面 HDL 系统任务和撤销行为。
+- 第 3 项：支持默认 `[4,12,20,44,56]` 五列与自定义列、旧动态模式；包含 `parameter/localparam` 名称第四列、等号第五列，端口、信号、赋值和例化对齐；长内容使用最小间隔，保持语法树校验与幂等。
+- 119 个运行时测试、60 个扩展测试文件通过，含打包检查；模板插入、例化插入/复制与 AD/ST 自动导出不自动应用格式设置。
+- 后续补全：参数声明组、变量声明组、连续赋值组、不同过程块和各模块例化语句之间缺少空行时自动补一行；已有空行不重复添加，行尾注释保持归属。
 
 ### 原始需求
 
@@ -27,7 +35,11 @@
 // 总共五列对齐，每列缩进可在设置中设置
     4       12      20                      44          56
     |       |       |                       |           |
-module module_name (
+module module_name #(
+    parameter       [63:0]                  NAME        = "VIK_HDTV"
+    parameter                               ADDR_WIDTH  = 28
+    parameter       [31:0]                  CONFIG_WIDTH = 32,
+)(
     input   wire                            clk         ,
 
     input   wire    [15:0]                  data        ,
@@ -38,6 +50,8 @@ module module_name (
 
     output          [7:0]                   dout
 );
+
+    localparam      [31:0]                  BAUD_RATE   = 115200;
 
     wire    [1:0]                           net1        ;
 
@@ -108,7 +122,7 @@ endmodule
 
 5. 统一 .st 和 .ad 的 VS Code 文件浏览器图标，目前 .st 仍是 json 图标，.ad 是下箭头图标，统一为一个更符合两者画布身份的图标
 
-~~6. 制定 CLI 命令规范文档，规范 CLI 的命令~~ 工作量巨大，放到后续大版本进行 CLI 维护
+~~6. 制定 CLI 命令规范文档，规范 CLI 的命令~~ 工作量巨大，暂时放弃维护 CLI 形态
 
 7. 整理 VS Code 命令，仅保留右键菜单以及部分有用的命令
 
@@ -127,7 +141,3 @@ endmodule
 2. 扩展内置波形器的支持格式，支持常见格式以及自定义格式，支持列表参考 Surfur
 
 3. 优化波形查看器界面，已发现问题有在高对比度主题下亮度过高，在信号列表拖动信号时总会插入偏下的位置
-
-## 1.8.x CLI功能完善计划
-
-1. 设计一套新的 CLI 命令来适应当前的核心功能，确保可通过 CLI 使用 AD、ST 和右键菜单的各项功能

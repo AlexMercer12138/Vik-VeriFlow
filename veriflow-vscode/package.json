@@ -597,6 +597,63 @@
     "configuration": {
       "title": "VeriFlow",
       "properties": {
+        "veriflow.formatting.alignment": {
+          "type": "string",
+          "enum": ["columns", "adaptive"],
+          "default": "columns",
+          "scope": "language-overridable",
+          "description": "HDL formatting alignment: fixed five-column offsets or the previous adaptive alignment. Applies to Format Document and Format HDL; does not reformat AD/ST exports."
+        },
+        "veriflow.formatting.columns": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1, "maximum": 240 },
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "default": [4, 12, 20, 44, 56],
+          "scope": "language-overridable",
+          "description": "Five strictly increasing zero-based space offsets. The first (1–8) also sets indentation. Defaults place keywords, types, widths, names, and delimiters at offsets 4, 12, 20, 44, and 56; parameter '=' uses the last column. Content past a target keeps minimal spacing without moving other lines."
+        },
+        "veriflow.hdlTemplates": {
+          "type": "object",
+          "default": {},
+          "scope": "resource",
+          "markdownDescription": "Add, override, or disable HDL templates by ID in settings.json. Overrides retain unspecified built-in fields. Supports {{1:default}}, {{1}} mirrors, and {{0}}; HDL $tasks remain literal text. Changes apply on the next insertion in the current document.",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_-]*$": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "description": "Display name; defaults to the built-in label or the new template ID."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Description shown in the template picker."
+                },
+                "body": {
+                  "type": ["string", "array"],
+                  "items": { "type": "string" },
+                  "description": "Template text or lines joined with a newline. Required for new templates; an empty body inserts nothing. Placeholder defaults cannot contain a right brace."
+                },
+                "languages": {
+                  "type": "array",
+                  "items": { "type": "string", "enum": ["verilog", "systemverilog"] },
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "description": "Supported document languages; defaults to Verilog and SystemVerilog."
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Set false to hide this template, including from legacy template commands."
+                }
+              }
+            }
+          }
+        },
         "veriflow.libDirs": {
           "type": "array",
           "items": {

@@ -62,6 +62,41 @@
 
 ## 常用设置
 
+### HDL 模板与格式化
+
+在 VeriFlow 设置中找到 `veriflow.hdlTemplates`，通过“在 settings.json 中编辑”新增或修改模板。支持用户、工作区和工作区文件夹作用域，每次插入时按当前文档读取。默认保留内置模板；相同 ID 覆盖内置项，新 ID 新增模板，`enabled: false` 隐藏模板。删除覆盖项即可恢复内置内容。
+
+```json
+{
+  "veriflow.hdlTemplates": {
+    "register": {
+      "label": "寄存器",
+      "description": "可修改位宽和名称的寄存器",
+      "languages": ["verilog", "systemverilog"],
+      "body": ["reg [{{1:7}}:0] {{2:data}};", "{{0}}"]
+    },
+    "clock": { "body": ["reg {{1:clk}} = 1'b0;", "always #{{2:5}} {{1}} = ~{{1}};"] },
+    "timeout": { "enabled": false }
+  },
+  "veriflow.formatting.alignment": "columns",
+  "veriflow.formatting.columns": [4, 12, 20, 44, 56]
+}
+```
+
+`body` 支持字符串或字符串数组。`{{1:默认值}}` 创建可编辑占位符，`{{1}}` 引用同一内容，`{{0}}` 设置最终光标；默认值不能包含 `}`。其余内容包括 `$display`、`$finish` 和反斜杠均按原文插入，不执行原生 snippet 变量。非法配置汇总提示一次，不影响其他合法模板。插入保留文档换行风格，并可一次撤销。
+
+Format Document 与 **Format Verilog/SystemVerilog** 使用同一组设置。列位置从 0 计数，`4` 表示前面有四个空格（编辑器第 5 列）；必须是五个递增整数，第一项同时控制每级缩进（1–8），各列最大为 240。支持按 Verilog/SystemVerilog 分别覆盖。将模式改为 `"adaptive"` 可恢复旧动态对齐；列配置非法时回退默认列，并保留有效的模式选择。
+
+例如模块内的 `localparam [31:0] BAUD_RATE=115200;` 格式化为：
+
+```verilog
+    localparam      [31:0]                  BAUD_RATE   = 115200;
+```
+
+端口和信号名称位于偏移 44；参数名称同样位于偏移 44，其 `=` 位于偏移 56。长内容占用目标列时仅保留必要间隔，不推动其他行。嵌套块按第一列逐级缩进。格式化保留注释、宏、换行和语法；语法错误或不支持的内容不会被修改。插入模板、插入/复制例化和 AD/ST 导出不自动应用格式设置，需要对生成后的文档显式格式化。
+
+### 其他设置
+
 | 设置 | 用途 |
 | ------------------ | ---------------- |
 | `veriflow.libDirs` | HDL 库目录 |

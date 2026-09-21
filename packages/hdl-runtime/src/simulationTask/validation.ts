@@ -1,4 +1,4 @@
-import { createEmptyArchDesign, parseArchDesignValue, isSafeDefaultExpression } from '@veriflow/schematic-core/arch-design';
+import { createEmptyArchDesign, parseArchDesignValue } from '@veriflow/schematic-core/arch-design';
 import type { SimulationTaskDocument, SimulationPreset, TimeScale } from './model';
 import { clockTiming, timeScaleFemtoseconds, numberRatio } from './timing';
 import { validateProtocolPreset } from './protocolPresets';
@@ -140,10 +140,6 @@ export function parseSimulationTask(text: string): SimulationTaskDocument {
             if (source.kind === 'hdl') identifier(source.module, 'Module');
             else if ('module' in source) fail('AD source.module is unsupported');
             if (!instance.parameters || typeof instance.parameters !== 'object' || Array.isArray(instance.parameters)) fail('parameters must be an object');
-            for (const [name, value] of Object.entries(instance.parameters)) {
-                identifier(name, 'Parameter');
-                if (typeof value !== 'string' || !isSafeDefaultExpression(value)) fail(`Unsafe parameter ${name}`);
-            }
         }
     }
     for (const key of ['connections', 'logic', 'interfaceConnections']) if (!Array.isArray(task[key])) fail(`${key} must be an array`);
@@ -152,7 +148,7 @@ export function parseSimulationTask(text: string): SimulationTaskDocument {
     for (const connection of document.connections) for (const endpoint of connection.endpoints ?? []) if (endpoint.kind === 'port') fail('ST cannot connect an external port');
     for (const connection of document.interfaceConnections) if (connection.master?.kind === 'port' || connection.slave?.kind === 'port') fail('ST cannot connect an external interface port');
     const parsed = parseArchDesignValue({ ...createEmptyArchDesign('simulation_tb'),
-        instances: document.instances.map(i => ({ name: i.id, module: 'placeholder' })),
+        instances: document.instances.map(i => ({ name: i.id, module: 'placeholder', ...('source' in i ? { parameters: i.parameters } : {}) })),
         connections: document.connections, logic: document.logic, defaults: document.defaults, interfaceConnections: document.interfaceConnections,
         interfaceOverrides: document.interfaceOverrides, presentation: document.presentation });
     if (parsed.status !== 'editable') fail(parsed.status === 'invalid' ? parsed.diagnostics.map(d => d.message).join('\n') : 'graph');

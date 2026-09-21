@@ -25,17 +25,29 @@ test('AD source metadata exposes physical grouped interface members and preserve
         { name: 'BUS_request', direction: 'input', width: 8 }, { name: 'BUS_accept', direction: 'output', width: 1 }]);
 });
 
-test('unwired editing is valid but generation rejects undriven, unknown widths and multiple definite drivers', () => {
+test('generation uses AD defaults for floating ports and still rejects multiple definite drivers', () => {
     const task = createSimulationTask();
     task.instances.push({ id: 'dut', source: { kind: 'hdl', path: 'dut.v', module: 'dut' }, parameters: {} });
     const definition: TaskModuleDefinition = { source: 'dut.v', module: 'dut', ports: [{ name: 'a', direction: 'input', width: 1 }] };
-    assert.throws(() => generateTestbench(task, 'demo_tb', [definition]), /undriven/i);
+    assert.match(generateTestbench(task, 'demo_tb', [definition]).text, /\.a\(0\)/);
     task.defaults = { 'dut.a': "1'b0" };
     assert.doesNotThrow(() => generateTestbench(task, 'demo_tb', [definition]));
-    assert.throws(() => generateTestbench(task, 'demo_tb', [{ ...definition, ports: [{ name: 'a', direction: 'input' }] }]), /width/);
+    assert.doesNotThrow(() => generateTestbench(task, 'demo_tb', [{ ...definition, ports: [{ name: 'a', direction: 'input' }] }]));
     task.instances.push(...['a', 'b'].map(id => ({ id, preset: { kind: 'clock' as const, frequencyMHz: 100, initial: 0 as const } })));
     task.connections = [{ name: 'net', endpoints: [{ kind: 'instance', instance: 'a', port: 'clk' }, { kind: 'instance', instance: 'b', port: 'clk' }, { kind: 'instance', instance: 'dut', port: 'a' }] }];
     assert.throws(() => generateTestbench(task, 'demo_tb', [definition]), /driver/);
+});
+
+test('unused outputs, symbolic widths and parameter drafts follow AD generation rules', () => {
+    const task = createSimulationTask();
+    task.instances = [{ id: 'dut', source: { kind: 'hdl', path: 'dut.v', module: 'dut' }, parameters: { WIDTH: 'unfinished +' } }];
+    const generated = generateTestbench(task, 'demo_tb', [{ source: 'dut.v', module: 'dut',
+        parameters: [{ name: 'WIDTH', defaultValue: '8' }], ports: [
+            { name: 'a', direction: 'input', width: 'WIDTH' }, { name: 'y', direction: 'output', width: 'WIDTH' },
+        ] }]);
+    assert.match(generated.text, /\.WIDTH\(unfinished \+\)/);
+    assert.match(generated.text, /\.y\(\)/);
+    assert.deepEqual(generated.diagnostics, [], 'ST must not add floating-port or unresolved-width diagnostics absent from AD');
 });
 
 test('actual WASM simulation preserves two clocks, reset polarities, parameter width, stimulus and finish time', async () => {

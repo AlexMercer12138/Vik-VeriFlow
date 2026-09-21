@@ -7,5 +7,6 @@ export * from './workspaceHdlIndex';
 export * from './workspaceIndexStore';
 export * from './workspaceIndexTypes';
 export * from './formatter';
+export * from './formatterColumns';
 export * from './nodeWorkspaceHost';
 export * from './simulationTaskWorkspace';

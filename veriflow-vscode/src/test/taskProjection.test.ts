@@ -41,5 +41,13 @@ try {
  assert.deepEqual(legacyProjection.projection.design.connections[0].endpoints.map((endpoint:any)=>endpoint.port),['m_axis_tdata','s_axis_tdata']);
  assert.deepEqual(legacyProjection.projection.design.defaults,{'receiver.s_axis_tvalid':"1'b0",'sender.m_axis_tready':"1'b1"});
  assert.equal(JSON.stringify(legacy),saved);
+ const changed=createSimulationTask('changed.st');
+ changed.instances=[{id:'dut',source:{kind:'hdl',path:'dut.v',module:'dut'},parameters:{WIDTH:'8',REMOVED:'4'}},
+  {id:'missing',source:{kind:'hdl',path:'missing.v',module:'missing'},parameters:{KEEP:'7'}}];
+ const beforeReconcile=JSON.stringify(changed);
+ const reconciled=projectSimulationTask(changed,[{source:'dut.v',module:'dut',parameters:[{name:'WIDTH',defaultValue:'1'}],ports:[]}],'file:///changed.st');
+ assert.deepEqual({...reconciled.projection.design.instances[0].parameters},{WIDTH:'8'},'removed source parameters must disappear from ST just as in AD');
+ assert.deepEqual({...reconciled.projection.design.instances[1].parameters},{KEEP:'7'},'missing modules must retain overrides until their definition returns');
+ assert.equal(JSON.stringify(changed),beforeReconcile,'projection must not mutate caller-owned documents');
  console.log('ST projection preserves invalid nodes and distinct preset widths; modules only in common add dialog');
 } finally {loader._load=original;}

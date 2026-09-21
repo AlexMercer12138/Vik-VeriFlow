@@ -7,6 +7,13 @@ assert.deepEqual(defaultSimulationPreset('reset'), {kind:'reset',active:0,durati
 assert.deepEqual(defaultSimulationPreset('stimulus'), {kind:'stimulus',width:1,initial:"1'b0",transitions:[]});
 const root = projectSimulationTaskInspector(task, 'demo_tb', { kind:'design', title:'demo', fields:[] });
 const field = (model: any, id: string) => model.fields.find((field: any) => field.id === id);
+const moduleTask = createSimulationTask('module.st');
+moduleTask.instances = [{ id: 'dut', source: { kind: 'hdl', path: 'dut.v', module: 'dut' }, parameters: { WIDTH: 'unfinished +' } }];
+const adInspector = { kind: 'instance' as const, title: 'dut', fields: [
+    { id: 'instance-name', label: 'Name', control: 'text' as const, value: 'dut' },
+] };
+const stInspector = projectSimulationTaskInspector(moduleTask, 'module_tb', adInspector);
+assert.equal(stInspector, adInspector, 'ordinary modules must use the exact shared AD inspector');
 assert.equal(field(root, 'task-module').value, 'demo_tb');
 assert.equal(field(root, 'task-module').control, 'readonly');
 assert.equal(field(root, 'task-duration').commit('123').payload.settings.duration, 123);

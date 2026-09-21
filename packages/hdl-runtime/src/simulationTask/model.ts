@@ -8,7 +8,7 @@ export type SimulationPreset =
     | { kind: 'clock'; frequencyMHz: number; initial: 0 | 1 }
     | { kind: 'reset'; active: 0 | 1; duration: number }
     | { kind: 'stimulus'; width: number; initial: string; transitions: { at: number; value: string }[] };
-export type StInstance = { id: string; source: StSource; parameters: Record<string, string> }
+export type StInstance = { id: string; source: StSource; parameters: NonNullable<ArchDesign['instances'][number]['parameters']> }
     | { id: string; preset: SimulationPreset };
 export interface SimulationTaskDocument {
     format: 'veriflow-simulation-task';

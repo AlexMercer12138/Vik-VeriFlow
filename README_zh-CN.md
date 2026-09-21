@@ -79,6 +79,8 @@ veriflow task run simulation.st --project project.json
 
 ## 配置
 
+VS Code 已支持自定义 HDL 模板和五列格式化。通过 `veriflow.hdlTemplates` 新增、覆盖或禁用内置模板；通过 `veriflow.formatting.columns`（默认 `[4, 12, 20, 44, 56]`）设置声明、参数、赋值和例化的对齐位置。详见[设置与示例](veriflow-vscode/README_zh-CN.md#hdl-模板与格式化)。这些设置用于编辑器命令，不改变 CLI 或 AD/ST 自动导出。
+
 仿真器与波形工具默认 `builtin`；选择 `custom` 并填写命令模板即可调用本机工具：
 
 ```

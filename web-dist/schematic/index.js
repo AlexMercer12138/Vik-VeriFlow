@@ -7105,10 +7105,7 @@
     const id = model.fields.find((field) => field.id === "instance-name")?.value;
     const instance = task.instances.find((instance2) => instance2.id === id);
     if (!instance) return model;
-    if ("source" in instance) return { ...model, fields: [
-      ...model.fields,
-      readonly("instance-source", "Source", instance.source.path)
-    ] };
+    if ("source" in instance) return model;
     const preset = instance.preset.kind === "protocol" ? (0, import_protocolPresets.normalizeProtocolPreset)(instance.preset) : instance.preset;
     const update = (next) => ({
       type: "task",
@@ -49496,18 +49493,7 @@
     for (const table of model.valueTables ?? []) fields.append(renderPresetValueTable(table));
     if (model.transactions) fields.append(renderTransactionTable(model.transactions));
     dom.inspectorForm.replaceChildren(fields);
-    if (simulationTaskDocument && currentTaskState?.execution.error) showInspectorError(currentTaskState.execution.error);
     setAuthoringControls();
-  }
-  function showInspectorError(message) {
-    let error = dom.inspectorForm.querySelector(".inspector-error");
-    if (!error) {
-      error = document.createElement("p");
-      error.className = "inspector-error";
-      error.setAttribute("role", "alert");
-      dom.inspectorForm.append(error);
-    }
-    error.textContent = message;
   }
   function renderTransitionTable(model) {
     const wrapper = document.createElement("div");
@@ -49540,7 +49526,6 @@
         const invalid = error instanceof TransitionValidationError ? body.rows[error.rowIndex]?.querySelector(`[data-transition-${error.field}]`) : control;
         invalid?.setCustomValidity(message);
         invalid?.reportValidity();
-        showInspectorError(message);
       }
     };
     const appendRow = (at, value) => {
@@ -49616,7 +49601,6 @@
         const message = error instanceof Error ? error.message : String(error);
         control?.setCustomValidity(message);
         control?.reportValidity();
-        showInspectorError(message);
       }
     };
     const appendRow = (value) => {
@@ -49677,7 +49661,6 @@
         const message = error instanceof Error ? error.message : String(error);
         control?.setCustomValidity(message);
         control?.reportValidity();
-        showInspectorError(message);
       }
     };
     rows.forEach((row, index2) => {
@@ -50282,6 +50265,10 @@
   }
   function handleHostEvent(event) {
     switch (event.type) {
+      case "simulationTaskExecution":
+        if (currentTaskState) currentTaskState = { ...currentTaskState, execution: event.execution };
+        setAuthoringControls();
+        return;
       case "simulationTaskState":
         currentRevision = event.revision;
         currentTaskState = event.task;
@@ -50368,9 +50355,9 @@
         if (simulationTaskDocument) {
           authoringPending = false;
           archDesignSemanticEditInFlight = false;
+          archDesignLayoutSaveInFlight = false;
           queuedArchDesignCommand = void 0;
           pendingAddedNodeId = void 0;
-          showInspectorError(event.message);
           setAuthoringControls();
           return;
         }
@@ -51201,7 +51188,7 @@ ${choice.description}`
   window.addEventListener("message", (event) => {
     if (!event.data || typeof event.data !== "object") return;
     const type = event.data.type;
-    if (type === "initialize" || type === "graph" || type === "diagnostics" || type === "simulationTaskState" || type === "archDesignState" || type === "archDesignLayoutSaved" || type === "archDesignRevisionChanged" || type === "hostError") {
+    if (type === "initialize" || type === "graph" || type === "diagnostics" || type === "simulationTaskState" || type === "simulationTaskExecution" || type === "archDesignState" || type === "archDesignLayoutSaved" || type === "archDesignRevisionChanged" || type === "hostError") {
       handleHostEvent(event.data);
     }
   });

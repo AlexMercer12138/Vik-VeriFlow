@@ -1,4 +1,6 @@
 import type { Node } from 'web-tree-sitter';
+import { createColumnAlignment } from './formatterAlignment';
+import { paddingToColumn, type HdlAlignmentColumns } from './formatterColumns';
 
 type Token = { text: string; start: number; end: number; node: Node; parents: Node[]; opaque?: boolean };
 type Region = { start: number; end: number };
@@ -16,7 +18,7 @@ const itemTypes = new Set(['data_declaration', 'net_declaration', 'parameter_dec
     'case_item', 'case_generate_item', 'function_declaration', 'task_declaration']);
 
 /** CST provides boundaries; only gaps between original tokens are rewritten. */
-export function printHdlTree(source: string, root: Node, indentSize: number): string {
+export function printHdlTree(source: string, root: Node, indentSize: number, columns?: HdlAlignmentColumns): string {
     const regions: Region[] = [];
     const groupNodes: Array<{ node: Node; group: string }> = [];
     const signalTypes = new Set(['data_declaration', 'net_declaration', 'input_declaration',
@@ -38,10 +40,10 @@ export function printHdlTree(source: string, root: Node, indentSize: number): st
     function visit(node: Node, parents: Node[]): void {
         const children = node.children;
         if (signalTypes.has(node.type) && node.text.trimEnd().endsWith(';')) {
-            groupNodes.push({ node, group: 'signal' });
+            groupNodes.push({ node, group: /^(parameter_declaration|local_parameter_declaration)$/.test(node.type) ? 'parameter' : 'signal' });
         } else if (node.type === 'continuous_assign') {
             groupNodes.push({ node, group: 'assign' });
-        } else if (/^(module_declaration|always_construct|module_instantiation|interface_instantiation|program_instantiation)$/.test(node.type)) {
+        } else if (/^(module_declaration|always_construct|initial_construct|final_construct|generate_region|function_declaration|task_declaration|module_instantiation|interface_instantiation|program_instantiation)$/.test(node.type)) {
             groupNodes.push({ node, group: 'block' });
         }
         if (itemTypes.has(node.type)) breaks.add(node.startIndex);
@@ -68,7 +70,8 @@ export function printHdlTree(source: string, root: Node, indentSize: number): st
                 breaks.add(open.endIndex); breaks.add(close.startIndex);
             }
         }
-        if (node.type === 'seq_block' || node.type === 'par_block' || node.type === 'generate_region') {
+        if (node.type === 'seq_block' || node.type === 'par_block' || node.type === 'generate_region'
+            || (columns && node.type === 'generate_block')) {
             const open = children.find(c => /^(begin|fork|generate)$/.test(c.text));
             const close = children.find(c => blockEnds.has(c.text));
             if (open && close) {
@@ -155,6 +158,9 @@ export function printHdlTree(source: string, root: Node, indentSize: number): st
             if (close) region(t.end, close.startIndex);
         }
     }
+    const depthAt = (offset: number): number => regions.filter(r => r.start <= offset && offset < r.end).length;
+    const alignment = columns ? createColumnAlignment(root, columns, depthAt) : undefined;
+    for (const offset of alignment?.breaks ?? []) breaks.add(offset);
     for (let i = 0; i < tokens.length; i++) {
         const t = tokens[i], prev = tokens[i - 1], next = tokens[i + 1];
         if (!t.text) continue;
@@ -169,7 +175,7 @@ export function printHdlTree(source: string, root: Node, indentSize: number): st
             || prev.text.startsWith('//') || prev.text.startsWith('`')
             || (blockEnds.has(prev.text) && !['else', ';', ':', ',', ')'].includes(t.text)));
         if (!trailingComment && (previousBoundary || breaks.has(t.start) || blockEnds.has(t.text)
-            || (t.text === ')' && listParen(t)) || t.text === 'else' && prev?.text !== 'end'
+            || (t.text === ')' && listParen(t) && !alignment?.joinedClosings.has(t.start)) || t.text === 'else' && prev?.text !== 'end'
             || t.text.startsWith('`') || comment && gap.includes('\n'))) flush();
         if (blankBefore.has(t.start)) {
             flush();
@@ -178,9 +184,16 @@ export function printHdlTree(source: string, root: Node, indentSize: number): st
         // Preserve author-created logical groups, capped at one empty line.
         if (!line && /\n[ \t\r]*\n/.test(gap) && lines.length && lines[lines.length - 1] !== '') lines.push('');
         if (!line) {
-            const depth = regions.filter(r => r.start <= t.start && t.start < r.end).length;
+            const depth = depthAt(t.start);
             line = t.text.startsWith('`') ? '' : ' '.repeat(depth * indentSize);
-        } else if (needsSpace(prev, t, parent(t), listParen(t))) line += ' ';
+            const target = alignment?.targets.get(t.start);
+            if (target !== undefined) line += paddingToColumn(line.length, target, 0);
+        } else {
+            const target = alignment?.targets.get(t.start);
+            const minimum = target !== undefined && t.text === '(' && !prev?.text.startsWith('\\')
+                ? 0 : needsSpace(prev, t, parent(t), listParen(t)) ? 1 : 0;
+            line += target === undefined ? ' '.repeat(minimum) : paddingToColumn(line.length, target, minimum);
+        }
         line += t.text;
         if (t.text.startsWith('//') || t.text.startsWith('`') || (comment && next && source.slice(t.end, next.start).includes('\n'))) flush();
     }
@@ -189,7 +202,7 @@ export function printHdlTree(source: string, root: Node, indentSize: number): st
     const eol = source.includes('\r\n') ? '\r\n' : '\n';
     // Opaque multiline text already carries its own EOLs.
     if (blankAtEnd) lines.push('');
-    return alignDeclarations(lines).join('\n').replace(/\r?\n/g, eol) + (lines.length ? eol : '');
+    return (columns ? lines : alignDeclarations(lines)).join('\n').replace(/\r?\n/g, eol) + (lines.length ? eol : '');
 }
 
 function needsSpace(prev: Token | undefined, token: Token, parent: string, listParen: boolean): boolean {

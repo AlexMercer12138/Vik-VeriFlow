@@ -1641,19 +1641,7 @@ function renderArchDesignInspector(baseModel: ArchDesignInspectorModel): void {
     for (const table of model.valueTables ?? []) fields.append(renderPresetValueTable(table));
     if (model.transactions) fields.append(renderTransactionTable(model.transactions));
     dom.inspectorForm.replaceChildren(fields);
-    if (simulationTaskDocument && currentTaskState?.execution.error) showInspectorError(currentTaskState.execution.error);
     setAuthoringControls();
-}
-
-function showInspectorError(message: string): void {
-    let error = dom.inspectorForm.querySelector<HTMLParagraphElement>('.inspector-error');
-    if (!error) {
-        error = document.createElement('p');
-        error.className = 'inspector-error';
-        error.setAttribute('role', 'alert');
-        dom.inspectorForm.append(error);
-    }
-    error.textContent = message;
 }
 
 function renderTransitionTable(model: NonNullable<AuthoringInspectorModel['transitions']>): HTMLElement {
@@ -1691,7 +1679,6 @@ function renderTransitionTable(model: NonNullable<AuthoringInspectorModel['trans
                 : control;
             invalid?.setCustomValidity(message);
             invalid?.reportValidity();
-            showInspectorError(message);
         }
     };
     const appendRow = (at: string, value: string): void => {
@@ -1762,7 +1749,6 @@ function renderPresetValueTable(model: NonNullable<AuthoringInspectorModel['valu
             const message = error instanceof Error ? error.message : String(error);
             control?.setCustomValidity(message);
             control?.reportValidity();
-            showInspectorError(message);
         }
     };
     const appendRow = (value: string): void => {
@@ -1818,7 +1804,6 @@ function renderTransactionTable(model: NonNullable<AuthoringInspectorModel['tran
             const message = error instanceof Error ? error.message : String(error);
             control?.setCustomValidity(message);
             control?.reportValidity();
-            showInspectorError(message);
         }
     };
     rows.forEach((row, index) => {
@@ -2488,6 +2473,10 @@ function updateArchDesignState(
 
 function handleHostEvent(event: HostEvent): void {
     switch (event.type) {
+        case 'simulationTaskExecution':
+            if (currentTaskState) currentTaskState = { ...currentTaskState, execution: event.execution };
+            setAuthoringControls();
+            return;
         case 'simulationTaskState':
             currentRevision = event.revision;
             currentTaskState = event.task;
@@ -2594,9 +2583,9 @@ function handleHostEvent(event: HostEvent): void {
             if (simulationTaskDocument) {
                 authoringPending = false;
                 archDesignSemanticEditInFlight = false;
+                archDesignLayoutSaveInFlight = false;
                 queuedArchDesignCommand = undefined;
                 pendingAddedNodeId = undefined;
-                showInspectorError(event.message);
                 setAuthoringControls();
                 return;
             }
@@ -3539,7 +3528,7 @@ window.addEventListener('message', event => {
     if (!event.data || typeof event.data !== 'object') return;
     const type = (event.data as { type?: unknown }).type;
     if (type === 'initialize' || type === 'graph' || type === 'diagnostics'
-        || type === 'simulationTaskState'
+        || type === 'simulationTaskState' || type === 'simulationTaskExecution'
         || type === 'archDesignState' || type === 'archDesignLayoutSaved'
         || type === 'archDesignRevisionChanged'
         || type === 'hostError') {

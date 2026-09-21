@@ -70,18 +70,8 @@ export function generateTestbench(
     const resolved = resolveArchDesign(design, graphDefinitions, interfaceCatalog);
     diagnostics.push(...resolved.diagnostics.map(d => ({ ...d, severity: 'error' as const })),
         ...resolved.warnings.map(d => ({ ...d, severity: 'warning' as const })));
-    const connected = new Set([
-        ...resolved.connections.flatMap(c => c.endpoints.map(e => e.identity)),
-        ...resolved.interfaces.occupancy.map(e => e.targetIdentity),
-    ]);
-    for (const target of resolved.endpointTargets) {
-        if (target.width.kind !== 'known') diagnostics.push({ severity: 'error', code: 'ST_UNKNOWN_WIDTH', path: target.declarationPath,
-            message: `Port ${target.defaultKey} has unresolved width; provide resolvable parameters` });
-        if (target.role === 'driver' && !connected.has(target.identity)) diagnostics.push({ severity: 'warning', code: 'ST_UNUSED_OUTPUT', path: target.declarationPath,
-            message: `Output ${target.defaultKey} is not connected` });
-    }
-    for (const fallback of resolved.effectiveDefaults) if (fallback.origin === 'implicit-zero') diagnostics.push({ severity: 'error', code: 'ST_UNDRIVEN_INPUT', path: fallback.sourcePath,
-        message: `Input ${fallback.endpoint} is undriven; connect a preset, module output, or Logic Utility` });
+    // Ordinary modules share AD's defaults and diagnostics, including floating ports
+    // and parameter expressions that the HDL compiler will resolve later.
     if (diagnostics.some(d => d.severity === 'error')) throw new SimulationTaskValidationError(diagnostics);
     const output = exportArchDesignRtl(design, graphDefinitions, { language: 'verilog', interfaceCatalog });
     if (output.status !== 'generated') throw new SimulationTaskValidationError(output.diagnostics.map(d => ({ ...d, severity: 'error' })));

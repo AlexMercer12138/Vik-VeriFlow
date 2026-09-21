@@ -66,6 +66,8 @@ Every command supports `--help`.
 
 ## Configuration
 
+VS Code supports custom HDL templates and configurable five-column formatting. Use `veriflow.hdlTemplates` to add, override or disable built-ins; set `veriflow.formatting.columns` (default `[4, 12, 20, 44, 56]`) for declarations, parameters, assignments and instances. See the [settings and examples](veriflow-vscode/README.md#hdl-templates-and-formatting). These settings apply to editor commands, not CLI or automatic AD/ST export.
+
 The simulator and waveform viewer default to `builtin`. Select `custom` and provide command templates to use local tools:
 
 ```text

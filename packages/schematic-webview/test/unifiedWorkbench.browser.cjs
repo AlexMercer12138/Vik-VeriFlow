@@ -80,6 +80,22 @@ async function initialize() {
   await page.addInitScript(()=>window.acquireVsCodeApi=()=>({postMessage:m=>window.hostMessage(m),getState:()=>({}),setState:()=>{}}));
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.locator('.x6-node').first().waitFor();
+  task.instances.push({id:'dut',source:{kind:'hdl',path:'counter.v',module:'counter'},parameters:{}});
+  await page.locator('.x6-node').first().click();
+  await page.locator('#parameter-WIDTH').waitFor();
+  execution={status:'failed',canOpenWave:false,error:'A previous simulation failed'};
+  await state();
+  await page.waitForFunction(()=>document.querySelector('#task-status')?.textContent==='Failed');
+  assert.equal(await page.locator('#instance-source').count(),0,'ordinary ST modules use AD property fields');
+  assert.equal(await page.locator('.inspector-error').count(),0,'historical simulation errors must not be repeated in every module property panel');
+  assert.equal(await page.locator('#parameter-WIDTH').getAttribute('placeholder'),'Default: 8');
+  await page.locator('#parameter-WIDTH').fill('(');
+  await page.locator('#parameter-WIDTH').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#parameter-WIDTH')?.value==='('&&!document.querySelector('#parameter-WIDTH').disabled);
+  await page.locator('#parameter-WIDTH').fill('');
+  await page.locator('#parameter-WIDTH').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#parameter-WIDTH')?.value===''&&!document.querySelector('#parameter-WIDTH').disabled);
+  task.instances=[];execution={status:'idle',canOpenWave:false};await state();
   await page.locator('#add-instance-button').click();
   assert.equal(await page.locator('#add-instance-dialog').evaluate(dialog=>dialog.open),true,'ST Add instance must open the same canvas dialog');
   assert.equal(messages.some(m=>m.command==='addModule'),false,'No QuickPick action');
@@ -105,6 +121,12 @@ async function initialize() {
    assert.equal(await page.locator('#instance-name').inputValue(),`u_${preset}_0`);
    if(preset==='clock') {
     await page.locator('#preset-frequency').fill('148.5');
+    await page.evaluate(()=>{window.retainedNode=document.querySelector('.x6-node');window.retainedField=document.querySelector('#preset-frequency');});
+    await send({type:'simulationTaskExecution',execution:{status:'running',canOpenWave:false}});
+    await page.waitForFunction(()=>document.querySelector('#run-task-button')?.title==='Stop simulation');
+    assert.equal(await page.locator('#preset-frequency').inputValue(),'148.5','execution changes must preserve an unfinished property edit');
+    assert.ok(await page.evaluate(()=>window.retainedNode===document.querySelector('.x6-node')&&window.retainedField===document.querySelector('#preset-frequency')),'execution changes must not recreate canvas or inspector DOM');
+    await send({type:'simulationTaskExecution',execution:{status:'idle',canOpenWave:false}});
     await page.locator('#preset-frequency').press('Enter');
     await page.waitForFunction(()=>document.querySelector('#preset-period')?.textContent==='6.734 (1ns)'&&!document.querySelector('#preset-frequency').disabled);
     assert.equal(task.instances.find(item=>item.id==='u_clock_0').preset.frequencyMHz,148.5);

@@ -17,7 +17,7 @@ async function main(): Promise<void> {
     try {
         const { DesignDocumentTreeProvider } = require('../workbench/designDocumentTree');
         for (const kind of ['ad', 'st']) {
-            let exportedFiles: any[] = [{ uri: uri('file:///project/generated/custom.v'), exists: true }];
+            let exportedFiles: any[] = [{ uri: uri('file:///project/generated/custom.v'), exists: true }, { uri: uri('file:///project/generated/custom.xdc'), exists: true }];
             const definition = { uri: 'file:///project/rtl/dut.v', declarationStart: 10 };
             const provider = new DesignDocumentTreeProvider(kind, {
                 files: async () => [uri(`file:///project/designs/top.${kind}`)],
@@ -43,6 +43,8 @@ async function main(): Promise<void> {
             assert.equal(children[1].label, 'custom.v');
             assert.equal(children[1].resourceUri.toString(), 'file:///project/generated/custom.v');
             assert.equal(children[1].command.arguments[0].toString(), 'file:///project/generated/custom.v');
+            assert.equal(children[2].label, 'custom.xdc');
+            assert.equal(children[2].command.arguments[0].toString(), 'file:///project/generated/custom.xdc');
             exportedFiles = [{ uri: uri('file:///project/generated/missing.v'), exists: false }];
             const missing = (await provider.getChildren(roots[0]))[1];
             assert.equal(missing.label, 'missing.v');

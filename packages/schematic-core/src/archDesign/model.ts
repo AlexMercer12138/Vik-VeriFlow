@@ -1,3 +1,5 @@
+import type { PhysicalConfiguration } from '../physicalPins';
+
 export const ARCH_DESIGN_FORMAT = 'vik-veriflow.arch-design' as const;
 export const ARCH_DESIGN_SCHEMA_VERSION = 2 as const;
 
@@ -139,6 +141,7 @@ export type ArchDesignInterfaceConnection = Readonly<{
 export type ArchDesignExportOptions = Readonly<{
     language?: ArchDesignLanguage;
     output?: string;
+    xdcOutput?: string;
 }>;
 
 export type ArchDesignNodePlacement = Readonly<{
@@ -167,6 +170,7 @@ export type ArchDesign = Readonly<{
     defaults: Readonly<Record<string, string>>;
     export: ArchDesignExportOptions;
     presentation: ArchDesignPresentation;
+    physical?: PhysicalConfiguration;
 }>;
 
 const PLAIN_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]*$/;

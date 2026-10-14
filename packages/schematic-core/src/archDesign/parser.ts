@@ -19,6 +19,7 @@ import {
 } from './model';
 import { isSafeDefaultExpression } from './defaults';
 import { compareCodeUnits } from './ordering';
+import { parsePhysicalConfiguration } from '../physicalPins';
 
 export type ArchDesignDiagnostic = Readonly<{
     path: string;
@@ -845,7 +846,9 @@ function normalizeExport(
     const output = outputValue === undefined
         ? undefined
         : nonEmptyString(outputValue, '$.export.output', diagnostics);
-    return { ...(language ? { language } : {}), ...(output ? { output } : {}) };
+    const xdcValue = ownValue(record, 'xdcOutput');
+    const xdcOutput = xdcValue === undefined ? undefined : nonEmptyString(xdcValue, '$.export.xdcOutput', diagnostics);
+    return { ...(language ? { language } : {}), ...(output ? { output } : {}), ...(xdcOutput ? { xdcOutput } : {}) };
 }
 
 function normalizePlacement(
@@ -1083,6 +1086,11 @@ function parseValue(input: unknown): ArchDesignReadResult {
     const defaults = normalizeStringDictionary(ownValue(input, 'defaults'), '$.defaults', diagnostics);
     const exportOptions = normalizeExport(ownValue(input, 'export'), diagnostics);
     const presentation = normalizePresentation(ownValue(input, 'presentation'), diagnostics);
+    let physical;
+    if (ownValue(input, 'physical') !== undefined) {
+        try { physical = parsePhysicalConfiguration(ownValue(input, 'physical')); }
+        catch (error) { diagnostic(diagnostics, '$.physical', 'AD_PHYSICAL', error instanceof Error ? error.message : String(error)); }
+    }
     if (diagnostics.length > 0) return invalidResult(diagnostics);
 
     const design: ArchDesign = {
@@ -1099,6 +1107,7 @@ function parseValue(input: unknown): ArchDesignReadResult {
         defaults,
         export: exportOptions,
         presentation,
+        ...(physical === undefined ? {} : { physical }),
     };
     return deepFreeze({ status: 'editable' as const, design });
 }

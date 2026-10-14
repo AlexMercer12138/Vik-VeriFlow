@@ -112,6 +112,8 @@ async function run(): Promise<void> {
         fs.mkdirSync(path.dirname(waveformSource), { recursive: true });
         fs.mkdirSync(path.dirname(schematicSource), { recursive: true });
         fs.mkdirSync(path.dirname(schematicCoreSource), { recursive: true });
+        fs.mkdirSync(path.join(fixtureRoot, 'docs', 'boards'), { recursive: true });
+        fs.mkdirSync(path.join(fixtureRoot, 'docs', 'examples', 'physical-interfaces'), { recursive: true });
         fs.writeFileSync(waveformSource, 'initial-waveform\n');
         fs.writeFileSync(schematicSource, 'initial-schematic\n');
         fs.writeFileSync(schematicCoreSource, 'initial-schematic-core\n');

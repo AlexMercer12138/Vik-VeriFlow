@@ -9,6 +9,8 @@ import {
 import { parseWebviewCommand } from '../schematic/protocol';
 
 const TEST_REVISION = 'snapshot:test';
+assert.deepStrictEqual(parseWebviewCommand({type:'openPhysicalPins',revision:TEST_REVISION}),{type:'openPhysicalPins',revision:TEST_REVISION});
+assertRejected({type:'openPhysicalPins'});
 
 for (const inoutMode of ['direct', 'tristate']) {
     const command = {

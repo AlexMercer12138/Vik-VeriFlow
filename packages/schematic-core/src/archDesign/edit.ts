@@ -16,6 +16,8 @@ import type {
 } from './model';
 import { parseArchDesignValue } from './parser';
 import { serializeArchDesign } from './serializer';
+import type { PhysicalConfiguration } from '../physicalPins';
+import { createInterfaceProtocolCatalog, findInterfaceProtocol, type InterfaceProtocolCatalog } from '../interfaces';
 
 export type ArchDesignInterfaceSnapshotMember = Readonly<{
     member: string;
@@ -116,7 +118,9 @@ export type ArchDesignEdit =
         type: 'setExport';
         language?: ArchDesignLanguage;
         output?: string;
+        xdcOutput?: string;
     }>
+    | Readonly<{ type: 'setPhysical'; physical?: PhysicalConfiguration }>
     | Readonly<{
         type: 'setPresentation';
         presentation: ArchDesignPresentation;
@@ -188,6 +192,7 @@ type MutableDesign = {
     defaults: Record<string, string>;
     export: ArchDesignExportOptions;
     presentation: ArchDesignPresentation;
+    physical?: PhysicalConfiguration;
 };
 
 function setOwn<T>(target: Record<string, T>, key: string, value: T): void {
@@ -585,9 +590,17 @@ function setDefault(
 
 export function applyArchDesignEdit(
     design: ArchDesign,
-    edit: ArchDesignEdit
+    edit: ArchDesignEdit,
+    interfaceCatalog?: InterfaceProtocolCatalog
 ): ArchDesign {
     const mutable = mutableSnapshot(design);
+    const interfaceMemberNames = (port: MutableInterfacePort): string[] => {
+        const protocol = findInterfaceProtocol(interfaceCatalog ?? createInterfaceProtocolCatalog(), port.protocol)?.protocol;
+        return protocol ? port.members.flatMap(snapshot => {
+            const member = protocol.members.find(m => m.name.toLowerCase() === snapshot.member.toLowerCase());
+            return member ? [`${port.memberPrefix}${protocol.separator}${member.name}`] : [];
+        }) : [];
+    };
     switch (edit.type) {
         case 'addInstance':
             if (mutable.logic.some(logic => logic.name === edit.instance.name)) {
@@ -843,6 +856,11 @@ export function applyArchDesignEdit(
                 }
             }
             mutable.ports[index] = JSON.parse(JSON.stringify(edit.port));
+            if (mutable.physical && edit.name !== edit.port.name) mutable.physical = {
+                ...mutable.physical,
+                bindings: mutable.physical.bindings.map(binding => binding.port.name === edit.name
+                    ? { ...binding, port: { ...binding.port, name: edit.port.name } } : binding),
+            };
             if (edit.name !== edit.port.name) {
                 if (previous.direction === 'inout' && previous.inoutMode === 'direct') {
                     const namedConnection = mutable.connections.find(connection =>
@@ -887,6 +905,8 @@ export function applyArchDesignEdit(
                 edit.name
             );
             mutable.ports.splice(index, 1);
+            if (mutable.physical) mutable.physical = { ...mutable.physical,
+                bindings: mutable.physical.bindings.filter(binding => binding.port.name !== edit.name) };
             mutable.connections = mutable.connections.flatMap(connection => {
                 connection.endpoints = connection.endpoints.filter(endpoint =>
                     endpoint.kind !== 'port' || endpoint.port !== edit.name);
@@ -1141,11 +1161,14 @@ export function applyArchDesignEdit(
                 );
             }
             const memberPrefix = mutable.interfacePorts[index].memberPrefix;
+            const previousNames = new Set(interfaceMemberNames(mutable.interfacePorts[index]));
             mutable.interfacePorts[index] = snapshotInterfacePort(
                 edit.port,
                 memberPrefix,
                 edit.source
             );
+            const nextNames = new Set(interfaceMemberNames(mutable.interfacePorts[index]));
+            if (mutable.physical) mutable.physical = { ...mutable.physical, bindings: mutable.physical.bindings.filter(b => !previousNames.has(b.port.name) || nextNames.has(b.port.name)) };
             break;
         }
         case 'renameInterfacePort': {
@@ -1169,10 +1192,16 @@ export function applyArchDesignEdit(
                 edit.nextName,
                 index
             );
+            const previousNames = interfaceMemberNames(mutable.interfacePorts[index]);
             mutable.interfacePorts[index].name = edit.nextName;
             if (edit.nextMemberPrefix !== undefined) {
                 mutable.interfacePorts[index].memberPrefix = edit.nextMemberPrefix;
             }
+            const nextNames = interfaceMemberNames(mutable.interfacePorts[index]);
+            if (mutable.physical) mutable.physical = { ...mutable.physical, bindings: mutable.physical.bindings.map(binding => {
+                const memberIndex = previousNames.indexOf(binding.port.name);
+                return memberIndex < 0 ? binding : { ...binding, port: { ...binding.port, name: nextNames[memberIndex] } };
+            }) };
             for (const connection of mutable.interfaceConnections) {
                 if (connection.master.kind === 'port' && connection.master.port === edit.name) {
                     connection.master.port = edit.nextName;
@@ -1195,6 +1224,8 @@ export function applyArchDesignEdit(
                 'Interface port',
                 edit.name
             );
+            const names = new Set(interfaceMemberNames(mutable.interfacePorts[index]));
+            if (mutable.physical) mutable.physical = { ...mutable.physical, bindings: mutable.physical.bindings.filter(b => !names.has(b.port.name)) };
             mutable.interfacePorts.splice(index, 1);
             mutable.interfaceConnections = mutable.interfaceConnections.filter(connection =>
                 !(connection.master.kind === 'port' && connection.master.port === edit.name)
@@ -1229,7 +1260,11 @@ export function applyArchDesignEdit(
             mutable.export = {
                 ...(edit.language === undefined ? {} : { language: edit.language }),
                 ...(edit.output === undefined ? {} : { output: edit.output }),
+                ...(edit.xdcOutput === undefined ? {} : { xdcOutput: edit.xdcOutput }),
             };
+            break;
+        case 'setPhysical':
+            mutable.physical = edit.physical;
             break;
         case 'setPresentation':
             mutable.presentation = JSON.parse(JSON.stringify(edit.presentation));

@@ -31,6 +31,7 @@ export function semanticArchDesignFingerprint(
         ...design,
         export: design.export.language ? { language: design.export.language } : {},
         presentation: {},
+        physical: undefined,
     };
     const parts = [serializeArchDesign(semanticDesign)];
     if (interfaceCatalog) parts.push(effectiveProtocolSnapshot(interfaceCatalog));

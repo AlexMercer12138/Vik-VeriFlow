@@ -47320,14 +47320,22 @@
           commit: (value) => value === "verilog" || value === "systemverilog" ? {
             type: "setExport",
             language: value,
-            ...output.length === 0 ? {} : { output }
+            ...output.length === 0 ? {} : { output },
+            ...design.export.xdcOutput ? { xdcOutput: design.export.xdcOutput } : {}
           } : void 0
         },
         textField("export-output", "Output path", output, (value) => ({
           type: "setExport",
           language,
-          ...value.trim().length === 0 ? {} : { output: value.trim() }
-        }), "Sibling .v or .sv")
+          ...value.trim().length === 0 ? {} : { output: value.trim() },
+          ...design.export.xdcOutput ? { xdcOutput: design.export.xdcOutput } : {}
+        }), "Sibling .v or .sv"),
+        textField("export-xdc-output", "XDC output path", design.export.xdcOutput ?? "", (value) => ({
+          type: "setExport",
+          language,
+          ...output ? { output } : {},
+          ...value.trim() ? { xdcOutput: value.trim() } : {}
+        }), "Same path and basename as RTL, with .xdc")
       ]
     };
   }
@@ -48253,6 +48261,7 @@
     addPortButton: requiredElement("add-port-button"),
     connectButton: requiredElement("connect-button"),
     exportButton: requiredElement("export-button"),
+    physicalPinsButton: requiredElement("physical-pins-button"),
     deleteButton: requiredElement("delete-button"),
     inspector: requiredElement("inspector"),
     inspectorTitle: requiredElement("inspector-title"),
@@ -49312,6 +49321,8 @@
     dom.taskStatus.title = currentTaskState?.execution.error ?? "";
     dom.inspectorForm.setAttribute("aria-label", simulationTaskDocument ? "Simulation Task properties" : "Arch Design properties");
     dom.exportButton.disabled = disabled || dom.exportButton.hidden;
+    dom.physicalPinsButton.hidden = simulationTaskDocument || !archDesignDocument;
+    dom.physicalPinsButton.disabled = disabled;
     dom.deleteButton.disabled = disabled || currentArchDesignInspector?.deleteEdit === void 0;
     dom.inspectorForm.querySelectorAll(
       "input, select, textarea"
@@ -50848,6 +50859,7 @@ ${choice.description}`
     });
   }
   dom.exportButton.addEventListener("click", exportRtl);
+  dom.physicalPinsButton.addEventListener("click", () => post({ type: "openPhysicalPins", revision: currentRevision }));
   dom.deleteButton.addEventListener("click", deleteSelection);
   dom.addInstanceForm.addEventListener("submit", (event) => {
     event.preventDefault();

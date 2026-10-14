@@ -1,6 +1,6 @@
 # 物理接口、板卡与子卡模型 V1
 
-状态：2026-10-14 数据契约草案。JSON Schema 和示例已同步；插件尚未读取这些文件，AD 集成、冲突检查和约束导出尚未实现。
+状态：2026-10-15。板卡硬件契约已确定；插件已接入板卡/接口读取、AD 持久绑定、RTL 临时绑定和 XDC 导出。子卡安装与 `assembly` 仍为模型定义，尚未接入操作面板。使用方式见 [引脚绑定与 XDC](physical-pin-bindings.md)。
 
 ## 1. 字段取舍
 
@@ -46,8 +46,13 @@
 | `groups[].id`、`members` | 通过组选择本次参与约束生成的信号 |
 | `groups[].selection` | 省略即 `individual`，可部分选用；`together` 表示任一成员启用都必须补齐全组 |
 | `differentialPairs[].positive`、`negative` | 实际功能差分对，用于成对选择、极性检查和资源占用 |
+| `bus` | 数值位宽展开物理成员，或用有序成员数组组成拖放总线；用于批量绑定与位宽校验 |
 
-`groups`、`differentialPairs` 可省略。每个方向表恰好覆盖 `signals`，方向始终相对 FPGA 顶层端口。同一功能差分对在每个角色下 P/N 方向一致。一个信号表示一根标量线，向量展开为多个 ID 再绑定端口位。
+`groups`、`differentialPairs`、`bus` 可省略。每个方向表恰好覆盖 `signals`，方向始终相对 FPGA 顶层端口。同一功能差分对在每个角色下 P/N 方向一致。未定义位宽的信号表示一根标量线。
+
+`"bus": {"pdata": 24}` 要求 `signals` 含 `pdata`，路由/子卡映射使用展开后的 `pdata.23` 至 `pdata.0`。方向仍由 `function[角色].pdata` 定义。差分对可以引用两个等宽逻辑总线，逐位展开配对。
+
+`"bus": {"data_p": ["data2_p", "data1_p", "data0_p"]}` 将已有标量组成别名，数组成员必须存在且不重复，别名不得覆盖 `signals`。板卡原有路由无需改写。数组顺序对应 RTL 声明从左到右：绑定 `[2:0] tmds_data_p` 时 `data2_p → [2]`；绑定 `[4:6]` 时第一个成员对应 `[4]`。固定差分信号会一起绑定同名 `_p`/`_n` 端口，要求两侧索引一致。缺少对应端口、位宽不一致或 P/N 反接会提示错误。
 
 | 接口 | function | 方向规则 |
 | --- | --- | --- |
@@ -74,7 +79,7 @@
 }
 ```
 
-只列可连接的信号 ID 和差分能力配对，按需添加 `groups`。省略电源、地、未连接位置和连接器机械资料。
+只列可连接的信号 ID 和差分能力配对，按需添加 `groups`、`bus`。省略电源、地、未连接位置和连接器机械资料。
 
 扩展口的 `differentialPairs` 表示能力，允许单端信号绑定 P 或 N 任一脚；不自动补齐或占用另一脚。两脚可承载两个独立单端信号，方向可以不同。只有实际按差分使用时才要求同时占用两脚，校验扩展配对、封装配对和极性。分组勾选本身不指定差分用途。
 
@@ -201,6 +206,6 @@ JSON Schema 只检查形状；后续解析器还需检查：
 | [demo.assembly.json](examples/physical-interfaces/demo.assembly.json) | 子卡安装、TMDS 选择和顶层端口绑定 |
 | [top.ad](examples/physical-interfaces/top.ad) | 使用现有 AD V2 格式的顶层端口 |
 
-以上演示目录中的器件型号、引脚、Bank 与电气值不能用于实物。真实板卡见 [ATK AU15P 核心板 + 底板 V1.0](boards/atk-au15p/README.md)。已有未发布草案直接修订，不增加兼容层；现有 AD 格式保持原样。
+以上演示目录中的器件型号、引脚、Bank 与电气值不能用于实物。真实板卡见 [ATK AU15P 核心板 + 底板 V1.0](boards/atk-au15p/README.md)。已有未发布草案直接修订，不增加兼容层；AD V2 增加可选 `physical` 和 `export.xdcOutput`，已有文件不需要迁移。
 
-运行 `node scripts/verify-physical-models.cjs` 校验全部模型的 Schema、引用、角色、接线完整性、差分极性、Bank 与电源引用。这是数据录入检查，不代表插件已经实现解析器、冲突检查或导出器。
+运行 `node scripts/verify-physical-models.cjs` 校验全部模型的 Schema、引用、角色、总线展开、接线完整性、差分极性、Bank 与电源引用。插件也会校验所加载板卡与绑定；首版器件规则支持 AU15P，DDR/MIPI 数据线需要 IP 电气规则，当前会阻止导出。离线校验和导出校验均不代替实物及厂商工具验证。

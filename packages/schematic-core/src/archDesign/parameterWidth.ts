@@ -326,3 +326,9 @@ export function resolveInstancePortWidth(
     if (value === undefined || value < 1n || value > MAX_VALUE) return width;
     return Object.freeze({ kind: 'known', bits: Number(value) });
 }
+
+/** Resolve a top-level constant using the same bounded evaluator as instance widths. */
+export function resolvePhysicalInteger(expression: string, parameters: readonly ArchDesignDefinitionParameter[] = []): number | undefined {
+    const value = evaluate(expression, parameterResolver(parameters, undefined));
+    return value === undefined ? undefined : Number(value);
+}

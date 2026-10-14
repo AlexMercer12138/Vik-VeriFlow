@@ -348,6 +348,18 @@
         "title": "Open Simulation Waveform",
         "category": "VeriFlow",
         "icon": "$(pulse)"
+      },
+      {
+        "command": "veriflow.bindArchDesignPins",
+        "title": "Board / Pin Bindings (AD)",
+        "category": "VeriFlow",
+        "icon": "$(circuit-board)"
+      },
+      {
+        "command": "veriflow.generatePinConstraints",
+        "title": "Generate Pin Constraints (XDC)",
+        "category": "VeriFlow",
+        "icon": "$(circuit-board)"
       }
     ],
     "menus": {
@@ -356,6 +368,16 @@
           "submenu": "veriflow.hdl",
           "when": "editorLangId == verilog || editorLangId == systemverilog",
           "group": "navigation@90"
+        },
+        {
+          "command": "veriflow.generatePinConstraints",
+          "when": "resourceExtname == .v || resourceExtname == .sv",
+          "group": "veriflow@8"
+        },
+        {
+          "command": "veriflow.bindArchDesignPins",
+          "when": "resourceExtname == .ad",
+          "group": "veriflow@8"
         }
       ],
       "explorer/context": [
@@ -368,6 +390,16 @@
           "command": "veriflow.openVcdViewer",
           "when": "resourceExtname == .vcd",
           "group": "navigation@10"
+        },
+        {
+          "command": "veriflow.generatePinConstraints",
+          "when": "resourceExtname == .v || resourceExtname == .sv",
+          "group": "veriflow@8"
+        },
+        {
+          "command": "veriflow.bindArchDesignPins",
+          "when": "resourceExtname == .ad",
+          "group": "veriflow@8"
         }
       ],
       "editor/title": [
@@ -414,6 +446,11 @@
           "command": "veriflow.exportArchDesign",
           "when": "view == veriflow.design && viewItem == archDesignFile",
           "group": "navigation@3"
+        },
+        {
+          "command": "veriflow.bindArchDesignPins",
+          "when": "view == veriflow.design && viewItem == archDesignFile",
+          "group": "navigation@4"
         }
       ],
       "webview/context": [
@@ -452,6 +489,14 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "veriflow.bindArchDesignPins",
+          "when": "resourceExtname == .ad || activeCustomEditorId == veriflow.archDesignEditor"
+        },
+        {
+          "command": "veriflow.generatePinConstraints",
+          "when": "resourceExtname == .v || resourceExtname == .sv"
+        },
         {
           "command": "veriflow.analyze",
           "when": "false"

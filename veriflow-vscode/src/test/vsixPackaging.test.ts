@@ -243,6 +243,14 @@ function run(): void {
             'VSIX is missing the extension/dist/extension.js main bundle'
         );
         const packagedManifest = JSON.parse(entryText('extension/package.json'));
+        const physicalRoot = 'extension/resources/physical-models';
+        const boardRoot = `${physicalRoot}/boards/atk-au15p`;
+        const packagedBoard = JSON.parse(entryText(`${boardRoot}/board.json`));
+        assert.deepStrictEqual(packagedBoard, JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'docs/boards/atk-au15p/board.json'), 'utf8')));
+        for (const instance of packagedBoard.interfaces) {
+            assert.ok(JSON.parse(entryText(path.posix.join(boardRoot, instance.definition))).kind, `Missing packaged interface ${instance.definition}`);
+        }
+        assert.equal(JSON.parse(entryText(`${physicalRoot}/examples/physical-interfaces/rgb.fixed.json`)).bus.pdata, 24);
         const archDesignEditor = packagedManifest.contributes.customEditors.find(
             (item: { viewType?: string }) => item.viewType === 'veriflow.archDesignEditor'
         );
@@ -263,6 +271,8 @@ function run(): void {
             'veriflow.runSimulationTask',
             'veriflow.runTraditionalTestbench',
             'veriflow.addModuleToCanvas',
+            'veriflow.bindArchDesignPins',
+            'veriflow.generatePinConstraints',
         ]) {
             assert.ok(
                 packagedManifest.contributes.commands.some(
@@ -355,6 +365,7 @@ function run(): void {
             'add-port-button',
             'connect-button',
             'export-button',
+            'physical-pins-button',
         ]) {
             assert.ok(
                 schematicHtml.includes(`id="${controlId}"`),

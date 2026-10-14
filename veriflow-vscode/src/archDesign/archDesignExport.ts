@@ -100,12 +100,6 @@ async function inspectTarget(
     }
 }
 
-function assertGeneratedTarget(outputPath: string, text: string): void {
-    if (parseArchDesignRtlMarker(text) === undefined) {
-        throw new ArchDesignGeneratedFileConflictError(outputPath);
-    }
-}
-
 function temporaryPathFor(outputPath: string): string {
     return path.join(
         path.dirname(outputPath),
@@ -113,17 +107,19 @@ function temporaryPathFor(outputPath: string): string {
     );
 }
 
-async function publishGeneratedFile(
+export async function publishGeneratedFile(
     outputPath: string,
     text: string,
-    operationOverrides: Partial<ArchDesignExportFileOperations>
+    operationOverrides: Partial<ArchDesignExportFileOperations>,
+    generated: (text: string) => boolean = text => parseArchDesignRtlMarker(text) !== undefined
 ): Promise<void> {
     const operations: ArchDesignExportFileOperations = {
         ...DEFAULT_FILE_OPERATIONS,
         ...operationOverrides,
     };
     const initial = await inspectTarget(outputPath, operations);
-    if (initial.exists) assertGeneratedTarget(outputPath, initial.text);
+    const check = (text: string): void => { if (!generated(text)) throw new ArchDesignGeneratedFileConflictError(outputPath); };
+    if (initial.exists) check(initial.text);
 
     await operations.makeDirectory(path.dirname(outputPath));
     const temporaryPath = temporaryPathFor(outputPath);
@@ -158,7 +154,7 @@ async function publishGeneratedFile(
             await publishWithoutClobber();
             return;
         }
-        assertGeneratedTarget(outputPath, current.text);
+        check(current.text);
         await operations.rename(temporaryPath, outputPath);
         temporaryMayExist = false;
     } catch (error) {
@@ -193,6 +189,15 @@ function outputPathFor(designPath: string, design: ArchDesign): {
         );
     }
     return { language, outputPath };
+}
+
+export function archDesignXdcOutputPath(designPath: string, design: ArchDesign): string {
+    const rtl = outputPathFor(designPath, design).outputPath;
+    const output = design.export.xdcOutput === undefined
+        ? rtl.slice(0, -path.extname(rtl).length) + '.xdc'
+        : path.resolve(path.dirname(designPath), design.export.xdcOutput);
+    if (path.extname(output).toLowerCase() !== '.xdc') throw new Error('Constraint output must use .xdc');
+    return output;
 }
 
 function portableSourcePath(designPath: string, outputPath: string): string {

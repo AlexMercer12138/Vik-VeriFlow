@@ -1,4 +1,4 @@
-// Offline checks for the draft data contract; this is not the plugin's loader or generator.
+// Offline checks for model shape and cross-document hardware mappings.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -26,6 +26,17 @@ collect(path.join(root, 'docs/examples/physical-interfaces'));
 collect(path.join(root, 'docs/boards'));
 const unique = items => assert.equal(new Set(items).size, items.length, 'Duplicate ID');
 const byId = items => { unique(items.map(item => item.id)); return new Map(items.map(item => [item.id, item])); };
+const signalMembers = (def, signal) => {
+    const bus = Object.hasOwn(def.bus ?? {}, signal) ? def.bus[signal] : undefined;
+    return typeof bus === 'number' ? Array.from({ length: bus }, (_, i) => `${signal}.${bus - 1 - i}`) : bus ?? [signal];
+};
+const members = def => def.signals.flatMap(signal => signalMembers(def, signal));
+const pairs = def => (def.differentialPairs ?? []).flatMap(pair => {
+    const p = signalMembers(def, pair.positive), n = signalMembers(def, pair.negative);
+    assert.equal(p.length, n.length, 'Differential bus widths differ');
+    return p.map((positive, i) => ({ positive, negative: n[i] }));
+});
+const direction = (def, role, member) => def.function[role][def.signals.find(signal => signalMembers(def, signal).includes(member))];
 function resolve(owner, reference, kind) {
     const file = path.resolve(path.dirname(owner), reference);
     const doc = documents.get(file);
@@ -47,22 +58,25 @@ function definition(owner, instance, kind) {
     return doc;
 }
 function expand(def, selection) {
-    const members = new Set(selection.members ?? []);
+    const selected = new Set((selection.members ?? []).flatMap(member => signalMembers(def, member)));
     for (const id of selection.groups ?? []) {
         const group = (def.groups ?? []).find(item => item.id === id);
         assert.ok(group, `Unknown group ${id}`);
-        group.members.forEach(member => members.add(member));
+        group.members.flatMap(member => signalMembers(def, member)).forEach(member => selected.add(member));
     }
     let size;
     do {
-        size = members.size;
-        for (const group of def.groups ?? []) if (group.selection === 'together' && group.members.some(member => members.has(member))) group.members.forEach(member => members.add(member));
-        if (def.kind === 'fixed') for (const pair of def.differentialPairs ?? []) {
-            if (members.has(pair.positive) || members.has(pair.negative)) { members.add(pair.positive); members.add(pair.negative); }
+        size = selected.size;
+        for (const group of def.groups ?? []) {
+            const groupMembers = group.members.flatMap(member => signalMembers(def, member));
+            if (group.selection === 'together' && groupMembers.some(member => selected.has(member))) groupMembers.forEach(member => selected.add(member));
         }
-    } while (size !== members.size);
-    for (const member of members) assert.ok(def.signals.includes(member));
-    return members;
+        if (def.kind === 'fixed') for (const pair of pairs(def)) {
+            if (selected.has(pair.positive) || selected.has(pair.negative)) { selected.add(pair.positive); selected.add(pair.negative); }
+        }
+    } while (size !== selected.size);
+    for (const member of selected) assert.ok(members(def).includes(member));
+    return selected;
 }
 function states(selectors) {
     return selectors.reduce((all, selector) => all.flatMap(state => selector.values.map(value => ({ ...state, [selector.id]: value }))), [{}]);
@@ -71,15 +85,20 @@ const active = (route, state) => (route.when ?? []).every(condition => state[con
 for (const [file, doc] of documents) {
     if (['fixed', 'expansion'].includes(doc.kind)) {
         unique(doc.signals);
+        const expanded = members(doc); unique(expanded);
+        for (const [name, bus] of Object.entries(doc.bus ?? {})) {
+            if (typeof bus === 'number') assert.ok(doc.signals.includes(name), 'Numeric bus must name a signal');
+            else { assert.ok(!doc.signals.includes(name), 'Alias cannot shadow a signal'); unique(bus); bus.forEach(member => assert.ok(expanded.includes(member))); }
+        }
         byId(doc.groups ?? []);
-        for (const group of doc.groups ?? []) for (const member of group.members) assert.ok(doc.signals.includes(member));
-        checkPairs(doc.differentialPairs, doc.signals);
+        for (const group of doc.groups ?? []) for (const member of group.members.flatMap(member => signalMembers(doc, member))) assert.ok(expanded.includes(member));
+        checkPairs(pairs(doc), expanded);
         if (doc.kind === 'fixed') {
             const keys = Object.keys(doc);
             assert.equal(keys.indexOf('function'), keys.indexOf('signals') + 1, file);
-            for (const directions of Object.values(doc.function)) {
+            for (const [role, directions] of Object.entries(doc.function)) {
                 assert.deepEqual(Object.keys(directions).sort(), [...doc.signals].sort(), file);
-                for (const pair of doc.differentialPairs ?? []) assert.equal(directions[pair.positive], directions[pair.negative]);
+                for (const pair of pairs(doc)) assert.equal(direction(doc, role, pair.positive), direction(doc, role, pair.negative));
             }
         }
     } else if (doc.kind === 'board') {
@@ -91,19 +110,19 @@ for (const [file, doc] of documents) {
         for (const bank of banks.values()) if (bank.supplyRail !== undefined) assert.ok(rails.has(bank.supplyRail));
         for (const route of doc.routes) {
             assert.ok(interfaces.has(route.interface) && pins.has(route.pin));
-            assert.ok(definition(file, interfaces.get(route.interface)).signals.includes(route.member));
+            assert.ok(members(definition(file, interfaces.get(route.interface))).includes(route.member));
             unique((route.when ?? []).map(condition => condition.selector));
             for (const condition of route.when ?? []) assert.ok(selectors.get(condition.selector)?.values.includes(condition.value));
         }
         for (const instance of interfaces.values()) {
             const def = definition(file, instance);
             const routes = doc.routes.filter(route => route.interface === instance.id);
-            for (const member of def.signals) assert.ok(routes.some(route => route.member === member), `${file}: missing ${instance.id}.${member}`);
+            for (const member of members(def)) assert.ok(routes.some(route => route.member === member), `${file}: missing ${instance.id}.${member}`);
             for (const state of states([...selectors.values()])) {
                 const available = routes.filter(route => active(route, state));
                 unique(available.map(route => route.member));
                 unique(available.map(route => route.pin));
-                for (const pair of def.differentialPairs ?? []) {
+                for (const pair of pairs(def)) {
                     const p = available.find(route => route.member === pair.positive);
                     const n = available.find(route => route.member === pair.negative);
                     assert.equal(Boolean(p), Boolean(n), 'Only one leg of a physical pair is connected');
@@ -115,8 +134,8 @@ for (const [file, doc] of documents) {
         for (const clock of doc.clocks ?? []) {
             const instance = interfaces.get(clock.interface); assert.ok(instance);
             const def = definition(file, instance, 'fixed');
-            assert.equal(def.function[instance.function ?? Object.keys(def.function)[0]][clock.member], 'input');
-            assert.ok(!(def.differentialPairs ?? []).some(pair => pair.negative === clock.member), 'Clock must reference positive leg');
+            assert.equal(direction(def, instance.function ?? Object.keys(def.function)[0], clock.member), 'input');
+            assert.ok(!pairs(def).some(pair => pair.negative === clock.member), 'Clock must reference positive leg');
         }
     } else if (doc.kind === 'daughtercard') {
         const interfaces = byId(doc.interfaces), expansions = byId(doc.expansions);
@@ -126,7 +145,7 @@ for (const [file, doc] of documents) {
             const iface = definition(file, interfaces.get(mapping.interface), 'fixed');
             const expansion = definition(file, expansions.get(mapping.expansion), 'expansion');
             for (const [signal, member] of Object.entries(mapping.signals)) {
-                assert.ok(iface.signals.includes(signal) && expansion.signals.includes(member));
+                assert.ok(members(iface).includes(signal) && members(expansion).includes(member));
                 const key = `${mapping.interface}.${signal}`; assert.ok(!mappings.has(key));
                 mappings.set(key, { expansion: mapping.expansion, member });
                 used.push(`${mapping.expansion}.${member}`);
@@ -135,12 +154,12 @@ for (const [file, doc] of documents) {
         unique(used);
         for (const instance of interfaces.values()) {
             const def = definition(file, instance, 'fixed');
-            for (const member of def.signals) assert.ok(mappings.has(`${instance.id}.${member}`));
-            for (const pair of def.differentialPairs ?? []) {
+            for (const member of members(def)) assert.ok(mappings.has(`${instance.id}.${member}`));
+            for (const pair of pairs(def)) {
                 const p = mappings.get(`${instance.id}.${pair.positive}`), n = mappings.get(`${instance.id}.${pair.negative}`);
                 assert.equal(p.expansion, n.expansion);
                 const expansion = definition(file, expansions.get(p.expansion), 'expansion');
-                assert.ok(expansion.differentialPairs?.some(pair => pair.positive === p.member && pair.negative === n.member));
+                assert.ok(pairs(expansion).some(pair => pair.positive === p.member && pair.negative === n.member));
             }
         }
     } else if (doc.kind === 'assembly') {
@@ -173,7 +192,7 @@ for (const [file, doc] of documents) {
             return definition(owner, model.interfaces.find(item => item.id === source.interface));
         }
         for (const selection of doc.selections ?? []) expand(endpoint(selection.interface), selection);
-        for (const binding of doc.bindings ?? []) assert.ok(endpoint(binding.source).signals.includes(binding.source.member));
+        for (const binding of doc.bindings ?? []) assert.ok(members(endpoint(binding.source)).includes(binding.source.member));
         assert.ok(fs.existsSync(path.resolve(path.dirname(file), doc.design.path)));
     }
 }

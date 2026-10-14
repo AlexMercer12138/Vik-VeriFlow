@@ -13,3 +13,5 @@ export * from './reconcile';
 export * from './rtl';
 export * from './serializer';
 export * from './validation';
+export * from '../physicalPins';
+export { resolvePhysicalInteger } from './parameterWidth';

@@ -96,5 +96,17 @@
       "positive": "clock_p",
       "negative": "clock_n"
     }
-  ]
+  ],
+  "bus": {
+    "data_p": [
+      "data2_p",
+      "data1_p",
+      "data0_p"
+    ],
+    "data_n": [
+      "data2_n",
+      "data1_n",
+      "data0_n"
+    ]
+  }
 }

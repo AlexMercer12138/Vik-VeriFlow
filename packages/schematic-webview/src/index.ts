@@ -187,6 +187,7 @@ const dom = {
     addPortButton: requiredElement<HTMLButtonElement>('add-port-button'),
     connectButton: requiredElement<HTMLButtonElement>('connect-button'),
     exportButton: requiredElement<HTMLButtonElement>('export-button'),
+    physicalPinsButton: requiredElement<HTMLButtonElement>('physical-pins-button'),
     deleteButton: requiredElement<HTMLButtonElement>('delete-button'),
     inspector: requiredElement<HTMLElement>('inspector'),
     inspectorTitle: requiredElement<HTMLHeadingElement>('inspector-title'),
@@ -1439,6 +1440,8 @@ function setAuthoringControls(): void {
     dom.taskStatus.title = currentTaskState?.execution.error ?? '';
     dom.inspectorForm.setAttribute('aria-label', simulationTaskDocument ? 'Simulation Task properties' : 'Arch Design properties');
     dom.exportButton.disabled = disabled || dom.exportButton.hidden;
+    dom.physicalPinsButton.hidden = simulationTaskDocument || !archDesignDocument;
+    dom.physicalPinsButton.disabled = disabled;
     dom.deleteButton.disabled = disabled || currentArchDesignInspector?.deleteEdit === undefined;
     dom.inspectorForm.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
         'input, select, textarea'
@@ -3135,6 +3138,7 @@ for (const [button, severity] of [
     });
 }
 dom.exportButton.addEventListener('click', exportRtl);
+dom.physicalPinsButton.addEventListener('click', () => post({ type: 'openPhysicalPins', revision: currentRevision }));
 dom.deleteButton.addEventListener('click', deleteSelection);
 
 dom.addInstanceForm.addEventListener('submit', event => {

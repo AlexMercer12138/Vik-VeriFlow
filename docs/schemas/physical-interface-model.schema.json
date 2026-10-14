@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:veriflow:physical-model:v1",
-  "title": "VeriFlow physical interface model V1 draft",
-  "description": "Minimal draft contract: fields only support constraint generation, pin/electrical checks or model mappings. Cross-document semantics require validation; the extension does not consume this draft yet.",
+  "title": "VeriFlow physical interface model V1",
+  "description": "Fields support constraint generation, pin/electrical checks or model mappings. The extension consumes board/fixed/expansion models; daughtercard and assembly are data contracts. Cross-document semantics require validation.",
   "oneOf": [
     {
       "$ref": "#/definitions/fixed"
@@ -478,6 +478,9 @@
             "$ref": "#/definitions/pair"
           },
           "minItems": 1
+        },
+        "bus": {
+          "$ref": "#/definitions/bus"
         }
       },
       "required": [
@@ -515,6 +518,9 @@
             "$ref": "#/definitions/pair"
           },
           "minItems": 1
+        },
+        "bus": {
+          "$ref": "#/definitions/bus"
         }
       },
       "required": [
@@ -801,6 +807,31 @@
         "frequencyHz"
       ],
       "additionalProperties": false
+    },
+    "bus": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/definitions/memberId"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/memberId"
+            },
+            "minItems": 1,
+            "maxItems": 4096,
+            "uniqueItems": true
+          }
+        ]
+      }
     }
   }
 }

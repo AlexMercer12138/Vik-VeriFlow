@@ -69,7 +69,9 @@ import { SimulationTaskController } from './simulationTask/taskController';
 import { SimulationTaskEditorProvider } from './simulationTask/taskEditorProvider';
 import { createSimulationBackendRegistry } from './core/simulationService';
 import { parseArchDesignText } from '@veriflow/schematic-core/arch-design';
-import { exportArchDesignToFile } from './archDesign/archDesignExport';
+import { exportArchDesignToFile, archDesignXdcOutputPath } from './archDesign/archDesignExport';
+import { PhysicalPinsPanel } from './archDesign/physicalPinsPanel';
+import { adPhysicalPorts, rtlPhysicalPorts } from './archDesign/physicalPinsSupport';
 import { isFreshWaveform, waveIdentity } from './workflowArtifact';
 
 const DEFAULT_VIEWERS: Record<string, WaveViewerConfig> = {
@@ -459,11 +461,35 @@ export function activate(context: vscode.ExtensionContext): void {
         const artifact = vscode.Uri.file(path.resolve(path.dirname(uri.fsPath), output));
         return [{ uri: artifact, exists: await vscode.workspace.fs.stat(artifact).then(stat => stat.type === vscode.FileType.File, () => false) }];
     };
+    const pinModuleChoices = new Map<string, string>();
+    const pinBindings = new PhysicalPinsPanel(context, {
+        ports: async document => {
+            const definitions = await designDefinitions(document.uri, undefined, /\.(v|sv)$/i.test(document.uri.path) ? [document.uri] : []);
+            if (/\.ad$/i.test(document.uri.path)) {
+                const parsed = parseArchDesignText(document.getText());
+                if (parsed.status !== 'editable') throw new Error('AD is not editable');
+                const protocols = await interfaceProtocolLoader.load(document.uri.toString());
+                return adPhysicalPorts(parsed.design, toArchDesignModuleDefinitions(definitions), protocols.catalog);
+            }
+            const modules = definitions.filter(definition => definition.kind === 'module'
+                && canonicalizeSourceUri(definition.uri) === canonicalizeSourceUri(document.uri.toString()));
+            if (!modules.length) throw new Error('No parsed RTL module ports found');
+            const previous = pinModuleChoices.get(document.uri.toString());
+            const selected = modules.find(module => module.name === previous)
+                ?? (modules.length === 1 ? modules[0] : (await vscode.window.showQuickPick(
+                    modules.map(module => ({ label: module.name, module })), { title: 'Select RTL module for pin constraints' }))?.module);
+            if (!selected) throw new Error('No RTL module selected');
+            pinModuleChoices.set(document.uri.toString(), selected.name);
+            return rtlPhysicalPorts(selected.ports, selected.parameters);
+        },
+    });
     const adDetails = async (uri: vscode.Uri) => {
         const parsed = parseArchDesignText((await vscode.workspace.openTextDocument(uri)).getText());
         if (parsed.status !== 'editable') throw new Error('Invalid Architecture Design');
         const root = vscode.workspace.getWorkspaceFolder(uri)?.uri ?? vscode.Uri.file(path.dirname(uri.fsPath));
-        return { dependencies: projectArchitectureDependencies(parsed.design, await designDefinitions(uri), root.toString()), exportedFiles: await exportedFiles(uri, parsed.design.export.output ?? path.basename(uri.fsPath, path.extname(uri.fsPath)) + (parsed.design.export.language === 'systemverilog' ? '.sv' : '.v')) };
+        const rtlFiles = await exportedFiles(uri, parsed.design.export.output ?? path.basename(uri.fsPath, path.extname(uri.fsPath)) + (parsed.design.export.language === 'systemverilog' ? '.sv' : '.v'));
+        const xdcFiles = parsed.design.physical ? await exportedFiles(uri, archDesignXdcOutputPath(uri.fsPath, parsed.design)) : [];
+        return { dependencies: projectArchitectureDependencies(parsed.design, await designDefinitions(uri), root.toString()), exportedFiles: [...rtlFiles, ...xdcFiles] };
     };
     const adView = new DesignDocumentTreeProvider('ad', {
         files: async () => vscode.workspace.findFiles('**/*.ad', '**/{node_modules,.git,.veriflow,.trash}/**'), load: adDetails,
@@ -488,7 +514,7 @@ export function activate(context: vscode.ExtensionContext): void {
             return { dependencies, exportedFiles: await exportedFiles(uri, task.settings.exportPath) };
         },
     });
-    context.subscriptions.push(analysisState, files, adView, stView, analysisState.onDidChange(() => { files.refresh(); adView.refresh(); stView.refresh(); }),
+    context.subscriptions.push(pinBindings, analysisState, files, adView, stView, analysisState.onDidChange(() => { files.refresh(); adView.refresh(); stView.refresh(); }),
         tasks.onDidChange(() => stView.refresh()),
         vscode.workspace.onDidChangeTextDocument(event => { if (event.document.uri.path.endsWith('.ad')) adView.refresh(); if (event.document.uri.path.endsWith('.st')) stView.refresh(); }));
     context.subscriptions.push(
@@ -678,6 +704,10 @@ export function activate(context: vscode.ExtensionContext): void {
             archDesignCommands.validate(uri)],
         ['veriflow.exportArchDesign', (uri?: unknown) =>
             archDesignCommands.exportRtl(uri)],
+        ['veriflow.bindArchDesignPins', (uri?: unknown) => pinBindings.open(commandUri(uri) ?? getActiveCanvas()?.uri)
+            .catch(error => vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)))],
+        ['veriflow.generatePinConstraints', (uri?: unknown) => pinBindings.open(commandUri(uri))
+            .catch(error => vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)))],
     ];
     for (const [name, fn] of cmds) {
         context.subscriptions.push(vscode.commands.registerCommand(name, fn));

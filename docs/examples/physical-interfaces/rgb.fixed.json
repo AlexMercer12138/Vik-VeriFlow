@@ -1,0 +1,41 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "pclk",
+    "de",
+    "hsync",
+    "vsync",
+    "pdata"
+  ],
+  "function": {
+    "rgb-tx": {
+      "pclk": "output",
+      "de": "output",
+      "hsync": "output",
+      "vsync": "output",
+      "pdata": "output"
+    },
+    "rgb-rx": {
+      "pclk": "input",
+      "de": "input",
+      "hsync": "input",
+      "vsync": "input",
+      "pdata": "input"
+    }
+  },
+  "groups": [
+    {
+      "id": "data",
+      "members": [
+        "pclk",
+        "de",
+        "hsync",
+        "vsync",
+        "pdata"
+      ]
+    }
+  ],
+  "bus": {
+    "pdata": 24
+  }
+}

@@ -1,6 +1,6 @@
 # ATK AU15P 核心板 + 底板 V1.0
 
-[board.json](board.json) 描述核心板与底板连接后的硬件，器件为 AMD `xcau15p-ffvb676-2-i`。19 个接口、274 个封装脚、302 条接口接线；不同接口可以引用同一个物理脚。模型不包含 I/O 标准和厂商约束命令，格式见 [物理模型规范](../../physical-interface-model.md)。当前只完成数据定义和离线校验，尚未接入插件导出。
+[board.json](board.json) 描述核心板与底板连接后的硬件，器件为 AMD `xcau15p-ffvb676-2-i`。19 个接口、274 个封装脚、302 条接口接线；不同接口可以引用同一个物理脚。模型不包含 I/O 标准和厂商约束命令，格式见 [物理模型规范](../../physical-interface-model.md)。插件内置此板卡，支持 AD/RTL 引脚绑定与首版 XDC；流程和电气规则范围见 [使用说明](../../physical-pin-bindings.md)。
 
 ## 来源与覆盖范围
 

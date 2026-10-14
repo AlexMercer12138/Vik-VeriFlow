@@ -26,6 +26,10 @@ export async function syncVscodeWebAssets(repositoryRoot = root) {
         await recreate(destination);
         await copyTree(path.join(repositoryRoot, 'web-dist', application), destination);
     }
+    const physicalModels = path.join(targetExtensionRoot, 'resources', 'physical-models');
+    await recreate(physicalModels);
+    await copyTree(path.join(repositoryRoot, 'docs', 'boards'), path.join(physicalModels, 'boards'));
+    await copyTree(path.join(repositoryRoot, 'docs', 'examples', 'physical-interfaces'), path.join(physicalModels, 'examples', 'physical-interfaces'));
 }
 
 export async function buildVscode() {

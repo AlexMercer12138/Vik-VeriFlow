@@ -38,6 +38,9 @@
 
 - 自动识别 **APB、AHB、AXI** 总线接口，实现主从快速连接
 - 内置常用组合逻辑模块 **Logic Utility**，提高连接灵活性
+- **Pins / XDC** 选择内置/工作区板卡，为顶层端口绑定物理引脚并导出 XDC。AD 保存绑定，RTL 文件也提供右键与命令入口的临时工具。总线拖放可同步绑定 P/N；XDC 默认与 RTL 使用相同目录和文件主名，在 AD 树下并列显示。
+
+引脚绑定首版支持 AU15P 的 GPIO/LVDS 与专用 GT 封装位置；DDR/MIPI 数据线需 IP 电气规则，暂不导出。详见 [引脚绑定说明](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md)。
 
 ![图形化架构设计](https://i.imgs.ovh/2026/09/18/3254e83e61781f004e33ccb05d88f7f3.gif)
 

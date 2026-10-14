@@ -597,7 +597,7 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
             edit: Parameters<typeof applyArchDesignEdit>[1],
             acknowledgePresentation = false
         ): Promise<void> => {
-            const next = applyArchDesignEdit(snapshot.design, edit);
+            const next = applyArchDesignEdit(snapshot.design, edit, snapshot.interfaceCatalog);
             if (edit.type === 'connect') {
                 const resolution = resolveArchDesign(
                     next, snapshot.definitions, snapshot.interfaceCatalog
@@ -711,6 +711,12 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                         const snapshot = state.snapshot;
                         if (!snapshot || command.revision !== snapshot.revision) return;
                         await this.saveAndExport(session);
+                        return;
+                    }
+                    case 'openPhysicalPins': {
+                        const snapshot = state.snapshot;
+                        if (!snapshot || command.revision !== snapshot.revision) return;
+                        await vscode.commands.executeCommand('veriflow.bindArchDesignPins', document.uri);
                         return;
                     }
                     case 'selectModule':

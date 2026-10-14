@@ -66,7 +66,8 @@ export type WebviewCommand =
     | { type: 'editSchematic'; revision: string; edit: ArchDesignEdit }
     | { type: 'simulationTaskCommand'; revision: string; command: SimulationTaskAction; payload?: unknown }
     | { type: 'editArchDesign'; revision: string; edit: ArchDesignEdit }
-    | { type: 'exportArchDesign'; revision: string };
+    | { type: 'exportArchDesign'; revision: string }
+    | { type: 'openPhysicalPins'; revision: string };
 
 export type HostEvent =
     | { type: 'simulationTaskState'; revision: string; projection: SchematicEditorProjection; task: SimulationTaskViewState }
@@ -698,14 +699,17 @@ function normalizeArchDesignEdit(value: unknown): ArchDesignEdit | undefined {
         case 'setExport': {
             const language = ownValue(value, 'language');
             const output = ownValue(value, 'output');
+            const xdcOutput = ownValue(value, 'xdcOutput');
             if (language !== undefined
                 && language !== 'verilog'
                 && language !== 'systemverilog') return undefined;
             if (output !== undefined && !nonEmptyString(output)) return undefined;
+            if (xdcOutput !== undefined && !nonEmptyString(xdcOutput)) return undefined;
             return {
                 type,
                 ...(language === undefined ? {} : { language }),
                 ...(output === undefined ? {} : { output }),
+                ...(xdcOutput === undefined ? {} : { xdcOutput }),
             };
         }
         case 'setPresentation': {
@@ -857,10 +861,11 @@ export function parseWebviewCommand(value: unknown): WebviewCommand | undefined 
                 return { type, revision, command: command as SimulationTaskAction,
                     ...(payload === undefined ? {} : { payload }) };
             }
-            case 'exportArchDesign': {
+            case 'exportArchDesign':
+            case 'openPhysicalPins': {
                 const revision = ownValue(value, 'revision');
                 return nonEmptyString(revision)
-                    ? { type: 'exportArchDesign', revision }
+                    ? { type: value.type as 'exportArchDesign' | 'openPhysicalPins', revision }
                     : undefined;
             }
             default:

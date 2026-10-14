@@ -3,7 +3,7 @@ import { validateSimulationTaskValue, type SimulationTaskDocument, type TaskModu
 import { taskDesign, taskModuleKey } from './taskProjection';
 /** Use the same graph-edit operations as AD; only instance source identity is ST-specific. */
 export function applyTaskEdit(task: SimulationTaskDocument, modules: readonly TaskModuleDefinition[], edit: ArchDesignEdit): SimulationTaskDocument {
-    const forbidden = ['addPort', 'updatePort', 'removePort', 'promotePort', 'promoteInterface', 'resyncInterfacePort', 'renameInterfacePort', 'removeInterfacePort', 'setExport'];
+    const forbidden = ['addPort', 'updatePort', 'removePort', 'promotePort', 'promoteInterface', 'resyncInterfacePort', 'renameInterfacePort', 'removeInterfacePort', 'setExport', 'setPhysical'];
     if (forbidden.includes(edit.type)) throw new Error('Simulation tasks have no external top-level ports or RTL export settings.');
     const design = applyArchDesignEdit(taskDesign(task, modules, 'simulation.st'), edit);
     const instances: StInstance[] = design.instances.map(instance => {

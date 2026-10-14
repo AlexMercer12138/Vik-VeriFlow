@@ -28,7 +28,7 @@ export class DesignDocumentTreeProvider implements vscode.TreeDataProvider<Desig
     readonly onDidChangeTreeData = this.emitter.event;
     private readonly subscriptions: vscode.Disposable[];
     constructor(private readonly kind: ModuleTargetKind, private readonly services: DesignDocumentTreeServices) {
-        const watcher = vscode.workspace.createFileSystemWatcher('**/*.{ad,st,v,sv,vh,svh}');
+        const watcher = vscode.workspace.createFileSystemWatcher('**/*.{ad,st,v,sv,vh,svh,xdc}');
         this.subscriptions = [this.emitter, watcher, watcher.onDidCreate(() => this.refresh()),
             watcher.onDidChange(() => this.refresh()), watcher.onDidDelete(() => this.refresh())];
     }
@@ -84,7 +84,7 @@ export class DesignDocumentTreeProvider implements vscode.TreeDataProvider<Desig
         item.tooltip = file.uri.fsPath;
         item.iconPath = new vscode.ThemeIcon('file-code');
         item.contextValue = file.exists ? 'designExportFile' : 'designExportMissing';
-        if (file.exists) item.command = { command: 'vscode.open', title: 'Open exported HDL', arguments: [file.uri] };
+        if (file.exists) item.command = { command: 'vscode.open', title: 'Open exported file', arguments: [file.uri] };
         return item;
     }
 }

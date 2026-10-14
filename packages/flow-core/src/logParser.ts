@@ -24,8 +24,12 @@ export class LogParser {
         return entries;
     }
 
-    hasErrors(text: string): boolean {
-        return this.parse(text).some(e => e.level === 'ERROR');
+    hasErrors(text: string): boolean;
+    hasErrors(entries: readonly LogEntry[]): boolean;
+    hasErrors(value: string | readonly LogEntry[]): boolean {
+        return typeof value === 'string'
+            ? this.parse(value).some(e => e.level === 'ERROR')
+            : value.some(e => e.level === 'ERROR');
     }
 
     private _parseLine(line: string): LogEntry | null {

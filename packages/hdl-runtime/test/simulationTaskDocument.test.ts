@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createSimulationTask, parseSimulationTask, describePreset, generateTestbench } from '../src/simulationTask';
+import { createSimulationTask, parseSimulationTask, validateSimulationTaskValue, simulationInputFingerprint,
+    describePreset, generateTestbench } from '../src/simulationTask';
 import { createEmptyArchDesign, parseArchDesignValue } from '@veriflow/schematic-core/arch-design';
 
 test('module parameter drafts accept exactly the AD value types', () => {
@@ -23,6 +24,22 @@ test('empty task is editable and old product fields are rejected', () => {
     }
     task.settings.exportPath = '../exports/demo.v';
     assert.equal(parseSimulationTask(JSON.stringify(task)).settings.exportPath, '../exports/demo.v');
+});
+
+test('validated V1 values can be reused without a JSON round trip', () => {
+    const task = createSimulationTask();
+    assert.strictEqual(validateSimulationTaskValue(task), task);
+    assert.throws(() => validateSimulationTaskValue({ ...task, verification: {} }), /unsupported/i);
+});
+
+test('simulation input fingerprints ignore layout and export location only', () => {
+    const task = createSimulationTask();
+    const baseline = simulationInputFingerprint(task);
+    task.presentation = { nodes: { dut: { column: 2, order: 1 } } };
+    task.settings.exportPath = 'generated.v';
+    assert.equal(simulationInputFingerprint(task), baseline);
+    task.settings.duration += 1;
+    assert.notEqual(simulationInputFingerprint(task), baseline);
 });
 
 test('preset metadata and generation express rounded clock ticks in task time units', () => {

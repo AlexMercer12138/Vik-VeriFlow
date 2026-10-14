@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { mkdtemp, rm, writeFile, stat, lstat, readFile } from 'fs/promises';
 import { createHash } from 'crypto';
-import { createSimulationTask, parseSimulationTask, type SimulationTaskDocument } from '@veriflow/hdl-runtime/simulationTask';
+import { createSimulationTask, parseSimulationTask, simulationInputFingerprint, validateSimulationTaskValue, type SimulationTaskDocument } from '@veriflow/hdl-runtime/simulationTask';
 import { createSimulationRequest, type SimulatorBackend } from '@veriflow/flow-core';
 import type { PreparedSimulationTask } from '@veriflow/hdl-runtime/simulationTaskWorkspace';
 import type { HdlDefinitionSummary } from '../core';
@@ -134,7 +134,7 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
             }
         }
         task.settings.exportPath = filename;
-        parseSimulationTask(JSON.stringify(task));
+        validateSimulationTaskValue(task);
         if (document.version !== version) throw new Error('The task changed while preparing the testbench. Generate it again.');
         if (existing) await vscode.workspace.fs.writeFile(uri, Buffer.from(prepared.generatedTestbench.text));
         else await writeFile(uri.fsPath, prepared.generatedTestbench.text, { flag: 'wx' });
@@ -212,10 +212,7 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
         let bytes: string | Buffer = document ? document.getText() : await readFile(file);
         if (taskDocument) {
             const task = parseSimulationTask(bytes.toString());
-            // Canvas layout and export location do not affect the generated simulation.
-            const { presentation: _presentation, settings, ...inputs } = task;
-            const { exportPath: _exportPath, ...simulationSettings } = settings;
-            bytes = JSON.stringify({ ...inputs, settings: simulationSettings });
+            bytes = simulationInputFingerprint(task);
         }
         return { hash: createHash('sha256').update(bytes).digest('hex'), taskDocument };
     }

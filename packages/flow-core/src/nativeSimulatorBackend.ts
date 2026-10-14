@@ -414,11 +414,13 @@ async function executeNativeSimulation(
         request.timeoutMs / 1_000,
         request.signal
     );
-    const compileEntries = logParser.parse(`${compile.stdout}\n${compile.stderr}`);
+    const compileStdoutEntries = logParser.parse(compile.stdout);
+    const compileStderrEntries = logParser.parse(compile.stderr);
+    const compileEntries = [...compileStdoutEntries, ...compileStderrEntries];
     const compileResult: SimulationExecution = {
         success: compile.termination === undefined
             && compile.exitCode === 0
-            && !logParser.hasErrors(compile.stderr),
+            && !logParser.hasErrors(compileStderrEntries),
         exitCode: compile.exitCode,
         stdout: compile.stdout,
         stderr: compile.stderr,

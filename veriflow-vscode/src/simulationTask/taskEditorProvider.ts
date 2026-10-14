@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { readFileSync } from 'fs';
 import { randomBytes } from 'crypto';
-import { describeArchDesignSource, parseSimulationTask, SimulationTaskValidationError, type SimulationTaskDocument, type TaskModuleDefinition } from '@veriflow/hdl-runtime/simulationTask';
+import { describeArchDesignSource, parseSimulationTask, validateSimulationTaskValue, SimulationTaskValidationError, type SimulationTaskDocument, type TaskModuleDefinition } from '@veriflow/hdl-runtime/simulationTask';
 import { parseArchDesignText } from '@veriflow/schematic-core/arch-design';
 import type { InterfaceProtocolCatalog } from '@veriflow/schematic-core/interfaces';
 import type { HdlDefinitionSummary } from '../core';
@@ -249,7 +249,7 @@ export class SimulationTaskEditorProvider implements vscode.CustomTextEditorProv
 }
 const pendingEdits = new Map<string, Promise<void>>();
 export async function replaceTaskDocument(document: vscode.TextDocument, task: SimulationTaskDocument, expectedVersion = document.version): Promise<void> {
-    parseSimulationTask(JSON.stringify(task));
+    validateSimulationTaskValue(task);
     const text = JSON.stringify(task, null, 2) + '\n', key = document.uri.toString();
     const previous = pendingEdits.get(key) ?? Promise.resolve();
     const operation = previous.catch(() => {}).then(async () => {

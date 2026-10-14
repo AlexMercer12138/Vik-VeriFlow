@@ -1,5 +1,5 @@
 import { applyArchDesignEdit, type ArchDesignEdit } from '@veriflow/schematic-core/arch-design';
-import { parseSimulationTask, type SimulationTaskDocument, type TaskModuleDefinition, type StInstance } from '@veriflow/hdl-runtime/simulationTask';
+import { validateSimulationTaskValue, type SimulationTaskDocument, type TaskModuleDefinition, type StInstance } from '@veriflow/hdl-runtime/simulationTask';
 import { taskDesign, taskModuleKey } from './taskProjection';
 /** Use the same graph-edit operations as AD; only instance source identity is ST-specific. */
 export function applyTaskEdit(task: SimulationTaskDocument, modules: readonly TaskModuleDefinition[], edit: ArchDesignEdit): SimulationTaskDocument {
@@ -17,6 +17,6 @@ export function applyTaskEdit(task: SimulationTaskDocument, modules: readonly Ta
         return { id: instance.name, parameters, source: definition.source.toLowerCase().endsWith('.ad')
             ? { kind: 'ad', path: definition.source } : { kind: 'hdl', path: definition.source, module: definition.module } };
     });
-    return parseSimulationTask(JSON.stringify({ ...task, instances, connections: design.connections, logic: design.logic,
-        defaults: design.defaults, interfaceConnections: design.interfaceConnections, interfaceOverrides: design.interfaceOverrides, presentation: design.presentation }));
+    return validateSimulationTaskValue({ ...task, instances, connections: design.connections, logic: design.logic,
+        defaults: design.defaults, interfaceConnections: design.interfaceConnections, interfaceOverrides: design.interfaceOverrides, presentation: design.presentation });
 }

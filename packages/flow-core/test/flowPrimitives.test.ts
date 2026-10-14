@@ -39,6 +39,13 @@ test('log parser preserves current simulator diagnostic behavior', () => {
     assert.equal(parser.hasErrors('WARNING: caution'), false);
 });
 
+test('log parser checks existing entries without reparsing text', () => {
+    const parser = new LogParser();
+    const entries = parser.parse('ERROR: failed');
+    assert.equal(parser.hasErrors(entries), true);
+    assert.equal(parser.hasErrors(parser.parse('WARNING: caution')), false);
+});
+
 test('template engine preserves placeholders, quoting, and command names', () => {
     assert.equal(
         TemplateEngine.render('{known}:{known}:{unknown}', { known: 'value' }),

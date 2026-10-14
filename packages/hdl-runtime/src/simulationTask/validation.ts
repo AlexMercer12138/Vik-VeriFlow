@@ -1,5 +1,5 @@
 import { createEmptyArchDesign, parseArchDesignValue } from '@veriflow/schematic-core/arch-design';
-import type { SimulationTaskDocument, SimulationPreset, TimeScale } from './model';
+import { SIMULATION_TASK_FORMAT, SIMULATION_TASK_SCHEMA_VERSION, type SimulationTaskDocument, type SimulationPreset, type TimeScale } from './model';
 import { clockTiming, timeScaleFemtoseconds, numberRatio } from './timing';
 import { validateProtocolPreset } from './protocolPresets';
 
@@ -113,10 +113,10 @@ export function validatePreset(preset: SimulationPreset, settings: SimulationTas
     } else fail('Unknown preset kind');
 }
 
-/** Parse the first supported schema strictly; this deliberately has no migration path. */
-export function parseSimulationTask(text: string): SimulationTaskDocument {
-    const task = record(JSON.parse(text), ['format', 'schemaVersion', 'settings', 'instances', 'connections', 'logic', 'defaults', 'interfaceConnections', 'interfaceOverrides', 'presentation'], 'task');
-    if (task.format !== 'veriflow-simulation-task' || task.schemaVersion !== 1) fail('format/schema version');
+/** Validate the only supported V1 document shape without serializing it first. */
+export function validateSimulationTaskValue(value: unknown): SimulationTaskDocument {
+    const task = record(value, ['format', 'schemaVersion', 'settings', 'instances', 'connections', 'logic', 'defaults', 'interfaceConnections', 'interfaceOverrides', 'presentation'], 'task');
+    if (task.format !== SIMULATION_TASK_FORMAT || task.schemaVersion !== SIMULATION_TASK_SCHEMA_VERSION) fail('format/schema version');
     const settings = record(task.settings, ['timeUnit', 'timePrecision', 'duration', 'waveform', 'exportPath'], 'settings');
     const unit = settings.timeUnit as TimeScale, precision = settings.timePrecision as TimeScale;
     if (timeScaleFemtoseconds(precision) > timeScaleFemtoseconds(unit)) fail('Time precision cannot be coarser than time unit');
@@ -153,4 +153,8 @@ export function parseSimulationTask(text: string): SimulationTaskDocument {
         interfaceOverrides: document.interfaceOverrides, presentation: document.presentation });
     if (parsed.status !== 'editable') fail(parsed.status === 'invalid' ? parsed.diagnostics.map(d => d.message).join('\n') : 'graph');
     return document;
+}
+
+export function parseSimulationTask(text: string): SimulationTaskDocument {
+    return validateSimulationTaskValue(JSON.parse(text));
 }

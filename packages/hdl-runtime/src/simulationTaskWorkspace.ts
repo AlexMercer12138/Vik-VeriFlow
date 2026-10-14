@@ -9,7 +9,7 @@ import { createArchDesignDefinitionCatalog, selectArchDesignDefinitionKey } from
 import { DependencyAnalyzer } from './dependencyAnalyzer';
 import { NodeWorkspaceHost, type ParserRuntimePaths } from './nodeWorkspaceHost';
 import type { HdlDefinitionSummary } from './workspaceIndexTypes';
-import { parseSimulationTask, generateTestbench, deriveTaskModuleName, type SimulationTaskDocument, type TaskModuleDefinition, type GeneratedTestbench } from './simulationTask';
+import { validateSimulationTaskValue, generateTestbench, deriveTaskModuleName, type SimulationTaskDocument, type TaskModuleDefinition, type GeneratedTestbench } from './simulationTask';
 
 export interface TaskWorkspaceOptions {
     parserPaths?: ParserRuntimePaths;
@@ -176,7 +176,7 @@ export async function prepareSimulationTaskWorkspace(
     signal?: AbortSignal, options: TaskWorkspaceOptions = {},
 ): Promise<PreparedSimulationTask> {
     signal?.throwIfAborted();
-    const task = parseSimulationTask(JSON.stringify(inputTask));
+    const task = validateSimulationTaskValue(inputTask);
     const taskPath = path.resolve(inputTaskPath), root = path.dirname(taskPath);
     const sources = task.instances.flatMap(i => 'source' in i ? [path.resolve(root, i.source.path)] : []);
     const roots = uniquePaths([root, options.workspaceRoot ?? root, ...sources.map(file => path.dirname(file)), ...(options.includeDirs ?? [])]);

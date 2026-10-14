@@ -3,7 +3,7 @@ import type { WidthValue } from '@veriflow/hdl-core/model';
 import type { InterfaceProtocolCatalog } from '@veriflow/schematic-core/interfaces';
 import type { GeneratedTestbench, SimulationTaskDocument, TaskDiagnostic, TaskModuleDefinition } from './model';
 import { describePreset, renderPreset } from './presets';
-import { parseSimulationTask } from './validation';
+import { validateSimulationTaskValue } from './validation';
 import { resolveProtocolPresetPorts } from './protocolPresets';
 
 /** Describe the same scalar and expanded interface ports emitted by the AD RTL exporter. */
@@ -29,7 +29,7 @@ export function generateTestbench(
     input: SimulationTaskDocument, moduleName: string, definitions: readonly TaskModuleDefinition[],
     interfaceCatalog?: InterfaceProtocolCatalog,
 ): GeneratedTestbench {
-    const task = resolveProtocolPresetPorts(parseSimulationTask(JSON.stringify(input)));
+    const task = resolveProtocolPresetPorts(validateSimulationTaskValue(input));
     const diagnostics: TaskDiagnostic[] = [];
     const helpers: string[] = [];
     const wrappers = new Map<string, string>();

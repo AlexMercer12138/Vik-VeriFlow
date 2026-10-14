@@ -1,0 +1,73 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "mdc",
+    "rxck",
+    "rxctl",
+    "rxd0",
+    "rxd1",
+    "rxd2",
+    "rxd3",
+    "mdio",
+    "txd3",
+    "txd2",
+    "txd1",
+    "txd0",
+    "txctl",
+    "txck",
+    "rst"
+  ],
+  "function": {
+    "rgmii-mac": {
+      "mdc": "output",
+      "rxck": "input",
+      "rxctl": "input",
+      "rxd0": "input",
+      "rxd1": "input",
+      "rxd2": "input",
+      "rxd3": "input",
+      "mdio": "inout",
+      "txd3": "output",
+      "txd2": "output",
+      "txd1": "output",
+      "txd0": "output",
+      "txctl": "output",
+      "txck": "output",
+      "rst": "output"
+    }
+  },
+  "groups": [
+    {
+      "id": "tx",
+      "members": [
+        "txd3",
+        "txd2",
+        "txd1",
+        "txd0",
+        "txctl",
+        "txck"
+      ],
+      "selection": "together"
+    },
+    {
+      "id": "rx",
+      "members": [
+        "rxck",
+        "rxctl",
+        "rxd0",
+        "rxd1",
+        "rxd2",
+        "rxd3"
+      ],
+      "selection": "together"
+    },
+    {
+      "id": "management",
+      "members": [
+        "mdc",
+        "mdio"
+      ],
+      "selection": "together"
+    }
+  ]
+}

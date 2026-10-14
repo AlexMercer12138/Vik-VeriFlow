@@ -139,15 +139,6 @@
         "bank": {
           "$ref": "#/definitions/memberId"
         },
-        "allowedIoStandards": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        },
         "reservation": {
           "$ref": "#/definitions/reservation"
         }
@@ -215,34 +206,6 @@
       ],
       "additionalProperties": false
     },
-    "fpgaElectrical": {
-      "type": "object",
-      "properties": {
-        "ioStandard": {
-          "type": "string",
-          "minLength": 1
-        },
-        "driveMa": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "slew": {
-          "enum": [
-            "slow",
-            "fast"
-          ]
-        },
-        "pull": {
-          "enum": [
-            "none",
-            "up",
-            "down"
-          ]
-        }
-      },
-      "additionalProperties": false,
-      "minProperties": 1
-    },
     "boardRoute": {
       "type": "object",
       "properties": {
@@ -261,9 +224,6 @@
             "$ref": "#/definitions/when"
           },
           "minItems": 1
-        },
-        "fpgaElectrical": {
-          "$ref": "#/definitions/fpgaElectrical"
         }
       },
       "required": [
@@ -397,10 +357,6 @@
             "name"
           ],
           "additionalProperties": false
-        },
-        "ioStandard": {
-          "type": "string",
-          "minLength": 1
         }
       },
       "required": [
@@ -573,21 +529,15 @@
         "kind": {
           "const": "board"
         },
+        "vendor": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Device vendor key used to select the generator and device rules; e.g. amd, intel or lattice."
+        },
         "device": {
           "type": "string",
           "minLength": 1,
           "description": "Complete device part including package; selects device rules and device assignments."
-        },
-        "ioStandards": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "$ref": "#/definitions/ioStandard"
-          },
-          "propertyNames": {
-            "type": "string",
-            "minLength": 1
-          }
         },
         "rails": {
           "type": "array",
@@ -637,12 +587,19 @@
             "$ref": "#/definitions/boardRoute"
           },
           "minItems": 1
+        },
+        "clocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/boardClock"
+          },
+          "minItems": 1
         }
       },
       "required": [
         "kind",
+        "vendor",
         "device",
-        "ioStandards",
         "fpgaPins",
         "interfaces",
         "routes"
@@ -822,21 +779,26 @@
       ],
       "additionalProperties": false
     },
-    "ioStandard": {
+    "boardClock": {
       "type": "object",
+      "description": "Actual board oscillator frequency, not a constraint command. For differential clocks reference the positive member only.",
       "properties": {
-        "vccoMv": {
+        "interface": {
+          "$ref": "#/definitions/id"
+        },
+        "member": {
+          "$ref": "#/definitions/memberId"
+        },
+        "frequencyHz": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 100000
-        },
-        "differential": {
-          "type": "boolean",
-          "default": false
+          "maximum": 9007199254740991
         }
       },
       "required": [
-        "vccoMv"
+        "interface",
+        "member",
+        "frequencyHz"
       ],
       "additionalProperties": false
     }

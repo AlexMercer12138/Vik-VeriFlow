@@ -1,0 +1,19 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "clock_p",
+    "clock_n"
+  ],
+  "function": {
+    "clock": {
+      "clock_p": "input",
+      "clock_n": "input"
+    }
+  },
+  "differentialPairs": [
+    {
+      "positive": "clock_p",
+      "negative": "clock_n"
+    }
+  ]
+}

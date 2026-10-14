@@ -12,7 +12,7 @@
 | 删除 | 信号与实例显示名称、差分对 ID、跳线的物理类型、自由文本 `capabilities`；没有独立的生成或校验用途 |
 | 简化 | `signals` 直接列 ID 字符串；引用直接写相对路径；接线直接写 `pin`；来源有 `mount` 即表示子卡，无需重复来源类型 |
 | 简化 | 完整器件型号写在 `device` 一个字段；电压直接写整数或允许值数组，不再额外写 fixed/selectable/unknown |
-| 去重 | I/O 标准的电压和差分要求集中放在 `ioStandards`，每条接线不再重复填写 `vccoMv`；绑定只在改用其他标准时填写 `ioStandard` |
+| 分离 | 主板只记录硬件事实；删除 `ioStandards`、`allowedIoStandards`、`fpgaElectrical` 和绑定中的 `ioStandard`。厂商约束与标准选择归生成器管理 |
 | 保留 | 分组与选择、角色方向、实际引脚和差分配对、Bank 与供电轨、复用条件、子卡安装和信号映射、AD/HDL 端口绑定、输出格式与路径 |
 
 物理模型只用一个 `kind` 区分五类文件：`fixed`、`expansion`、`board`、`daughtercard`、`assembly`。Schema 拒绝未知属性。Schema 文件本身的 `$schema` 等是验证器元数据，不属于物理数据。
@@ -78,7 +78,7 @@
 
 扩展口的 `differentialPairs` 表示能力，允许单端信号绑定 P 或 N 任一脚；不自动补齐或占用另一脚。两脚可承载两个独立单端信号，方向可以不同。只有实际按差分使用时才要求同时占用两脚，校验扩展配对、封装配对和极性。分组勾选本身不指定差分用途。
 
-实际使用性质由固定接口功能差分对与选用的 I/O 标准确定。单端使用要选择允许的单端标准；原始扩展信号选择差分标准时，两脚必须均选中并绑定，方向、标准和配对一致。
+实际使用性质由映射的固定接口定义确定，不能因为扩展口标有 P/N 就输出差分约束。直接绑定原始扩展脚时按独立单端使用；要作为差分接口使用，应先映射到带功能差分对的固定接口。生成器再检查器件是否支持该用途。
 
 ## 5. 子卡
 
@@ -109,21 +109,23 @@
 
 ## 6. 主板
 
+主板描述实际焊接和接线关系，不指定 XDC、QSF 等输出命令，也不保存 I/O 标准、驱动电流、转换速率、内部上下拉等生成选项。
+
 | 字段 | 用途 |
 | --- | --- |
+| `vendor` | 厂商键，例如 `amd`、`intel`、`lattice`，用于选择生成器和器件规则 |
 | `device` | 包含封装的完整器件型号，用于选器件规则和工具的器件设置 |
-| `ioStandards` | 标准名 → 电气要求；`vccoMv` 检查 Bank 电压，`differential: true` 检查实际差分用途，省略则为单端 |
 | `fpgaPins[].id`、`bank` | 输出封装脚约束，定位共享资源和所属 Bank；未知 Bank 可省略 |
-| `fpgaPins[].allowedIoStandards` | 限定实际引脚允许的标准；省略表示能力未验证 |
 | `fpgaPins[].reservation` | `warn` 提示预留用途，`forbid` 阻止生成；省略表示无预留策略 |
-| `differentialPairs` | 器件真实 P/N 配对，检查功能和扩展映射 |
-| `banks[].id`、`supplyRail` | 将多个引脚连接到同一 VCCO 资源；供电未知时可省略 `supplyRail` |
+| `differentialPairs` | 封装真实 P/N 配对，检查功能和扩展映射；可用电气模式仍由器件规则判断 |
+| `banks[].id`、`supplyRail` | 将多个引脚连接到同一 VCCO 资源；供电未知或属于没有普通 VCCO 的收发器 Bank 时省略 `supplyRail` |
 | `rails[].id`、`millivolts` | 整数表示固定电压，数组表示允许的可选电压，省略电压表示未知；多个 Bank 可共用一条轨 |
 | `interfaces` | 本板固定接口与扩展接口实例，供接线和工程选择引用 |
 | `selectors[].id`、`values` | 定义合法复用设置，供条件接线与工程设置引用 |
-| `routes` | 接口成员到实际引脚的映射，以及生成条件和默认约束 |
+| `routes` | 接口成员到实际引脚的接线，以及使接线成立的硬件条件 |
+| `clocks[].interface`、`member`、`frequencyHz` | 板载振荡器接到哪个输入以及其实际频率；生成器据此计算周期，差分时钟只引用正端 |
 
-`kind`、`device`、`ioStandards`、`fpgaPins`、`interfaces`、`routes` 必填，其余集合按需填写。`ioStandards` 使用完整、已核实的器件电气要求；本文示例只演示已知的 VCCO 和差分规则，不从标准名推测电气条件。缺少器件规则或方向相关电气要求尚未核实时，结果必须标为未验证。
+`kind`、`vendor`、`device`、`fpgaPins`、`interfaces`、`routes` 必填，其余集合按需填写。厂商键使用小写，器件型号保留完整封装、速度等级等信息；不能只从型号前缀猜厂商。`clocks` 只写实际已知的板载时钟，不猜测外部输入或设计内部产生的时钟频率。
 
 接线片段：
 
@@ -132,16 +134,17 @@
   "interface": "J1",
   "member": "io0",
   "pin": "A9",
-  "when": [{ "selector": "JP1", "value": "header" }],
-  "fpgaElectrical": { "ioStandard": "LVCMOS33" }
+  "when": [{ "selector": "JP1", "value": "header" }]
 }
 ```
 
 `interface`、`member`、`pin` 分别定位来源和约束目标；`when` 的全部条件满足才启用此接线。省略 `when` 表示无条件；未设置相关跳线时不能猜测通路。同一成员在一个实际设置下最多一条活动接线；没有接线表示无法导出，不再创建 NC 目标对象。
 
-`fpgaElectrical` 按需包含 `ioStandard`、`driveMa`、`slew`、`pull`，分别用于 I/O 标准、驱动电流、转换速率和上下拉约束。它们都有实际约束用途；空对象省略。绑定的 `ioStandard` 优先于接线默认值，最终标准仍须在引脚允许范围内并满足 Bank 条件。
+生成器沿 `route.pin → fpgaPins[].bank → banks[].supplyRail → rails[].millivolts` 取得实际供电，再结合 `vendor`、`device`、接口角色、单端/差分用途和端口方向选择厂商约束。比如同一根扩展脚映射为 UART 时按单端生成，映射为差分接口时再按成对用途判断；主板文件不为它预设一种标准。
 
-VCCO 要求只在 `ioStandards` 记录一次。电压统一用整数毫伏。可选供电轨由装配选择实际电压，所有引用该轨的 Bank 一同生效；未知电压不能当作通过。固定功能或原始 GPIO 最终落到同一脚时报告冲突。
+电压统一用整数毫伏。可选供电轨由装配选择实物当前电压，所有引用该轨的 Bank 一同生效；允许值数组不暗示出厂跳线位置，装配设置也不会改变实物跳线。固定功能或原始 GPIO 最终落到同一脚时报告冲突。`when` 表示真实开关/跳线；始终相连的接口即使共享引脚也不能虚构互斥条件。
+
+Bank 电压不是完整电气规则：同电压下 GPIO、DDR4、MIPI 和专用 GT 的配置不同，差分配对也不保证支持任意差分标准。器件的引脚类型、输入/输出能力与接口使用方案由生成器的器件/接口规则提供，不在每块板里重复抄写。缺少规则、未知 Bank 或未知 VCCO 时不能猜约束；没有普通 VCCO 的 GT 应交给专用规则。板外负载、连接器兼容性和 IP 时序约束也不能仅凭 Bank 电压判为通过。以后需要手动生成选项时放在独立生成配置中，不回填到主板和端口绑定。
 
 ## 7. 工程装配和约束输出
 
@@ -155,7 +158,6 @@ VCCO 要求只在 `ioStandards` 记录一次。电压统一用整数毫伏。可
 | `railVoltages[].rail`、`millivolts` | 为可选轨选择允许的实际电压；固定轨无需重复填写 |
 | `selections[].interface`、`groups`、`members` | 确定此次生成的接口和成员，至少选择组或成员之一 |
 | `bindings[].source`、`port` | 物理信号 → 顶层端口，端口向量位单独写 `bit` |
-| `bindings[].ioStandard` | 覆盖接线的默认标准；相同则省略 |
 | `export.format`、`path` | 选择 XDC/QSF/LPF/PCF 输出格式和文件路径；具体导出器后续实现 |
 
 只要求 `kind`、`design`、`board`。未安装子卡、未勾选信号的绑定可以保留；活动成员必须有且只有一个有效绑定。
@@ -175,12 +177,12 @@ VCCO 要求只在 `ioStandards` 记录一次。电压统一用整数毫伏。可
 
 JSON Schema 只检查形状；后续解析器还需检查：
 
-1. 引用路径和目标类型正确，实例、信号与分组 ID 唯一；所有被引用的成员、Bank、供电轨、标准、选择器和角色存在。
+1. 引用路径和目标类型正确，实例、信号与分组 ID 唯一；所有被引用的成员、Bank、供电轨、选择器和角色存在。
 2. 每个角色完整覆盖固定信号；多角色实例显式选择，单角色实例使用唯一角色；扩展实例禁止填写角色。
-3. 配对不重叠且 P/N 不同；固定功能成对选择，扩展配对可拆为单端；差分用途与标准、方向、极性和真实封装配对一致。
+3. 配对不重叠且 P/N 不同；固定功能成对选择，扩展配对可拆为单端；差分用途与方向、极性和真实封装配对一致，生成器再检查器件支持的电气模式。
 4. 子卡功能映射完整、安装映射匹配、已占用线不能另作 GPIO；不同来源争用同一封装脚或同一端口位时报错。
 5. 活动接线唯一且指向可用引脚，复用设置有效，预留策略得到执行；未知跳线和缺失通路阻止相关约束生成。
-6. 最终 I/O 标准满足引脚能力及当前供电条件；可选轨的设置合法，共享轨保持一致；电气资料不足时报告未验证。
+6. 可选轨的设置合法，共享轨保持一致；生成器独立检查最终标准是否满足器件能力、用途和当前供电，电气资料不足时报告未验证。板载时钟必须映射到输入，差分时钟只定义一次。
 7. 顶层绑定存在且方向和位索引正确；分组重复选择只生成一次约束；拔卡保留配置、释放活动资源。
 
 ## 9. 示例
@@ -195,8 +197,10 @@ JSON Schema 只检查形状；后续解析器还需检查：
 | [hdmi.fixed.json](examples/physical-interfaces/hdmi.fixed.json) | HDMI source/sink，TMDS/DDC/HPD/CEC 部分选用 |
 | [header40.expansion.json](examples/physical-interfaces/header40.expansion.json) | 四个可拆为单端的差分能力对，另有四根单端信号 |
 | [hdmi.daughtercard.json](examples/physical-interfaces/hdmi.daughtercard.json) | 功能信号直接映射扩展信号 |
-| [carrier.board.json](examples/physical-interfaces/carrier.board.json) | 引脚、Bank、I/O 规则和 UART/排针复用 |
-| [demo.assembly.json](examples/physical-interfaces/demo.assembly.json) | 子卡安装与 TMDS 选择，绑定继承主板默认标准 |
+| [carrier.board.json](examples/physical-interfaces/carrier.board.json) | 引脚、Bank、供电和 UART/排针复用 |
+| [demo.assembly.json](examples/physical-interfaces/demo.assembly.json) | 子卡安装、TMDS 选择和顶层端口绑定 |
 | [top.ad](examples/physical-interfaces/top.ad) | 使用现有 AD V2 格式的顶层端口 |
 
-所有器件型号、引脚、Bank 与电气值都是演示数据，不能用于实物。已有未发布草案直接修订，不增加兼容层；现有 AD 格式保持原样。
+以上演示目录中的器件型号、引脚、Bank 与电气值不能用于实物。真实板卡见 [ATK AU15P 核心板 + 底板 V1.0](boards/atk-au15p/README.md)。已有未发布草案直接修订，不增加兼容层；现有 AD 格式保持原样。
+
+运行 `node scripts/verify-physical-models.cjs` 校验全部模型的 Schema、引用、角色、接线完整性、差分极性、Bank 与电源引用。这是数据录入检查，不代表插件已经实现解析器、冲突检查或导出器。

@@ -1,0 +1,58 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "data0_p",
+    "data0_n",
+    "data1_p",
+    "data1_n",
+    "data2_p",
+    "data2_n",
+    "clock_p",
+    "clock_n"
+  ],
+  "function": {
+    "hdmi-source": {
+      "data0_p": "output",
+      "data0_n": "output",
+      "data1_p": "output",
+      "data1_n": "output",
+      "data2_p": "output",
+      "data2_n": "output",
+      "clock_p": "output",
+      "clock_n": "output"
+    }
+  },
+  "groups": [
+    {
+      "id": "tmds",
+      "members": [
+        "data0_p",
+        "data0_n",
+        "data1_p",
+        "data1_n",
+        "data2_p",
+        "data2_n",
+        "clock_p",
+        "clock_n"
+      ]
+    }
+  ],
+  "differentialPairs": [
+    {
+      "positive": "data0_p",
+      "negative": "data0_n"
+    },
+    {
+      "positive": "data1_p",
+      "negative": "data1_n"
+    },
+    {
+      "positive": "data2_p",
+      "negative": "data2_n"
+    },
+    {
+      "positive": "clock_p",
+      "negative": "clock_n"
+    }
+  ]
+}

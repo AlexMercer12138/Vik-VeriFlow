@@ -1,0 +1,115 @@
+{
+  "kind": "expansion",
+  "signals": [
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "26",
+    "27",
+    "28",
+    "29",
+    "30",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "36",
+    "37",
+    "38",
+    "39",
+    "40"
+  ],
+  "differentialPairs": [
+    {
+      "positive": "39",
+      "negative": "37"
+    },
+    {
+      "positive": "40",
+      "negative": "38"
+    },
+    {
+      "positive": "35",
+      "negative": "33"
+    },
+    {
+      "positive": "36",
+      "negative": "34"
+    },
+    {
+      "positive": "31",
+      "negative": "29"
+    },
+    {
+      "positive": "32",
+      "negative": "30"
+    },
+    {
+      "positive": "13",
+      "negative": "15"
+    },
+    {
+      "positive": "6",
+      "negative": "8"
+    },
+    {
+      "positive": "9",
+      "negative": "11"
+    },
+    {
+      "positive": "10",
+      "negative": "12"
+    },
+    {
+      "positive": "5",
+      "negative": "7"
+    },
+    {
+      "positive": "14",
+      "negative": "16"
+    },
+    {
+      "positive": "21",
+      "negative": "23"
+    },
+    {
+      "positive": "18",
+      "negative": "20"
+    },
+    {
+      "positive": "19",
+      "negative": "17"
+    },
+    {
+      "positive": "24",
+      "negative": "22"
+    },
+    {
+      "positive": "27",
+      "negative": "25"
+    },
+    {
+      "positive": "28",
+      "negative": "26"
+    }
+  ]
+}

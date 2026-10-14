@@ -1,0 +1,11 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "pwm"
+  ],
+  "function": {
+    "fan": {
+      "pwm": "output"
+    }
+  }
+}

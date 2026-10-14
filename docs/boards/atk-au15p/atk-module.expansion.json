@@ -1,0 +1,25 @@
+{
+  "kind": "expansion",
+  "signals": [
+    "RXD",
+    "TXD",
+    "KEY",
+    "LED"
+  ],
+  "groups": [
+    {
+      "id": "uart",
+      "members": [
+        "RXD",
+        "TXD"
+      ]
+    },
+    {
+      "id": "control",
+      "members": [
+        "KEY",
+        "LED"
+      ]
+    }
+  ]
+}

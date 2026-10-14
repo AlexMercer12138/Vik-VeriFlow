@@ -1,0 +1,114 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "d1_p",
+    "d1_n",
+    "d0_p",
+    "d0_n",
+    "d2_p",
+    "d2_n",
+    "d3_p",
+    "d3_n",
+    "clk_p",
+    "clk_n",
+    "sda",
+    "scl",
+    "pwdn",
+    "reset_n",
+    "mclk"
+  ],
+  "function": {
+    "mipi-csi-receiver": {
+      "d1_p": "input",
+      "d1_n": "input",
+      "d0_p": "input",
+      "d0_n": "input",
+      "d2_p": "input",
+      "d2_n": "input",
+      "d3_p": "input",
+      "d3_n": "input",
+      "clk_p": "input",
+      "clk_n": "input",
+      "sda": "inout",
+      "scl": "inout",
+      "pwdn": "output",
+      "reset_n": "output",
+      "mclk": "output"
+    }
+  },
+  "groups": [
+    {
+      "id": "clock",
+      "members": [
+        "clk_p",
+        "clk_n"
+      ]
+    },
+    {
+      "id": "lane0",
+      "members": [
+        "d0_p",
+        "d0_n"
+      ]
+    },
+    {
+      "id": "lane1",
+      "members": [
+        "d1_p",
+        "d1_n"
+      ]
+    },
+    {
+      "id": "lane2",
+      "members": [
+        "d2_p",
+        "d2_n"
+      ]
+    },
+    {
+      "id": "lane3",
+      "members": [
+        "d3_p",
+        "d3_n"
+      ]
+    },
+    {
+      "id": "i2c",
+      "members": [
+        "scl",
+        "sda"
+      ],
+      "selection": "together"
+    },
+    {
+      "id": "control",
+      "members": [
+        "pwdn",
+        "reset_n",
+        "mclk"
+      ]
+    }
+  ],
+  "differentialPairs": [
+    {
+      "positive": "clk_p",
+      "negative": "clk_n"
+    },
+    {
+      "positive": "d0_p",
+      "negative": "d0_n"
+    },
+    {
+      "positive": "d1_p",
+      "negative": "d1_n"
+    },
+    {
+      "positive": "d2_p",
+      "negative": "d2_n"
+    },
+    {
+      "positive": "d3_p",
+      "negative": "d3_n"
+    }
+  ]
+}

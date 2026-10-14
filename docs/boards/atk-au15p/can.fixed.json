@@ -1,0 +1,13 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "tx",
+    "rx"
+  ],
+  "function": {
+    "can-controller": {
+      "tx": "output",
+      "rx": "input"
+    }
+  }
+}

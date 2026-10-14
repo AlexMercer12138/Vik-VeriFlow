@@ -1,15 +1,7 @@
 {
   "kind": "board",
+  "vendor": "example",
   "device": "example-fpga-example-package",
-  "ioStandards": {
-    "TMDS_33": {
-      "vccoMv": 3300,
-      "differential": true
-    },
-    "LVCMOS33": {
-      "vccoMv": 3300
-    }
-  },
   "rails": [
     {
       "id": "v3v3",
@@ -25,95 +17,51 @@
   "fpgaPins": [
     {
       "id": "A1",
-      "bank": "13",
-      "allowedIoStandards": [
-        "TMDS_33",
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A2",
-      "bank": "13",
-      "allowedIoStandards": [
-        "TMDS_33",
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A3",
-      "bank": "13",
-      "allowedIoStandards": [
-        "TMDS_33",
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A4",
-      "bank": "13",
-      "allowedIoStandards": [
-        "TMDS_33",
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A5",
-      "bank": "13",
-      "allowedIoStandards": [
-        "TMDS_33",
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A6",
-      "bank": "13",
-      "allowedIoStandards": [
-        "TMDS_33",
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A7",
-      "bank": "13",
-      "allowedIoStandards": [
-        "TMDS_33",
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A8",
-      "bank": "13",
-      "allowedIoStandards": [
-        "TMDS_33",
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A9",
-      "bank": "13",
-      "allowedIoStandards": [
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A10",
-      "bank": "13",
-      "allowedIoStandards": [
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A11",
-      "bank": "13",
-      "allowedIoStandards": [
-        "LVCMOS33"
-      ]
+      "bank": "13"
     },
     {
       "id": "A12",
-      "bank": "13",
-      "allowedIoStandards": [
-        "LVCMOS33"
-      ]
+      "bank": "13"
     }
   ],
   "differentialPairs": [
@@ -163,10 +111,7 @@
           "selector": "JP1",
           "value": "uart"
         }
-      ],
-      "fpgaElectrical": {
-        "ioStandard": "LVCMOS33"
-      }
+      ]
     },
     {
       "interface": "UART0",
@@ -177,74 +122,47 @@
           "selector": "JP1",
           "value": "uart"
         }
-      ],
-      "fpgaElectrical": {
-        "ioStandard": "LVCMOS33"
-      }
+      ]
     },
     {
       "interface": "J1",
       "member": "dp0_p",
-      "pin": "A1",
-      "fpgaElectrical": {
-        "ioStandard": "TMDS_33"
-      }
+      "pin": "A1"
     },
     {
       "interface": "J1",
       "member": "dp0_n",
-      "pin": "A2",
-      "fpgaElectrical": {
-        "ioStandard": "TMDS_33"
-      }
+      "pin": "A2"
     },
     {
       "interface": "J1",
       "member": "dp1_p",
-      "pin": "A3",
-      "fpgaElectrical": {
-        "ioStandard": "TMDS_33"
-      }
+      "pin": "A3"
     },
     {
       "interface": "J1",
       "member": "dp1_n",
-      "pin": "A4",
-      "fpgaElectrical": {
-        "ioStandard": "TMDS_33"
-      }
+      "pin": "A4"
     },
     {
       "interface": "J1",
       "member": "dp2_p",
-      "pin": "A5",
-      "fpgaElectrical": {
-        "ioStandard": "TMDS_33"
-      }
+      "pin": "A5"
     },
     {
       "interface": "J1",
       "member": "dp2_n",
-      "pin": "A6",
-      "fpgaElectrical": {
-        "ioStandard": "TMDS_33"
-      }
+      "pin": "A6"
     },
     {
       "interface": "J1",
       "member": "dp3_p",
-      "pin": "A7",
-      "fpgaElectrical": {
-        "ioStandard": "TMDS_33"
-      }
+      "pin": "A7"
     },
     {
       "interface": "J1",
       "member": "dp3_n",
-      "pin": "A8",
-      "fpgaElectrical": {
-        "ioStandard": "TMDS_33"
-      }
+      "pin": "A8"
     },
     {
       "interface": "J1",
@@ -255,10 +173,7 @@
           "selector": "JP1",
           "value": "header"
         }
-      ],
-      "fpgaElectrical": {
-        "ioStandard": "LVCMOS33"
-      }
+      ]
     },
     {
       "interface": "J1",
@@ -269,26 +184,17 @@
           "selector": "JP1",
           "value": "header"
         }
-      ],
-      "fpgaElectrical": {
-        "ioStandard": "LVCMOS33"
-      }
+      ]
     },
     {
       "interface": "J1",
       "member": "io2",
-      "pin": "A11",
-      "fpgaElectrical": {
-        "ioStandard": "LVCMOS33"
-      }
+      "pin": "A11"
     },
     {
       "interface": "J1",
       "member": "io3",
-      "pin": "A12",
-      "fpgaElectrical": {
-        "ioStandard": "LVCMOS33"
-      }
+      "pin": "A12"
     }
   ]
 }

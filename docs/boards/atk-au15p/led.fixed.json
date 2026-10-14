@@ -1,0 +1,22 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "led0",
+    "led1"
+  ],
+  "function": {
+    "led": {
+      "led0": "output",
+      "led1": "output"
+    }
+  },
+  "groups": [
+    {
+      "id": "all",
+      "members": [
+        "led0",
+        "led1"
+      ]
+    }
+  ]
+}

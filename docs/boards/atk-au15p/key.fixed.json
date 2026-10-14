@@ -1,0 +1,25 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "key0",
+    "key1",
+    "reset_n"
+  ],
+  "function": {
+    "key": {
+      "key0": "input",
+      "key1": "input",
+      "reset_n": "input"
+    }
+  },
+  "groups": [
+    {
+      "id": "all",
+      "members": [
+        "key0",
+        "key1",
+        "reset_n"
+      ]
+    }
+  ]
+}

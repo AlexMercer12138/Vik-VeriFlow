@@ -1,0 +1,43 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "clk",
+    "cmd",
+    "d0",
+    "d1",
+    "d2",
+    "d3",
+    "cd_n"
+  ],
+  "function": {
+    "sd-host": {
+      "clk": "output",
+      "cmd": "inout",
+      "d0": "inout",
+      "d1": "inout",
+      "d2": "inout",
+      "d3": "inout",
+      "cd_n": "input"
+    }
+  },
+  "groups": [
+    {
+      "id": "bus",
+      "members": [
+        "clk",
+        "cmd",
+        "d0",
+        "d1",
+        "d2",
+        "d3"
+      ],
+      "selection": "together"
+    },
+    {
+      "id": "detect",
+      "members": [
+        "cd_n"
+      ]
+    }
+  ]
+}

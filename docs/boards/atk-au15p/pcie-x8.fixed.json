@@ -1,0 +1,231 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "rst_n",
+    "clk_p",
+    "clk_n",
+    "rx0_p",
+    "rx0_n",
+    "rx1_p",
+    "rx1_n",
+    "rx2_p",
+    "rx2_n",
+    "rx3_p",
+    "rx3_n",
+    "rx4_p",
+    "rx4_n",
+    "rx5_p",
+    "rx5_n",
+    "rx6_p",
+    "rx6_n",
+    "rx7_p",
+    "rx7_n",
+    "tx0_p",
+    "tx0_n",
+    "tx1_p",
+    "tx1_n",
+    "tx2_p",
+    "tx2_n",
+    "tx3_p",
+    "tx3_n",
+    "tx4_p",
+    "tx4_n",
+    "tx5_p",
+    "tx5_n",
+    "tx6_p",
+    "tx6_n",
+    "tx7_p",
+    "tx7_n"
+  ],
+  "function": {
+    "pcie-endpoint": {
+      "rst_n": "input",
+      "clk_p": "input",
+      "clk_n": "input",
+      "rx0_p": "input",
+      "rx0_n": "input",
+      "rx1_p": "input",
+      "rx1_n": "input",
+      "rx2_p": "input",
+      "rx2_n": "input",
+      "rx3_p": "input",
+      "rx3_n": "input",
+      "rx4_p": "input",
+      "rx4_n": "input",
+      "rx5_p": "input",
+      "rx5_n": "input",
+      "rx6_p": "input",
+      "rx6_n": "input",
+      "rx7_p": "input",
+      "rx7_n": "input",
+      "tx0_p": "output",
+      "tx0_n": "output",
+      "tx1_p": "output",
+      "tx1_n": "output",
+      "tx2_p": "output",
+      "tx2_n": "output",
+      "tx3_p": "output",
+      "tx3_n": "output",
+      "tx4_p": "output",
+      "tx4_n": "output",
+      "tx5_p": "output",
+      "tx5_n": "output",
+      "tx6_p": "output",
+      "tx6_n": "output",
+      "tx7_p": "output",
+      "tx7_n": "output"
+    }
+  },
+  "groups": [
+    {
+      "id": "lane0",
+      "members": [
+        "tx0_p",
+        "tx0_n",
+        "rx0_p",
+        "rx0_n"
+      ]
+    },
+    {
+      "id": "lane1",
+      "members": [
+        "tx1_p",
+        "tx1_n",
+        "rx1_p",
+        "rx1_n"
+      ]
+    },
+    {
+      "id": "lane2",
+      "members": [
+        "tx2_p",
+        "tx2_n",
+        "rx2_p",
+        "rx2_n"
+      ]
+    },
+    {
+      "id": "lane3",
+      "members": [
+        "tx3_p",
+        "tx3_n",
+        "rx3_p",
+        "rx3_n"
+      ]
+    },
+    {
+      "id": "lane4",
+      "members": [
+        "tx4_p",
+        "tx4_n",
+        "rx4_p",
+        "rx4_n"
+      ]
+    },
+    {
+      "id": "lane5",
+      "members": [
+        "tx5_p",
+        "tx5_n",
+        "rx5_p",
+        "rx5_n"
+      ]
+    },
+    {
+      "id": "lane6",
+      "members": [
+        "tx6_p",
+        "tx6_n",
+        "rx6_p",
+        "rx6_n"
+      ]
+    },
+    {
+      "id": "lane7",
+      "members": [
+        "tx7_p",
+        "tx7_n",
+        "rx7_p",
+        "rx7_n"
+      ]
+    },
+    {
+      "id": "clock_reset",
+      "members": [
+        "clk_p",
+        "clk_n",
+        "rst_n"
+      ]
+    }
+  ],
+  "differentialPairs": [
+    {
+      "positive": "clk_p",
+      "negative": "clk_n"
+    },
+    {
+      "positive": "rx0_p",
+      "negative": "rx0_n"
+    },
+    {
+      "positive": "rx1_p",
+      "negative": "rx1_n"
+    },
+    {
+      "positive": "rx2_p",
+      "negative": "rx2_n"
+    },
+    {
+      "positive": "rx3_p",
+      "negative": "rx3_n"
+    },
+    {
+      "positive": "rx4_p",
+      "negative": "rx4_n"
+    },
+    {
+      "positive": "rx5_p",
+      "negative": "rx5_n"
+    },
+    {
+      "positive": "rx6_p",
+      "negative": "rx6_n"
+    },
+    {
+      "positive": "rx7_p",
+      "negative": "rx7_n"
+    },
+    {
+      "positive": "tx0_p",
+      "negative": "tx0_n"
+    },
+    {
+      "positive": "tx1_p",
+      "negative": "tx1_n"
+    },
+    {
+      "positive": "tx2_p",
+      "negative": "tx2_n"
+    },
+    {
+      "positive": "tx3_p",
+      "negative": "tx3_n"
+    },
+    {
+      "positive": "tx4_p",
+      "negative": "tx4_n"
+    },
+    {
+      "positive": "tx5_p",
+      "negative": "tx5_n"
+    },
+    {
+      "positive": "tx6_p",
+      "negative": "tx6_n"
+    },
+    {
+      "positive": "tx7_p",
+      "negative": "tx7_n"
+    }
+  ]
+}

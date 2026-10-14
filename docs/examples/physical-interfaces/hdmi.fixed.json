@@ -1,49 +1,18 @@
 {
-  "$schema": "../../schemas/physical-interface-model.schema.json",
-  "format": "veriflow-physical-interface",
-  "schemaVersion": 1,
-  "id": "fixed.hdmi.fpga",
-  "revision": "1",
-  "name": "HDMI",
-  "description": "Shared HDMI signals and groups for source/sink roles. Electrical constraints come from actual board wiring.",
   "kind": "fixed",
   "signals": [
-    {
-      "id": "data0_p"
-    },
-    {
-      "id": "data0_n"
-    },
-    {
-      "id": "data1_p"
-    },
-    {
-      "id": "data1_n"
-    },
-    {
-      "id": "data2_p"
-    },
-    {
-      "id": "data2_n"
-    },
-    {
-      "id": "clock_p"
-    },
-    {
-      "id": "clock_n"
-    },
-    {
-      "id": "ddc_scl"
-    },
-    {
-      "id": "ddc_sda"
-    },
-    {
-      "id": "hpd"
-    },
-    {
-      "id": "cec"
-    }
+    "data0_p",
+    "data0_n",
+    "data1_p",
+    "data1_n",
+    "data2_p",
+    "data2_n",
+    "clock_p",
+    "clock_n",
+    "ddc_scl",
+    "ddc_sda",
+    "hpd",
+    "cec"
   ],
   "function": {
     "hdmi-source": {
@@ -78,7 +47,6 @@
   "groups": [
     {
       "id": "tmds",
-      "name": "TMDS 四个差分对",
       "members": [
         "data0_p",
         "data0_n",
@@ -88,12 +56,10 @@
         "data2_n",
         "clock_p",
         "clock_n"
-      ],
-      "selection": "individual"
+      ]
     },
     {
       "id": "ddc",
-      "name": "DDC",
       "members": [
         "ddc_scl",
         "ddc_sda"
@@ -102,39 +68,31 @@
     },
     {
       "id": "hpd",
-      "name": "HPD",
       "members": [
         "hpd"
-      ],
-      "selection": "individual"
+      ]
     },
     {
       "id": "cec",
-      "name": "CEC",
       "members": [
         "cec"
-      ],
-      "selection": "individual"
+      ]
     }
   ],
   "differentialPairs": [
     {
-      "id": "data0",
       "positive": "data0_p",
       "negative": "data0_n"
     },
     {
-      "id": "data1",
       "positive": "data1_p",
       "negative": "data1_n"
     },
     {
-      "id": "data2",
       "positive": "data2_p",
       "negative": "data2_n"
     },
     {
-      "id": "clock",
       "positive": "clock_p",
       "negative": "clock_n"
     }

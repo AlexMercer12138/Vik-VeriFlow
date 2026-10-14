@@ -1,29 +1,15 @@
 {
-  "$schema": "../../schemas/physical-interface-model.schema.json",
-  "format": "veriflow-daughtercard",
-  "schemaVersion": 1,
-  "id": "daughtercard.demo.hdmi",
-  "revision": "rev-a",
-  "name": "示例 HDMI 子卡",
-  "description": "A functional HDMI interface mapped directly to the signal IDs of one expansion interface.",
+  "kind": "daughtercard",
   "expansions": [
     {
       "id": "EXT0",
-      "definition": {
-        "path": "header40.expansion.json",
-        "id": "expansion.demo.header40",
-        "revision": "1"
-      }
+      "definition": "header40.expansion.json"
     }
   ],
   "interfaces": [
     {
       "id": "HDMI0",
-      "definition": {
-        "path": "hdmi.fixed.json",
-        "id": "fixed.hdmi.fpga",
-        "revision": "1"
-      },
+      "definition": "hdmi.fixed.json",
       "function": "hdmi-source"
     }
   ],

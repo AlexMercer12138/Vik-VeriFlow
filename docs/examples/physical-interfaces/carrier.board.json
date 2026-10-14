@@ -1,23 +1,19 @@
 {
-  "$schema": "../../schemas/physical-interface-model.schema.json",
-  "format": "veriflow-board",
-  "schemaVersion": 1,
-  "id": "board.demo.carrier",
-  "revision": "rev-a",
-  "name": "示例 FPGA 主板",
-  "description": "Synthetic package pins, electrical standards and routing; not suitable for hardware.",
-  "device": {
-    "vendor": "example",
-    "part": "example-fpga",
-    "package": "example-package"
+  "kind": "board",
+  "device": "example-fpga-example-package",
+  "ioStandards": {
+    "TMDS_33": {
+      "vccoMv": 3300,
+      "differential": true
+    },
+    "LVCMOS33": {
+      "vccoMv": 3300
+    }
   },
   "rails": [
     {
       "id": "v3v3",
-      "voltage": {
-        "kind": "fixed",
-        "millivolts": 3300
-      }
+      "millivolts": 3300
     }
   ],
   "banks": [
@@ -30,89 +26,70 @@
     {
       "id": "A1",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
-        "TMDS_33"
+        "TMDS_33",
+        "LVCMOS33"
       ]
     },
     {
       "id": "A2",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
-        "TMDS_33"
+        "TMDS_33",
+        "LVCMOS33"
       ]
     },
     {
       "id": "A3",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
-        "TMDS_33"
+        "TMDS_33",
+        "LVCMOS33"
       ]
     },
     {
       "id": "A4",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
-        "TMDS_33"
+        "TMDS_33",
+        "LVCMOS33"
       ]
     },
     {
       "id": "A5",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
-        "TMDS_33"
+        "TMDS_33",
+        "LVCMOS33"
       ]
     },
     {
       "id": "A6",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
-        "TMDS_33"
+        "TMDS_33",
+        "LVCMOS33"
       ]
     },
     {
       "id": "A7",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
-        "TMDS_33"
+        "TMDS_33",
+        "LVCMOS33"
       ]
     },
     {
       "id": "A8",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
-        "TMDS_33"
+        "TMDS_33",
+        "LVCMOS33"
       ]
     },
     {
       "id": "A9",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
         "LVCMOS33"
       ]
@@ -120,9 +97,6 @@
     {
       "id": "A10",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
         "LVCMOS33"
       ]
@@ -130,9 +104,6 @@
     {
       "id": "A11",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
         "LVCMOS33"
       ]
@@ -140,9 +111,6 @@
     {
       "id": "A12",
       "bank": "13",
-      "capabilities": [
-        "gpio"
-      ],
       "allowedIoStandards": [
         "LVCMOS33"
       ]
@@ -150,22 +118,18 @@
   ],
   "differentialPairs": [
     {
-      "id": "data0",
       "positive": "A1",
       "negative": "A2"
     },
     {
-      "id": "data1",
       "positive": "A3",
       "negative": "A4"
     },
     {
-      "id": "data2",
       "positive": "A5",
       "negative": "A6"
     },
     {
-      "id": "clock",
       "positive": "A7",
       "negative": "A8"
     }
@@ -173,27 +137,16 @@
   "interfaces": [
     {
       "id": "UART0",
-      "definition": {
-        "path": "uart.fixed.json",
-        "id": "fixed.uart.fpga",
-        "revision": "1"
-      },
-      "function": "uart"
+      "definition": "uart.fixed.json"
     },
     {
       "id": "J1",
-      "definition": {
-        "path": "header40.expansion.json",
-        "id": "expansion.demo.header40",
-        "revision": "1"
-      }
+      "definition": "header40.expansion.json"
     }
   ],
   "selectors": [
     {
       "id": "JP1",
-      "name": "UART / 排针复用跳线",
-      "kind": "jumper",
       "values": [
         "uart",
         "header"
@@ -204,10 +157,7 @@
     {
       "interface": "UART0",
       "member": "tx",
-      "target": {
-        "kind": "fpga",
-        "pin": "A9"
-      },
+      "pin": "A9",
       "when": [
         {
           "selector": "JP1",
@@ -215,17 +165,13 @@
         }
       ],
       "fpgaElectrical": {
-        "ioStandard": "LVCMOS33",
-        "vccoMv": 3300
+        "ioStandard": "LVCMOS33"
       }
     },
     {
       "interface": "UART0",
       "member": "rx",
-      "target": {
-        "kind": "fpga",
-        "pin": "A10"
-      },
+      "pin": "A10",
       "when": [
         {
           "selector": "JP1",
@@ -233,113 +179,77 @@
         }
       ],
       "fpgaElectrical": {
-        "ioStandard": "LVCMOS33",
-        "vccoMv": 3300
+        "ioStandard": "LVCMOS33"
       }
     },
     {
       "interface": "J1",
       "member": "dp0_p",
-      "target": {
-        "kind": "fpga",
-        "pin": "A1"
-      },
+      "pin": "A1",
       "fpgaElectrical": {
-        "ioStandard": "TMDS_33",
-        "vccoMv": 3300
+        "ioStandard": "TMDS_33"
       }
     },
     {
       "interface": "J1",
       "member": "dp0_n",
-      "target": {
-        "kind": "fpga",
-        "pin": "A2"
-      },
+      "pin": "A2",
       "fpgaElectrical": {
-        "ioStandard": "TMDS_33",
-        "vccoMv": 3300
+        "ioStandard": "TMDS_33"
       }
     },
     {
       "interface": "J1",
       "member": "dp1_p",
-      "target": {
-        "kind": "fpga",
-        "pin": "A3"
-      },
+      "pin": "A3",
       "fpgaElectrical": {
-        "ioStandard": "TMDS_33",
-        "vccoMv": 3300
+        "ioStandard": "TMDS_33"
       }
     },
     {
       "interface": "J1",
       "member": "dp1_n",
-      "target": {
-        "kind": "fpga",
-        "pin": "A4"
-      },
+      "pin": "A4",
       "fpgaElectrical": {
-        "ioStandard": "TMDS_33",
-        "vccoMv": 3300
+        "ioStandard": "TMDS_33"
       }
     },
     {
       "interface": "J1",
       "member": "dp2_p",
-      "target": {
-        "kind": "fpga",
-        "pin": "A5"
-      },
+      "pin": "A5",
       "fpgaElectrical": {
-        "ioStandard": "TMDS_33",
-        "vccoMv": 3300
+        "ioStandard": "TMDS_33"
       }
     },
     {
       "interface": "J1",
       "member": "dp2_n",
-      "target": {
-        "kind": "fpga",
-        "pin": "A6"
-      },
+      "pin": "A6",
       "fpgaElectrical": {
-        "ioStandard": "TMDS_33",
-        "vccoMv": 3300
+        "ioStandard": "TMDS_33"
       }
     },
     {
       "interface": "J1",
       "member": "dp3_p",
-      "target": {
-        "kind": "fpga",
-        "pin": "A7"
-      },
+      "pin": "A7",
       "fpgaElectrical": {
-        "ioStandard": "TMDS_33",
-        "vccoMv": 3300
+        "ioStandard": "TMDS_33"
       }
     },
     {
       "interface": "J1",
       "member": "dp3_n",
-      "target": {
-        "kind": "fpga",
-        "pin": "A8"
-      },
+      "pin": "A8",
       "fpgaElectrical": {
-        "ioStandard": "TMDS_33",
-        "vccoMv": 3300
+        "ioStandard": "TMDS_33"
       }
     },
     {
       "interface": "J1",
       "member": "io0",
-      "target": {
-        "kind": "fpga",
-        "pin": "A9"
-      },
+      "pin": "A9",
       "when": [
         {
           "selector": "JP1",
@@ -347,17 +257,13 @@
         }
       ],
       "fpgaElectrical": {
-        "ioStandard": "LVCMOS33",
-        "vccoMv": 3300
+        "ioStandard": "LVCMOS33"
       }
     },
     {
       "interface": "J1",
       "member": "io1",
-      "target": {
-        "kind": "fpga",
-        "pin": "A10"
-      },
+      "pin": "A10",
       "when": [
         {
           "selector": "JP1",
@@ -365,32 +271,23 @@
         }
       ],
       "fpgaElectrical": {
-        "ioStandard": "LVCMOS33",
-        "vccoMv": 3300
+        "ioStandard": "LVCMOS33"
       }
     },
     {
       "interface": "J1",
       "member": "io2",
-      "target": {
-        "kind": "fpga",
-        "pin": "A11"
-      },
+      "pin": "A11",
       "fpgaElectrical": {
-        "ioStandard": "LVCMOS33",
-        "vccoMv": 3300
+        "ioStandard": "LVCMOS33"
       }
     },
     {
       "interface": "J1",
       "member": "io3",
-      "target": {
-        "kind": "fpga",
-        "pin": "A12"
-      },
+      "pin": "A12",
       "fpgaElectrical": {
-        "ioStandard": "LVCMOS33",
-        "vccoMv": 3300
+        "ioStandard": "LVCMOS33"
       }
     }
   ]

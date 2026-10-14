@@ -1,29 +1,14 @@
 {
-  "$schema": "../../schemas/physical-interface-model.schema.json",
-  "format": "veriflow-board-assembly",
-  "schemaVersion": 1,
-  "id": "assembly.demo.hdmi",
-  "revision": "1",
-  "name": "示例 HDMI 工程",
-  "description": "Select TMDS only. DDC, HPD and CEC mappings remain recorded for later selection.",
+  "kind": "assembly",
   "design": {
     "kind": "ad",
     "path": "top.ad"
   },
-  "board": {
-    "path": "carrier.board.json",
-    "id": "board.demo.carrier",
-    "revision": "rev-a"
-  },
+  "board": "carrier.board.json",
   "mounts": [
     {
       "id": "video0",
-      "card": {
-        "path": "hdmi.daughtercard.json",
-        "id": "daughtercard.demo.hdmi",
-        "revision": "rev-a"
-      },
-      "installed": true,
+      "card": "hdmi.daughtercard.json",
       "connections": [
         {
           "boardInterface": "J1",
@@ -38,11 +23,9 @@
       "value": "header"
     }
   ],
-  "railVoltages": [],
   "selections": [
     {
       "interface": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0"
       },
@@ -54,7 +37,6 @@
   "bindings": [
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "data0_p"
@@ -62,12 +44,10 @@
       "port": {
         "name": "hdmi_data_p",
         "bit": 0
-      },
-      "ioStandard": "TMDS_33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "data0_n"
@@ -75,12 +55,10 @@
       "port": {
         "name": "hdmi_data_n",
         "bit": 0
-      },
-      "ioStandard": "TMDS_33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "data1_p"
@@ -88,12 +66,10 @@
       "port": {
         "name": "hdmi_data_p",
         "bit": 1
-      },
-      "ioStandard": "TMDS_33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "data1_n"
@@ -101,12 +77,10 @@
       "port": {
         "name": "hdmi_data_n",
         "bit": 1
-      },
-      "ioStandard": "TMDS_33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "data2_p"
@@ -114,12 +88,10 @@
       "port": {
         "name": "hdmi_data_p",
         "bit": 2
-      },
-      "ioStandard": "TMDS_33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "data2_n"
@@ -127,80 +99,67 @@
       "port": {
         "name": "hdmi_data_n",
         "bit": 2
-      },
-      "ioStandard": "TMDS_33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "clock_p"
       },
       "port": {
         "name": "hdmi_clock_p"
-      },
-      "ioStandard": "TMDS_33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "clock_n"
       },
       "port": {
         "name": "hdmi_clock_n"
-      },
-      "ioStandard": "TMDS_33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "ddc_scl"
       },
       "port": {
         "name": "ddc_scl"
-      },
-      "ioStandard": "LVCMOS33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "ddc_sda"
       },
       "port": {
         "name": "ddc_sda"
-      },
-      "ioStandard": "LVCMOS33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "hpd"
       },
       "port": {
         "name": "hpd"
-      },
-      "ioStandard": "LVCMOS33"
+      }
     },
     {
       "source": {
-        "kind": "daughtercard",
         "mount": "video0",
         "interface": "HDMI0",
         "member": "cec"
       },
       "port": {
         "name": "cec"
-      },
-      "ioStandard": "LVCMOS33"
+      }
     }
   ],
   "export": {

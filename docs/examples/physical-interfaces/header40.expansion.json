@@ -1,16 +1,40 @@
 {
-  "$schema": "../../schemas/physical-interface-model.schema.json",
-  "format": "veriflow-physical-interface",
-  "schemaVersion": 1,
-  "id": "expansion.demo.header40",
-  "revision": "1",
-  "name": "示例 40 PIN 排针可用信号",
-  "description": "Example FPGA-connected signals only: four differential-capable pairs usable as individual single-ended signals, plus four single-ended signals. Power, ground and unused contacts are omitted.",
   "kind": "expansion",
+  "signals": [
+    "dp0_p",
+    "dp0_n",
+    "dp1_p",
+    "dp1_n",
+    "dp2_p",
+    "dp2_n",
+    "dp3_p",
+    "dp3_n",
+    "io0",
+    "io1",
+    "io2",
+    "io3"
+  ],
+  "differentialPairs": [
+    {
+      "positive": "dp0_p",
+      "negative": "dp0_n"
+    },
+    {
+      "positive": "dp1_p",
+      "negative": "dp1_n"
+    },
+    {
+      "positive": "dp2_p",
+      "negative": "dp2_n"
+    },
+    {
+      "positive": "dp3_p",
+      "negative": "dp3_n"
+    }
+  ],
   "groups": [
     {
       "id": "differential",
-      "name": "差分能力信号（可拆为单端）",
       "members": [
         "dp0_p",
         "dp0_n",
@@ -20,79 +44,16 @@
         "dp2_n",
         "dp3_p",
         "dp3_n"
-      ],
-      "selection": "individual"
+      ]
     },
     {
       "id": "gpio",
-      "name": "单端 GPIO",
       "members": [
         "io0",
         "io1",
         "io2",
         "io3"
-      ],
-      "selection": "individual"
-    }
-  ],
-  "differentialPairs": [
-    {
-      "id": "dp0",
-      "positive": "dp0_p",
-      "negative": "dp0_n"
-    },
-    {
-      "id": "dp1",
-      "positive": "dp1_p",
-      "negative": "dp1_n"
-    },
-    {
-      "id": "dp2",
-      "positive": "dp2_p",
-      "negative": "dp2_n"
-    },
-    {
-      "id": "dp3",
-      "positive": "dp3_p",
-      "negative": "dp3_n"
-    }
-  ],
-  "signals": [
-    {
-      "id": "dp0_p"
-    },
-    {
-      "id": "dp0_n"
-    },
-    {
-      "id": "dp1_p"
-    },
-    {
-      "id": "dp1_n"
-    },
-    {
-      "id": "dp2_p"
-    },
-    {
-      "id": "dp2_n"
-    },
-    {
-      "id": "dp3_p"
-    },
-    {
-      "id": "dp3_n"
-    },
-    {
-      "id": "io0"
-    },
-    {
-      "id": "io1"
-    },
-    {
-      "id": "io2"
-    },
-    {
-      "id": "io3"
+      ]
     }
   ]
 }

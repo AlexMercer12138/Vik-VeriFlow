@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:veriflow:physical-model:v1",
   "title": "VeriFlow physical interface model V1 draft",
-  "description": "Draft authoring contract for role-aware functional signals and direct daughtercard-to-expansion signal mappings. Cross-document references, role coverage, pin occupancy and electrical checks require semantic validation. The extension does not consume this draft yet.",
+  "description": "Minimal draft contract: fields only support constraint generation, pin/electrical checks or model mappings. Cross-document semantics require validation; the extension does not consume this draft yet.",
   "oneOf": [
     {
       "$ref": "#/definitions/fixed"
@@ -34,33 +34,9 @@
       "minLength": 1,
       "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*[\\r\\n\\u0000]).+$"
     },
-    "documentRef": {
-      "type": "object",
-      "properties": {
-        "path": {
-          "$ref": "#/definitions/relativePath"
-        },
-        "id": {
-          "$ref": "#/definitions/id"
-        },
-        "revision": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "path",
-        "id",
-        "revision"
-      ],
-      "additionalProperties": false
-    },
     "pair": {
       "type": "object",
       "properties": {
-        "id": {
-          "$ref": "#/definitions/id"
-        },
         "positive": {
           "$ref": "#/definitions/memberId"
         },
@@ -69,7 +45,6 @@
         }
       },
       "required": [
-        "id",
         "positive",
         "negative"
       ],
@@ -80,10 +55,6 @@
       "properties": {
         "id": {
           "$ref": "#/definitions/id"
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
         },
         "members": {
           "type": "array",
@@ -97,64 +68,30 @@
           "enum": [
             "together",
             "individual"
-          ]
+          ],
+          "default": "individual"
         }
       },
       "required": [
         "id",
-        "name",
-        "members",
-        "selection"
+        "members"
       ],
       "additionalProperties": false
     },
-    "signal": {
+    "rail": {
       "type": "object",
       "properties": {
         "id": {
-          "$ref": "#/definitions/memberId"
+          "$ref": "#/definitions/id"
         },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "id"
-      ],
-      "additionalProperties": false
-    },
-    "voltage": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "fixed"
-            },
-            "millivolts": {
+        "millivolts": {
+          "oneOf": [
+            {
               "type": "integer",
               "minimum": 1,
               "maximum": 100000
-            }
-          },
-          "required": [
-            "kind",
-            "millivolts"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "selectable"
             },
-            "millivolts": {
+            {
               "type": "array",
               "items": {
                 "type": "integer",
@@ -164,40 +101,11 @@
               "minItems": 1,
               "uniqueItems": true
             }
-          },
-          "required": [
-            "kind",
-            "millivolts"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "unknown"
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "additionalProperties": false
-        }
-      ]
-    },
-    "rail": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "$ref": "#/definitions/id"
-        },
-        "voltage": {
-          "$ref": "#/definitions/voltage"
+          ]
         }
       },
       "required": [
-        "id",
-        "voltage"
+        "id"
       ],
       "additionalProperties": false
     },
@@ -217,24 +125,10 @@
       "additionalProperties": false
     },
     "reservation": {
-      "type": "object",
-      "properties": {
-        "policy": {
-          "enum": [
-            "warn",
-            "forbid"
-          ]
-        },
-        "reason": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "policy",
-        "reason"
-      ],
-      "additionalProperties": false
+      "enum": [
+        "warn",
+        "forbid"
+      ]
     },
     "fpgaPin": {
       "type": "object",
@@ -244,15 +138,6 @@
         },
         "bank": {
           "$ref": "#/definitions/memberId"
-        },
-        "capabilities": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "minItems": 1,
-          "uniqueItems": true
         },
         "allowedIoStandards": {
           "type": "array",
@@ -278,12 +163,8 @@
         "id": {
           "$ref": "#/definitions/id"
         },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
         "definition": {
-          "$ref": "#/definitions/documentRef"
+          "$ref": "#/definitions/relativePath"
         },
         "function": {
           "$ref": "#/definitions/id"
@@ -301,17 +182,6 @@
         "id": {
           "$ref": "#/definitions/id"
         },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "kind": {
-          "enum": [
-            "jumper",
-            "switch",
-            "assembly-option"
-          ]
-        },
         "values": {
           "type": "array",
           "items": {
@@ -324,7 +194,6 @@
       },
       "required": [
         "id",
-        "kind",
         "values"
       ],
       "additionalProperties": false
@@ -353,11 +222,6 @@
           "type": "string",
           "minLength": 1
         },
-        "vccoMv": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100000
-        },
         "driveMa": {
           "type": "integer",
           "minimum": 1
@@ -376,57 +240,8 @@
           ]
         }
       },
-      "required": [],
-      "additionalProperties": false
-    },
-    "boardTarget": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "fpga"
-            },
-            "pin": {
-              "$ref": "#/definitions/memberId"
-            }
-          },
-          "required": [
-            "kind",
-            "pin"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "nc"
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "reserved"
-            },
-            "reason": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "required": [
-            "kind",
-            "reason"
-          ],
-          "additionalProperties": false
-        }
-      ]
+      "additionalProperties": false,
+      "minProperties": 1
     },
     "boardRoute": {
       "type": "object",
@@ -437,8 +252,8 @@
         "member": {
           "$ref": "#/definitions/memberId"
         },
-        "target": {
-          "$ref": "#/definitions/boardTarget"
+        "pin": {
+          "$ref": "#/definitions/memberId"
         },
         "when": {
           "type": "array",
@@ -454,7 +269,7 @@
       "required": [
         "interface",
         "member",
-        "target"
+        "pin"
       ],
       "additionalProperties": false
     },
@@ -465,10 +280,11 @@
           "$ref": "#/definitions/id"
         },
         "card": {
-          "$ref": "#/definitions/documentRef"
+          "$ref": "#/definitions/relativePath"
         },
         "installed": {
-          "type": "boolean"
+          "type": "boolean",
+          "default": true
         },
         "connections": {
           "type": "array",
@@ -481,98 +297,43 @@
       "required": [
         "id",
         "card",
-        "installed",
         "connections"
       ],
       "additionalProperties": false
     },
     "interfaceEndpoint": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "board"
-            },
-            "interface": {
-              "$ref": "#/definitions/id"
-            }
-          },
-          "required": [
-            "kind",
-            "interface"
-          ],
-          "additionalProperties": false
+      "type": "object",
+      "properties": {
+        "mount": {
+          "$ref": "#/definitions/id"
         },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "daughtercard"
-            },
-            "mount": {
-              "$ref": "#/definitions/id"
-            },
-            "interface": {
-              "$ref": "#/definitions/id"
-            }
-          },
-          "required": [
-            "kind",
-            "mount",
-            "interface"
-          ],
-          "additionalProperties": false
+        "interface": {
+          "$ref": "#/definitions/id"
         }
-      ]
+      },
+      "required": [
+        "interface"
+      ],
+      "additionalProperties": false
     },
     "source": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "board"
-            },
-            "interface": {
-              "$ref": "#/definitions/id"
-            },
-            "member": {
-              "$ref": "#/definitions/memberId"
-            }
-          },
-          "required": [
-            "kind",
-            "interface",
-            "member"
-          ],
-          "additionalProperties": false
+      "type": "object",
+      "properties": {
+        "mount": {
+          "$ref": "#/definitions/id"
         },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "daughtercard"
-            },
-            "mount": {
-              "$ref": "#/definitions/id"
-            },
-            "interface": {
-              "$ref": "#/definitions/id"
-            },
-            "member": {
-              "$ref": "#/definitions/memberId"
-            }
-          },
-          "required": [
-            "kind",
-            "mount",
-            "interface",
-            "member"
-          ],
-          "additionalProperties": false
+        "interface": {
+          "$ref": "#/definitions/id"
+        },
+        "member": {
+          "$ref": "#/definitions/memberId"
         }
-      ]
+      },
+      "required": [
+        "interface",
+        "member"
+      ],
+      "additionalProperties": false
     },
     "selection": {
       "type": "object",
@@ -726,39 +487,16 @@
     "fixed": {
       "type": "object",
       "properties": {
-        "$schema": {
-          "type": "string"
-        },
-        "format": {
-          "const": "veriflow-physical-interface"
-        },
-        "schemaVersion": {
-          "const": 1
-        },
-        "id": {
-          "$ref": "#/definitions/id"
-        },
-        "revision": {
-          "type": "string",
-          "minLength": 1
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
-        },
         "kind": {
           "const": "fixed"
         },
         "signals": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/signal"
+            "$ref": "#/definitions/memberId"
           },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         },
         "function": {
           "type": "object",
@@ -775,7 +513,7 @@
           "items": {
             "$ref": "#/definitions/group"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "differentialPairs": {
           "description": "Functional differential pairs: both members must be selected together.",
@@ -783,19 +521,12 @@
           "items": {
             "$ref": "#/definitions/pair"
           },
-          "minItems": 0
+          "minItems": 1
         }
       },
       "required": [
-        "format",
-        "schemaVersion",
-        "id",
-        "revision",
-        "name",
         "kind",
         "signals",
-        "groups",
-        "differentialPairs",
         "function"
       ],
       "additionalProperties": false
@@ -803,39 +534,23 @@
     "expansion": {
       "type": "object",
       "properties": {
-        "$schema": {
-          "type": "string"
-        },
-        "format": {
-          "const": "veriflow-physical-interface"
-        },
-        "schemaVersion": {
-          "const": 1
-        },
-        "id": {
-          "$ref": "#/definitions/id"
-        },
-        "revision": {
-          "type": "string",
-          "minLength": 1
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
-        },
         "kind": {
           "const": "expansion"
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/memberId"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "groups": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/group"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "differentialPairs": {
           "description": "Differential capability only: either member can be used independently as a single-ended signal when board electrical rules allow it.",
@@ -843,24 +558,11 @@
           "items": {
             "$ref": "#/definitions/pair"
           },
-          "minItems": 0
-        },
-        "signals": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/signal"
-          },
           "minItems": 1
         }
       },
       "required": [
-        "format",
-        "schemaVersion",
-        "id",
-        "revision",
-        "name",
         "kind",
-        "differentialPairs",
         "signals"
       ],
       "additionalProperties": false
@@ -868,116 +570,81 @@
     "board": {
       "type": "object",
       "properties": {
-        "$schema": {
-          "type": "string"
-        },
-        "format": {
-          "const": "veriflow-board"
-        },
-        "schemaVersion": {
-          "const": 1
-        },
-        "id": {
-          "$ref": "#/definitions/id"
-        },
-        "revision": {
-          "type": "string",
-          "minLength": 1
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
+        "kind": {
+          "const": "board"
         },
         "device": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Complete device part including package; selects device rules and device assignments."
+        },
+        "ioStandards": {
           "type": "object",
-          "properties": {
-            "vendor": {
-              "type": "string",
-              "minLength": 1
-            },
-            "part": {
-              "type": "string",
-              "minLength": 1
-            },
-            "package": {
-              "type": "string",
-              "minLength": 1
-            }
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/definitions/ioStandard"
           },
-          "required": [
-            "vendor",
-            "part",
-            "package"
-          ],
-          "additionalProperties": false
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "rails": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/rail"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "banks": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/bank"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "fpgaPins": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/fpgaPin"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "differentialPairs": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/pair"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "interfaces": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/instance"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "selectors": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/selector"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "routes": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/boardRoute"
           },
-          "minItems": 0
+          "minItems": 1
         }
       },
       "required": [
-        "format",
-        "schemaVersion",
-        "id",
-        "revision",
-        "name",
+        "kind",
         "device",
-        "rails",
-        "banks",
+        "ioStandards",
         "fpgaPins",
-        "differentialPairs",
         "interfaces",
-        "selectors",
         "routes"
       ],
       "additionalProperties": false
@@ -985,29 +652,8 @@
     "daughtercard": {
       "type": "object",
       "properties": {
-        "$schema": {
-          "type": "string"
-        },
-        "format": {
-          "const": "veriflow-daughtercard"
-        },
-        "schemaVersion": {
-          "const": 1
-        },
-        "id": {
-          "$ref": "#/definitions/id"
-        },
-        "revision": {
-          "type": "string",
-          "minLength": 1
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
+        "kind": {
+          "const": "daughtercard"
         },
         "interfaces": {
           "type": "array",
@@ -1032,13 +678,9 @@
         }
       },
       "required": [
-        "format",
-        "schemaVersion",
-        "id",
-        "revision",
-        "name",
-        "interfaces",
+        "kind",
         "expansions",
+        "interfaces",
         "mappings"
       ],
       "additionalProperties": false
@@ -1046,70 +688,49 @@
     "assembly": {
       "type": "object",
       "properties": {
-        "$schema": {
-          "type": "string"
-        },
-        "format": {
-          "const": "veriflow-board-assembly"
-        },
-        "schemaVersion": {
-          "const": 1
-        },
-        "id": {
-          "$ref": "#/definitions/id"
-        },
-        "revision": {
-          "type": "string",
-          "minLength": 1
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
+        "kind": {
+          "const": "assembly"
         },
         "design": {
           "$ref": "#/definitions/design"
         },
         "board": {
-          "$ref": "#/definitions/documentRef"
+          "$ref": "#/definitions/relativePath"
         },
         "mounts": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/mount"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "boardSettings": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/setting"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "railVoltages": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/railSetting"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "selections": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/selection"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "bindings": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/binding"
           },
-          "minItems": 0
+          "minItems": 1
         },
         "export": {
           "type": "object",
@@ -1134,18 +755,9 @@
         }
       },
       "required": [
-        "format",
-        "schemaVersion",
-        "id",
-        "revision",
-        "name",
+        "kind",
         "design",
-        "board",
-        "mounts",
-        "boardSettings",
-        "railVoltages",
-        "selections",
-        "bindings"
+        "board"
       ],
       "additionalProperties": false
     },
@@ -1207,6 +819,24 @@
       "required": [
         "boardInterface",
         "cardExpansion"
+      ],
+      "additionalProperties": false
+    },
+    "ioStandard": {
+      "type": "object",
+      "properties": {
+        "vccoMv": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "differential": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "vccoMv"
       ],
       "additionalProperties": false
     }

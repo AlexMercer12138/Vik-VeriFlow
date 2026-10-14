@@ -5,10 +5,10 @@
   "id": "daughtercard.demo.hdmi",
   "revision": "rev-a",
   "name": "示例 HDMI 子卡",
-  "description": "Synthetic mapping. U2/U3 annotations illustrate contact-side voltage after level shifting; not a reference HDMI schematic.",
-  "connectors": [
+  "description": "A functional HDMI interface mapped directly to the signal IDs of one expansion interface.",
+  "expansions": [
     {
-      "id": "P1",
+      "id": "EXT0",
       "definition": {
         "path": "header40.expansion.json",
         "id": "expansion.demo.header40",
@@ -21,196 +21,30 @@
       "id": "HDMI0",
       "definition": {
         "path": "hdmi.fixed.json",
-        "id": "fixed.hdmi.source",
+        "id": "fixed.hdmi.fpga",
         "revision": "1"
-      }
+      },
+      "function": "hdmi-source"
     }
   ],
-  "selectors": [],
-  "routes": [
+  "mappings": [
     {
       "interface": "HDMI0",
-      "member": "data0_p",
-      "target": {
-        "connector": "P1",
-        "contact": "5"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
+      "expansion": "EXT0",
+      "signals": {
+        "data0_p": "dp0_p",
+        "data0_n": "dp0_n",
+        "data1_p": "dp1_p",
+        "data1_n": "dp1_n",
+        "data2_p": "dp2_p",
+        "data2_n": "dp2_n",
+        "clock_p": "dp3_p",
+        "clock_n": "dp3_n",
+        "ddc_scl": "io0",
+        "ddc_sda": "io1",
+        "hpd": "io2",
+        "cec": "io3"
       }
-    },
-    {
-      "interface": "HDMI0",
-      "member": "data0_n",
-      "target": {
-        "connector": "P1",
-        "contact": "6"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      }
-    },
-    {
-      "interface": "HDMI0",
-      "member": "data1_p",
-      "target": {
-        "connector": "P1",
-        "contact": "7"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      }
-    },
-    {
-      "interface": "HDMI0",
-      "member": "data1_n",
-      "target": {
-        "connector": "P1",
-        "contact": "8"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      }
-    },
-    {
-      "interface": "HDMI0",
-      "member": "data2_p",
-      "target": {
-        "connector": "P1",
-        "contact": "9"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      }
-    },
-    {
-      "interface": "HDMI0",
-      "member": "data2_n",
-      "target": {
-        "connector": "P1",
-        "contact": "10"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      }
-    },
-    {
-      "interface": "HDMI0",
-      "member": "clock_p",
-      "target": {
-        "connector": "P1",
-        "contact": "11"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      }
-    },
-    {
-      "interface": "HDMI0",
-      "member": "clock_n",
-      "target": {
-        "connector": "P1",
-        "contact": "12"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      }
-    },
-    {
-      "interface": "HDMI0",
-      "member": "ddc_scl",
-      "target": {
-        "connector": "P1",
-        "contact": "13"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      },
-      "via": "Example open-drain-compatible level shifter; the P1 side is 3.3 V"
-    },
-    {
-      "interface": "HDMI0",
-      "member": "ddc_sda",
-      "target": {
-        "connector": "P1",
-        "contact": "14"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      },
-      "via": "Example open-drain-compatible level shifter; the P1 side is 3.3 V"
-    },
-    {
-      "interface": "HDMI0",
-      "member": "hpd",
-      "target": {
-        "connector": "P1",
-        "contact": "15"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      },
-      "via": "Example HPD buffer; the P1 side is 3.3 V"
-    },
-    {
-      "interface": "HDMI0",
-      "member": "cec",
-      "target": {
-        "connector": "P1",
-        "contact": "16"
-      },
-      "contactElectrical": {
-        "voltageMv": 3300,
-        "requiredCapabilities": [
-          "gpio"
-        ]
-      },
-      "via": "Example open-drain-compatible level shifter; the P1 side is 3.3 V"
-    }
-  ],
-  "powerRequirements": [
-    {
-      "connector": "P1",
-      "contact": "1",
-      "voltageMv": 3300
-    },
-    {
-      "connector": "P1",
-      "contact": "2",
-      "voltageMv": 5000
     }
   ]
 }

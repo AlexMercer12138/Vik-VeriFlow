@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:veriflow:physical-model:v1",
   "title": "VeriFlow physical interface model V1 draft",
-  "description": "Authoring contract only. Cross-document references, routing, mating, selections and electrical compatibility require semantic validation; the extension does not consume this draft yet.",
+  "description": "Draft authoring contract for role-aware functional signals and direct daughtercard-to-expansion signal mappings. Cross-document references, role coverage, pin occupancy and electrical checks require semantic validation. The extension does not consume this draft yet.",
   "oneOf": [
     {
       "$ref": "#/definitions/fixed"
@@ -112,92 +112,19 @@
       "type": "object",
       "properties": {
         "id": {
-          "$ref": "#/definitions/id"
+          "$ref": "#/definitions/memberId"
         },
         "name": {
           "type": "string",
           "minLength": 1
         },
-        "direction": {
-          "enum": [
-            "input",
-            "output",
-            "inout"
-          ]
-        },
-        "drive": {
-          "enum": [
-            "push-pull",
-            "open-drain"
-          ]
-        },
         "description": {
           "type": "string",
           "minLength": 1
         }
       },
       "required": [
-        "id",
-        "direction"
-      ],
-      "additionalProperties": false,
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "direction": {
-                "const": "input"
-              }
-            },
-            "required": [
-              "direction"
-            ]
-          },
-          "then": {
-            "not": {
-              "required": [
-                "drive"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    "contact": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "$ref": "#/definitions/memberId"
-        },
-        "label": {
-          "type": "string",
-          "minLength": 1
-        },
-        "role": {
-          "enum": [
-            "signal",
-            "power",
-            "ground",
-            "nc"
-          ]
-        },
-        "capabilities": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "id",
-        "role"
+        "id"
       ],
       "additionalProperties": false
     },
@@ -357,6 +284,9 @@
         },
         "definition": {
           "$ref": "#/definitions/documentRef"
+        },
+        "function": {
+          "$ref": "#/definitions/id"
         }
       },
       "required": [
@@ -449,27 +379,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "contactElectrical": {
-      "type": "object",
-      "properties": {
-        "voltageMv": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100000
-        },
-        "requiredCapabilities": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        }
-      },
-      "required": [],
-      "additionalProperties": false
-    },
     "boardTarget": {
       "oneOf": [
         {
@@ -485,34 +394,6 @@
           "required": [
             "kind",
             "pin"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "rail"
-            },
-            "rail": {
-              "$ref": "#/definitions/id"
-            }
-          },
-          "required": [
-            "kind",
-            "rail"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "const": "ground"
-            }
-          },
-          "required": [
-            "kind"
           ],
           "additionalProperties": false
         },
@@ -568,104 +449,12 @@
         },
         "fpgaElectrical": {
           "$ref": "#/definitions/fpgaElectrical"
-        },
-        "contactElectrical": {
-          "$ref": "#/definitions/contactElectrical"
-        },
-        "via": {
-          "type": "string",
-          "minLength": 1
         }
       },
       "required": [
         "interface",
         "member",
         "target"
-      ],
-      "additionalProperties": false
-    },
-    "cardRoute": {
-      "type": "object",
-      "properties": {
-        "interface": {
-          "$ref": "#/definitions/id"
-        },
-        "member": {
-          "$ref": "#/definitions/memberId"
-        },
-        "target": {
-          "type": "object",
-          "properties": {
-            "connector": {
-              "$ref": "#/definitions/id"
-            },
-            "contact": {
-              "$ref": "#/definitions/memberId"
-            }
-          },
-          "required": [
-            "connector",
-            "contact"
-          ],
-          "additionalProperties": false
-        },
-        "when": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/when"
-          },
-          "minItems": 1
-        },
-        "contactElectrical": {
-          "$ref": "#/definitions/contactElectrical"
-        },
-        "via": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "interface",
-        "member",
-        "target"
-      ],
-      "additionalProperties": false
-    },
-    "powerRequirement": {
-      "type": "object",
-      "properties": {
-        "connector": {
-          "$ref": "#/definitions/id"
-        },
-        "contact": {
-          "$ref": "#/definitions/memberId"
-        },
-        "voltageMv": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100000
-        }
-      },
-      "required": [
-        "connector",
-        "contact",
-        "voltageMv"
-      ],
-      "additionalProperties": false
-    },
-    "mating": {
-      "type": "object",
-      "properties": {
-        "boardInterface": {
-          "$ref": "#/definitions/id"
-        },
-        "cardConnector": {
-          "$ref": "#/definitions/id"
-        }
-      },
-      "required": [
-        "boardInterface",
-        "cardConnector"
       ],
       "additionalProperties": false
     },
@@ -684,7 +473,7 @@
         "connections": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/mating"
+            "$ref": "#/definitions/attachment"
           },
           "minItems": 1
         }
@@ -876,26 +665,6 @@
       ],
       "additionalProperties": false
     },
-    "mountSettings": {
-      "type": "object",
-      "properties": {
-        "mount": {
-          "$ref": "#/definitions/id"
-        },
-        "settings": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/setting"
-          },
-          "minItems": 1
-        }
-      },
-      "required": [
-        "mount",
-        "settings"
-      ],
-      "additionalProperties": false
-    },
     "railSetting": {
       "type": "object",
       "properties": {
@@ -985,8 +754,14 @@
           "const": "fixed"
         },
         "function": {
-          "type": "string",
-          "minLength": 1
+          "type": "object",
+          "minProperties": 1,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_.-]*$": {
+              "$ref": "#/definitions/functionDirections"
+            }
+          },
+          "additionalProperties": false
         },
         "signals": {
           "type": "array",
@@ -1019,7 +794,8 @@
         "kind",
         "signals",
         "groups",
-        "differentialPairs"
+        "differentialPairs",
+        "function"
       ],
       "additionalProperties": false
     },
@@ -1053,25 +829,6 @@
         "kind": {
           "const": "expansion"
         },
-        "mechanical": {
-          "type": "string",
-          "minLength": 1
-        },
-        "matingProfile": {
-          "type": "string",
-          "minLength": 1
-        },
-        "numbering": {
-          "type": "string",
-          "minLength": 1
-        },
-        "contacts": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/contact"
-          },
-          "minItems": 1
-        },
         "groups": {
           "type": "array",
           "items": {
@@ -1085,6 +842,13 @@
             "$ref": "#/definitions/pair"
           },
           "minItems": 0
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/signal"
+          },
+          "minItems": 1
         }
       },
       "required": [
@@ -1094,12 +858,8 @@
         "revision",
         "name",
         "kind",
-        "mechanical",
-        "matingProfile",
-        "numbering",
-        "contacts",
-        "groups",
-        "differentialPairs"
+        "differentialPairs",
+        "signals"
       ],
       "additionalProperties": false
     },
@@ -1247,13 +1007,6 @@
           "type": "string",
           "minLength": 1
         },
-        "connectors": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/instance"
-          },
-          "minItems": 1
-        },
         "interfaces": {
           "type": "array",
           "items": {
@@ -1261,26 +1014,19 @@
           },
           "minItems": 1
         },
-        "selectors": {
+        "expansions": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/selector"
+            "$ref": "#/definitions/instance"
           },
-          "minItems": 0
+          "minItems": 1
         },
-        "routes": {
+        "mappings": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/cardRoute"
+            "$ref": "#/definitions/cardMapping"
           },
-          "minItems": 0
-        },
-        "powerRequirements": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/powerRequirement"
-          },
-          "minItems": 0
+          "minItems": 1
         }
       },
       "required": [
@@ -1289,11 +1035,9 @@
         "id",
         "revision",
         "name",
-        "connectors",
         "interfaces",
-        "selectors",
-        "routes",
-        "powerRequirements"
+        "expansions",
+        "mappings"
       ],
       "additionalProperties": false
     },
@@ -1341,13 +1085,6 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/setting"
-          },
-          "minItems": 0
-        },
-        "daughtercardSettings": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/mountSettings"
           },
           "minItems": 0
         },
@@ -1404,7 +1141,6 @@
         "board",
         "mounts",
         "boardSettings",
-        "daughtercardSettings",
         "railVoltages",
         "selections",
         "bindings"
@@ -1414,6 +1150,63 @@
     "hdlIdentifier": {
       "type": "string",
       "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$"
+    },
+    "functionDirections": {
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[A-Za-z0-9_][A-Za-z0-9_.-]*$": {
+          "enum": [
+            "input",
+            "output",
+            "inout"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "cardMapping": {
+      "type": "object",
+      "properties": {
+        "interface": {
+          "$ref": "#/definitions/id"
+        },
+        "expansion": {
+          "$ref": "#/definitions/id"
+        },
+        "signals": {
+          "type": "object",
+          "minProperties": 1,
+          "patternProperties": {
+            "^[A-Za-z0-9_][A-Za-z0-9_.-]*$": {
+              "$ref": "#/definitions/memberId"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "interface",
+        "expansion",
+        "signals"
+      ],
+      "additionalProperties": false
+    },
+    "attachment": {
+      "type": "object",
+      "properties": {
+        "boardInterface": {
+          "$ref": "#/definitions/id"
+        },
+        "cardExpansion": {
+          "$ref": "#/definitions/id"
+        }
+      },
+      "required": [
+        "boardInterface",
+        "cardExpansion"
+      ],
+      "additionalProperties": false
     }
   }
 }

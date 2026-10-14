@@ -2,71 +2,77 @@
   "$schema": "../../schemas/physical-interface-model.schema.json",
   "format": "veriflow-physical-interface",
   "schemaVersion": 1,
-  "id": "fixed.hdmi.source",
+  "id": "fixed.hdmi.fpga",
   "revision": "1",
-  "name": "HDMI 输出",
-  "description": "Signal layout example. Electrical properties must come from the actual FPGA-side circuit.",
+  "name": "HDMI",
+  "description": "Shared HDMI signals and groups for source/sink roles. Electrical constraints come from actual board wiring.",
   "kind": "fixed",
-  "function": "hdmi-source",
+  "function": {
+    "hdmi-source": {
+      "data0_p": "output",
+      "data0_n": "output",
+      "data1_p": "output",
+      "data1_n": "output",
+      "data2_p": "output",
+      "data2_n": "output",
+      "clock_p": "output",
+      "clock_n": "output",
+      "ddc_scl": "inout",
+      "ddc_sda": "inout",
+      "hpd": "input",
+      "cec": "inout"
+    },
+    "hdmi-sink": {
+      "data0_p": "input",
+      "data0_n": "input",
+      "data1_p": "input",
+      "data1_n": "input",
+      "data2_p": "input",
+      "data2_n": "input",
+      "clock_p": "input",
+      "clock_n": "input",
+      "ddc_scl": "inout",
+      "ddc_sda": "inout",
+      "hpd": "output",
+      "cec": "inout"
+    }
+  },
   "signals": [
     {
-      "id": "data0_p",
-      "direction": "output",
-      "drive": "push-pull"
+      "id": "data0_p"
     },
     {
-      "id": "data0_n",
-      "direction": "output",
-      "drive": "push-pull"
+      "id": "data0_n"
     },
     {
-      "id": "data1_p",
-      "direction": "output",
-      "drive": "push-pull"
+      "id": "data1_p"
     },
     {
-      "id": "data1_n",
-      "direction": "output",
-      "drive": "push-pull"
+      "id": "data1_n"
     },
     {
-      "id": "data2_p",
-      "direction": "output",
-      "drive": "push-pull"
+      "id": "data2_p"
     },
     {
-      "id": "data2_n",
-      "direction": "output",
-      "drive": "push-pull"
+      "id": "data2_n"
     },
     {
-      "id": "clock_p",
-      "direction": "output",
-      "drive": "push-pull"
+      "id": "clock_p"
     },
     {
-      "id": "clock_n",
-      "direction": "output",
-      "drive": "push-pull"
+      "id": "clock_n"
     },
     {
-      "id": "ddc_scl",
-      "direction": "inout",
-      "drive": "open-drain"
+      "id": "ddc_scl"
     },
     {
-      "id": "ddc_sda",
-      "direction": "inout",
-      "drive": "open-drain"
+      "id": "ddc_sda"
     },
     {
-      "id": "hpd",
-      "direction": "input"
+      "id": "hpd"
     },
     {
-      "id": "cec",
-      "direction": "inout",
-      "drive": "open-drain"
+      "id": "cec"
     }
   ],
   "groups": [

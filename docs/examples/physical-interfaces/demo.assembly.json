@@ -27,7 +27,7 @@
       "connections": [
         {
           "boardInterface": "J1",
-          "cardConnector": "P1"
+          "cardExpansion": "EXT0"
         }
       ]
     }
@@ -38,7 +38,6 @@
       "value": "header"
     }
   ],
-  "daughtercardSettings": [],
   "railVoltages": [],
   "selections": [
     {

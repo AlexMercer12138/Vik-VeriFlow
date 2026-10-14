@@ -18,13 +18,6 @@
         "kind": "fixed",
         "millivolts": 3300
       }
-    },
-    {
-      "id": "v5v0",
-      "voltage": {
-        "kind": "fixed",
-        "millivolts": 5000
-      }
     }
   ],
   "banks": [
@@ -184,7 +177,8 @@
         "path": "uart.fixed.json",
         "id": "fixed.uart.fpga",
         "revision": "1"
-      }
+      },
+      "function": "uart"
     },
     {
       "id": "J1",
@@ -245,44 +239,11 @@
     },
     {
       "interface": "J1",
-      "member": "1",
-      "target": {
-        "kind": "rail",
-        "rail": "v3v3"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "2",
-      "target": {
-        "kind": "rail",
-        "rail": "v5v0"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "3",
-      "target": {
-        "kind": "ground"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "4",
-      "target": {
-        "kind": "ground"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "5",
+      "member": "dp0_p",
       "target": {
         "kind": "fpga",
         "pin": "A1"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "TMDS_33",
         "vccoMv": 3300
@@ -290,14 +251,11 @@
     },
     {
       "interface": "J1",
-      "member": "6",
+      "member": "dp0_n",
       "target": {
         "kind": "fpga",
         "pin": "A2"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "TMDS_33",
         "vccoMv": 3300
@@ -305,14 +263,11 @@
     },
     {
       "interface": "J1",
-      "member": "7",
+      "member": "dp1_p",
       "target": {
         "kind": "fpga",
         "pin": "A3"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "TMDS_33",
         "vccoMv": 3300
@@ -320,14 +275,11 @@
     },
     {
       "interface": "J1",
-      "member": "8",
+      "member": "dp1_n",
       "target": {
         "kind": "fpga",
         "pin": "A4"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "TMDS_33",
         "vccoMv": 3300
@@ -335,14 +287,11 @@
     },
     {
       "interface": "J1",
-      "member": "9",
+      "member": "dp2_p",
       "target": {
         "kind": "fpga",
         "pin": "A5"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "TMDS_33",
         "vccoMv": 3300
@@ -350,14 +299,11 @@
     },
     {
       "interface": "J1",
-      "member": "10",
+      "member": "dp2_n",
       "target": {
         "kind": "fpga",
         "pin": "A6"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "TMDS_33",
         "vccoMv": 3300
@@ -365,14 +311,11 @@
     },
     {
       "interface": "J1",
-      "member": "11",
+      "member": "dp3_p",
       "target": {
         "kind": "fpga",
         "pin": "A7"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "TMDS_33",
         "vccoMv": 3300
@@ -380,14 +323,11 @@
     },
     {
       "interface": "J1",
-      "member": "12",
+      "member": "dp3_n",
       "target": {
         "kind": "fpga",
         "pin": "A8"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "TMDS_33",
         "vccoMv": 3300
@@ -395,7 +335,7 @@
     },
     {
       "interface": "J1",
-      "member": "13",
+      "member": "io0",
       "target": {
         "kind": "fpga",
         "pin": "A9"
@@ -406,9 +346,6 @@
           "value": "header"
         }
       ],
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "LVCMOS33",
         "vccoMv": 3300
@@ -416,7 +353,7 @@
     },
     {
       "interface": "J1",
-      "member": "14",
+      "member": "io1",
       "target": {
         "kind": "fpga",
         "pin": "A10"
@@ -427,9 +364,6 @@
           "value": "header"
         }
       ],
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "LVCMOS33",
         "vccoMv": 3300
@@ -437,14 +371,11 @@
     },
     {
       "interface": "J1",
-      "member": "15",
+      "member": "io2",
       "target": {
         "kind": "fpga",
         "pin": "A11"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "LVCMOS33",
         "vccoMv": 3300
@@ -452,185 +383,14 @@
     },
     {
       "interface": "J1",
-      "member": "16",
+      "member": "io3",
       "target": {
         "kind": "fpga",
         "pin": "A12"
       },
-      "contactElectrical": {
-        "voltageMv": 3300
-      },
       "fpgaElectrical": {
         "ioStandard": "LVCMOS33",
         "vccoMv": 3300
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "17",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "18",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "19",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "20",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "21",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "22",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "23",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "24",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "25",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "26",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "27",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "28",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "29",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "30",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "31",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "32",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "33",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "34",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "35",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "36",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "37",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "38",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "39",
-      "target": {
-        "kind": "nc"
-      }
-    },
-    {
-      "interface": "J1",
-      "member": "40",
-      "target": {
-        "kind": "nc"
       }
     }
   ]

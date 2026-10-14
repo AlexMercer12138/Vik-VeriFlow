@@ -7,16 +7,18 @@
   "name": "UART",
   "description": "TX/RX directions are relative to the FPGA, independent of board wiring.",
   "kind": "fixed",
-  "function": "uart",
+  "function": {
+    "uart": {
+      "tx": "output",
+      "rx": "input"
+    }
+  },
   "signals": [
     {
-      "id": "tx",
-      "direction": "output",
-      "drive": "push-pull"
+      "id": "tx"
     },
     {
-      "id": "rx",
-      "direction": "input"
+      "id": "rx"
     }
   ],
   "groups": [

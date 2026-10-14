@@ -1,0 +1,40 @@
+{
+  "$schema": "../../schemas/physical-interface-model.schema.json",
+  "format": "veriflow-physical-interface",
+  "schemaVersion": 1,
+  "id": "fixed.i2c.fpga",
+  "revision": "1",
+  "name": "I2C",
+  "description": "I2C roles share bidirectional SCL/SDA. RTL implements bus driving and release.",
+  "kind": "fixed",
+  "function": {
+    "i2c-master": {
+      "scl": "inout",
+      "sda": "inout"
+    },
+    "i2c-slave": {
+      "scl": "inout",
+      "sda": "inout"
+    }
+  },
+  "signals": [
+    {
+      "id": "scl"
+    },
+    {
+      "id": "sda"
+    }
+  ],
+  "groups": [
+    {
+      "id": "data",
+      "name": "SCL / SDA",
+      "members": [
+        "scl",
+        "sda"
+      ],
+      "selection": "together"
+    }
+  ],
+  "differentialPairs": []
+}

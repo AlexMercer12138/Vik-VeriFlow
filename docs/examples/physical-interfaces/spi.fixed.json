@@ -1,0 +1,52 @@
+{
+  "$schema": "../../schemas/physical-interface-model.schema.json",
+  "format": "veriflow-physical-interface",
+  "schemaVersion": 1,
+  "id": "fixed.spi.fpga",
+  "revision": "1",
+  "name": "SPI",
+  "description": "One SPI signal set supports FPGA master and slave roles.",
+  "kind": "fixed",
+  "function": {
+    "spi-master": {
+      "sck": "output",
+      "cs_n": "output",
+      "mosi": "output",
+      "miso": "input"
+    },
+    "spi-slave": {
+      "sck": "input",
+      "cs_n": "input",
+      "mosi": "input",
+      "miso": "output"
+    }
+  },
+  "signals": [
+    {
+      "id": "sck"
+    },
+    {
+      "id": "cs_n"
+    },
+    {
+      "id": "mosi"
+    },
+    {
+      "id": "miso"
+    }
+  ],
+  "groups": [
+    {
+      "id": "data",
+      "name": "SSPI",
+      "members": [
+        "sck",
+        "cs_n",
+        "mosi",
+        "miso"
+      ],
+      "selection": "individual"
+    }
+  ],
+  "differentialPairs": []
+}

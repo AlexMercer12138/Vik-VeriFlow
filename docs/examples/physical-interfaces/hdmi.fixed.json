@@ -1,0 +1,136 @@
+{
+  "$schema": "../../schemas/physical-interface-model.schema.json",
+  "format": "veriflow-physical-interface",
+  "schemaVersion": 1,
+  "id": "fixed.hdmi.source",
+  "revision": "1",
+  "name": "HDMI 输出",
+  "description": "Signal layout example. Electrical properties must come from the actual FPGA-side circuit.",
+  "kind": "fixed",
+  "function": "hdmi-source",
+  "signals": [
+    {
+      "id": "data0_p",
+      "direction": "output",
+      "drive": "push-pull"
+    },
+    {
+      "id": "data0_n",
+      "direction": "output",
+      "drive": "push-pull"
+    },
+    {
+      "id": "data1_p",
+      "direction": "output",
+      "drive": "push-pull"
+    },
+    {
+      "id": "data1_n",
+      "direction": "output",
+      "drive": "push-pull"
+    },
+    {
+      "id": "data2_p",
+      "direction": "output",
+      "drive": "push-pull"
+    },
+    {
+      "id": "data2_n",
+      "direction": "output",
+      "drive": "push-pull"
+    },
+    {
+      "id": "clock_p",
+      "direction": "output",
+      "drive": "push-pull"
+    },
+    {
+      "id": "clock_n",
+      "direction": "output",
+      "drive": "push-pull"
+    },
+    {
+      "id": "ddc_scl",
+      "direction": "inout",
+      "drive": "open-drain"
+    },
+    {
+      "id": "ddc_sda",
+      "direction": "inout",
+      "drive": "open-drain"
+    },
+    {
+      "id": "hpd",
+      "direction": "input"
+    },
+    {
+      "id": "cec",
+      "direction": "inout",
+      "drive": "open-drain"
+    }
+  ],
+  "groups": [
+    {
+      "id": "tmds",
+      "name": "TMDS 四个差分对",
+      "members": [
+        "data0_p",
+        "data0_n",
+        "data1_p",
+        "data1_n",
+        "data2_p",
+        "data2_n",
+        "clock_p",
+        "clock_n"
+      ],
+      "selection": "individual"
+    },
+    {
+      "id": "ddc",
+      "name": "DDC",
+      "members": [
+        "ddc_scl",
+        "ddc_sda"
+      ],
+      "selection": "together"
+    },
+    {
+      "id": "hpd",
+      "name": "HPD",
+      "members": [
+        "hpd"
+      ],
+      "selection": "individual"
+    },
+    {
+      "id": "cec",
+      "name": "CEC",
+      "members": [
+        "cec"
+      ],
+      "selection": "individual"
+    }
+  ],
+  "differentialPairs": [
+    {
+      "id": "data0",
+      "positive": "data0_p",
+      "negative": "data0_n"
+    },
+    {
+      "id": "data1",
+      "positive": "data1_p",
+      "negative": "data1_n"
+    },
+    {
+      "id": "data2",
+      "positive": "data2_p",
+      "negative": "data2_n"
+    },
+    {
+      "id": "clock",
+      "positive": "clock_p",
+      "negative": "clock_n"
+    }
+  ]
+}

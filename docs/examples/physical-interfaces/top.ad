@@ -1,0 +1,61 @@
+{
+  "format": "vik-veriflow.arch-design",
+  "schemaVersion": 2,
+  "module": "demo_top",
+  "ports": [
+    {
+      "name": "hdmi_data_p",
+      "direction": "output",
+      "width": 3
+    },
+    {
+      "name": "hdmi_data_n",
+      "direction": "output",
+      "width": 3
+    },
+    {
+      "name": "hdmi_clock_p",
+      "direction": "output"
+    },
+    {
+      "name": "hdmi_clock_n",
+      "direction": "output"
+    },
+    {
+      "name": "ddc_scl",
+      "direction": "inout",
+      "inoutMode": "direct"
+    },
+    {
+      "name": "ddc_sda",
+      "direction": "inout",
+      "inoutMode": "direct"
+    },
+    {
+      "name": "hpd",
+      "direction": "input"
+    },
+    {
+      "name": "cec",
+      "direction": "inout",
+      "inoutMode": "direct"
+    },
+    {
+      "name": "uart_tx",
+      "direction": "output"
+    },
+    {
+      "name": "uart_rx",
+      "direction": "input"
+    }
+  ],
+  "instances": [],
+  "logic": [],
+  "connections": [],
+  "interfacePorts": [],
+  "interfaceOverrides": {},
+  "interfaceConnections": [],
+  "defaults": {},
+  "export": {},
+  "presentation": {}
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "../../schemas/physical-interface-model.schema.json",
+  "format": "veriflow-physical-interface",
+  "schemaVersion": 1,
+  "id": "fixed.uart.fpga",
+  "revision": "1",
+  "name": "UART",
+  "description": "TX/RX directions are relative to the FPGA, independent of board wiring.",
+  "kind": "fixed",
+  "function": "uart",
+  "signals": [
+    {
+      "id": "tx",
+      "direction": "output",
+      "drive": "push-pull"
+    },
+    {
+      "id": "rx",
+      "direction": "input"
+    }
+  ],
+  "groups": [
+    {
+      "id": "data",
+      "name": "TX / RX",
+      "members": [
+        "tx",
+        "rx"
+      ],
+      "selection": "individual"
+    }
+  ],
+  "differentialPairs": []
+}

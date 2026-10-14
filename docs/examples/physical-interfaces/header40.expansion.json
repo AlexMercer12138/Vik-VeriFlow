@@ -1,0 +1,390 @@
+{
+  "$schema": "../../schemas/physical-interface-model.schema.json",
+  "format": "veriflow-physical-interface",
+  "schemaVersion": 1,
+  "id": "expansion.demo.header40",
+  "revision": "1",
+  "name": "示例 40 PIN 排针",
+  "description": "Synthetic pinout for modeling; not a universal 40-pin connector or a real board pinout.",
+  "kind": "expansion",
+  "mechanical": "header-2x20-2.54mm",
+  "matingProfile": "example.header40.rev-a",
+  "numbering": "Canonical carrier-side mating-face view; pin 1 is upper left, pin 2 upper right, increasing by row. Card contacts use the corresponding mated carrier contact ID.",
+  "contacts": [
+    {
+      "id": "1",
+      "label": "3V3",
+      "role": "power"
+    },
+    {
+      "id": "2",
+      "label": "5V",
+      "role": "power"
+    },
+    {
+      "id": "3",
+      "label": "GND",
+      "role": "ground"
+    },
+    {
+      "id": "4",
+      "label": "GND",
+      "role": "ground"
+    },
+    {
+      "id": "5",
+      "label": "IO1",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "6",
+      "label": "IO2",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "7",
+      "label": "IO3",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "8",
+      "label": "IO4",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "9",
+      "label": "IO5",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "10",
+      "label": "IO6",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "11",
+      "label": "IO7",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "12",
+      "label": "IO8",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "13",
+      "label": "IO9",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "14",
+      "label": "IO10",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "15",
+      "label": "IO11",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "16",
+      "label": "IO12",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "17",
+      "label": "IO13",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "18",
+      "label": "IO14",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "19",
+      "label": "IO15",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "20",
+      "label": "IO16",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "21",
+      "label": "IO17",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "22",
+      "label": "IO18",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "23",
+      "label": "IO19",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "24",
+      "label": "IO20",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "25",
+      "label": "IO21",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "26",
+      "label": "IO22",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "27",
+      "label": "IO23",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "28",
+      "label": "IO24",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "29",
+      "label": "IO25",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "30",
+      "label": "IO26",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "31",
+      "label": "IO27",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "32",
+      "label": "IO28",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "33",
+      "label": "IO29",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "34",
+      "label": "IO30",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "35",
+      "label": "IO31",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "36",
+      "label": "IO32",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "37",
+      "label": "IO33",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "38",
+      "label": "IO34",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "39",
+      "label": "IO35",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    },
+    {
+      "id": "40",
+      "label": "IO36",
+      "role": "signal",
+      "capabilities": [
+        "gpio"
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "gpio",
+      "name": "GPIO",
+      "members": [
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "30",
+        "31",
+        "32",
+        "33",
+        "34",
+        "35",
+        "36",
+        "37",
+        "38",
+        "39",
+        "40"
+      ],
+      "selection": "individual"
+    }
+  ],
+  "differentialPairs": [
+    {
+      "id": "data0",
+      "positive": "5",
+      "negative": "6"
+    },
+    {
+      "id": "data1",
+      "positive": "7",
+      "negative": "8"
+    },
+    {
+      "id": "data2",
+      "positive": "9",
+      "negative": "10"
+    },
+    {
+      "id": "clock",
+      "positive": "11",
+      "negative": "12"
+    }
+  ]
+}

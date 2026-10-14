@@ -7,20 +7,6 @@
   "name": "SPI",
   "description": "One SPI signal set supports FPGA master and slave roles.",
   "kind": "fixed",
-  "function": {
-    "spi-master": {
-      "sck": "output",
-      "cs_n": "output",
-      "mosi": "output",
-      "miso": "input"
-    },
-    "spi-slave": {
-      "sck": "input",
-      "cs_n": "input",
-      "mosi": "input",
-      "miso": "output"
-    }
-  },
   "signals": [
     {
       "id": "sck"
@@ -35,6 +21,20 @@
       "id": "miso"
     }
   ],
+  "function": {
+    "spi-master": {
+      "sck": "output",
+      "cs_n": "output",
+      "mosi": "output",
+      "miso": "input"
+    },
+    "spi-slave": {
+      "sck": "input",
+      "cs_n": "input",
+      "mosi": "input",
+      "miso": "output"
+    }
+  },
   "groups": [
     {
       "id": "data",

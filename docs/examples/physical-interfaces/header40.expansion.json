@@ -5,12 +5,12 @@
   "id": "expansion.demo.header40",
   "revision": "1",
   "name": "示例 40 PIN 排针可用信号",
-  "description": "Example FPGA-connected signals only: four differential pairs and four single-ended signals. Power, ground and unused contacts are omitted.",
+  "description": "Example FPGA-connected signals only: four differential-capable pairs usable as individual single-ended signals, plus four single-ended signals. Power, ground and unused contacts are omitted.",
   "kind": "expansion",
   "groups": [
     {
       "id": "differential",
-      "name": "差分信号",
+      "name": "差分能力信号（可拆为单端）",
       "members": [
         "dp0_p",
         "dp0_n",

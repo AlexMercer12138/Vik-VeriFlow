@@ -5,18 +5,8 @@
   "id": "fixed.i2c.fpga",
   "revision": "1",
   "name": "I2C",
-  "description": "I2C roles share bidirectional SCL/SDA. RTL implements bus driving and release.",
+  "description": "One I2C function uses bidirectional SCL/SDA for both master and slave. RTL implements bus driving and release.",
   "kind": "fixed",
-  "function": {
-    "i2c-master": {
-      "scl": "inout",
-      "sda": "inout"
-    },
-    "i2c-slave": {
-      "scl": "inout",
-      "sda": "inout"
-    }
-  },
   "signals": [
     {
       "id": "scl"
@@ -25,6 +15,12 @@
       "id": "sda"
     }
   ],
+  "function": {
+    "i2c": {
+      "scl": "inout",
+      "sda": "inout"
+    }
+  },
   "groups": [
     {
       "id": "data",

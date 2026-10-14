@@ -7,36 +7,6 @@
   "name": "HDMI",
   "description": "Shared HDMI signals and groups for source/sink roles. Electrical constraints come from actual board wiring.",
   "kind": "fixed",
-  "function": {
-    "hdmi-source": {
-      "data0_p": "output",
-      "data0_n": "output",
-      "data1_p": "output",
-      "data1_n": "output",
-      "data2_p": "output",
-      "data2_n": "output",
-      "clock_p": "output",
-      "clock_n": "output",
-      "ddc_scl": "inout",
-      "ddc_sda": "inout",
-      "hpd": "input",
-      "cec": "inout"
-    },
-    "hdmi-sink": {
-      "data0_p": "input",
-      "data0_n": "input",
-      "data1_p": "input",
-      "data1_n": "input",
-      "data2_p": "input",
-      "data2_n": "input",
-      "clock_p": "input",
-      "clock_n": "input",
-      "ddc_scl": "inout",
-      "ddc_sda": "inout",
-      "hpd": "output",
-      "cec": "inout"
-    }
-  },
   "signals": [
     {
       "id": "data0_p"
@@ -75,6 +45,36 @@
       "id": "cec"
     }
   ],
+  "function": {
+    "hdmi-source": {
+      "data0_p": "output",
+      "data0_n": "output",
+      "data1_p": "output",
+      "data1_n": "output",
+      "data2_p": "output",
+      "data2_n": "output",
+      "clock_p": "output",
+      "clock_n": "output",
+      "ddc_scl": "inout",
+      "ddc_sda": "inout",
+      "hpd": "input",
+      "cec": "inout"
+    },
+    "hdmi-sink": {
+      "data0_p": "input",
+      "data0_n": "input",
+      "data1_p": "input",
+      "data1_n": "input",
+      "data2_p": "input",
+      "data2_n": "input",
+      "clock_p": "input",
+      "clock_n": "input",
+      "ddc_scl": "inout",
+      "ddc_sda": "inout",
+      "hpd": "output",
+      "cec": "inout"
+    }
+  },
   "groups": [
     {
       "id": "tmds",

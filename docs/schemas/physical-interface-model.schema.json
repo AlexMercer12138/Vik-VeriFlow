@@ -753,6 +753,13 @@
         "kind": {
           "const": "fixed"
         },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/signal"
+          },
+          "minItems": 1
+        },
         "function": {
           "type": "object",
           "minProperties": 1,
@@ -763,13 +770,6 @@
           },
           "additionalProperties": false
         },
-        "signals": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/signal"
-          },
-          "minItems": 1
-        },
         "groups": {
           "type": "array",
           "items": {
@@ -778,6 +778,7 @@
           "minItems": 0
         },
         "differentialPairs": {
+          "description": "Functional differential pairs: both members must be selected together.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/pair"
@@ -837,6 +838,7 @@
           "minItems": 0
         },
         "differentialPairs": {
+          "description": "Differential capability only: either member can be used independently as a single-ended signal when board electrical rules allow it.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/pair"

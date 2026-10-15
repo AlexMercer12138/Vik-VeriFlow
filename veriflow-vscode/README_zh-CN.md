@@ -38,7 +38,7 @@
 
 - 自动识别 **APB、AHB、AXI** 总线接口，实现主从快速连接
 - 内置常用组合逻辑模块 **Logic Utility**，提高连接灵活性
-- **Pins / XDC** 选择用户在工作区定义的板卡，为顶层端口绑定物理引脚并导出 XDC。插件只打包通用接口，板卡和子卡保存在用户工程中；板卡接口可引用 `library:interfaces/uart.fixed.json` 或相对路径的自定义接口。AD 保存绑定，RTL 文件也提供右键与命令入口的临时工具。总线拖放可同步绑定 P/N；XDC 默认与 RTL 使用相同目录和文件主名，在 AD 树下并列显示。
+- **Pins / XDC** 将板卡导入 `~/.veriflow_config.json` 后供所有工程共用。左栏勾选接口即检查并锁定冲突引脚与必选组，中栏接收右栏顶层端口的拖放，确认后生成 XDC。AD 在确认时保存选择和绑定；RTL 右键与命令入口使用相同界面，确认时弹出保存对话框。总线拖放同步绑定 P/N；AD 的 XDC 默认与 RTL 使用相同目录和文件主名，在 AD 树下并列显示。插件只打包通用接口。
 
 引脚绑定首版支持 AU15P 的 GPIO/LVDS 与专用 GT 封装位置；DDR/MIPI 数据线需 IP 电气规则，暂不导出。详见 [引脚绑定说明](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md)。
 

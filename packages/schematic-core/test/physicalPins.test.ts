@@ -18,6 +18,37 @@ const video = {
     differentialPairs: [0, 1, 2].map(i => ({ positive: `data${i}_p`, negative: `data${i}_n` })),
     bus: { data_p: ['data2_p', 'data1_p', 'data0_p'], data_n: ['data2_n', 'data1_n', 'data0_n'] },
 };
+
+test('selection reserves pins before assignments and closes mandatory groups transitively', () => {
+    const model = { ...board, differentialPairs: undefined,
+        interfaces: [{ id: 'A', definition: 'header.json' }, { id: 'B', definition: 'header.json' }],
+        routes: ['A', 'B'].flatMap(iface => ['a', 'b', 'c'].map((member, i) => ({ interface: iface, member, pin: `A${i + 1}` }))),
+    };
+    const header = { kind: 'expansion', signals: ['a', 'b', 'c'], groups: [
+        { id: 'ab', members: ['a', 'b'], selection: 'together' }, { id: 'bc', members: ['b', 'c'], selection: 'together' },
+    ] };
+    const catalog = pins.createPhysicalBoard(model, { 'header.json': header });
+    const initial = { board: 'user:test', bindings: [] };
+    const selected = pins.setPhysicalSelection(catalog, initial, 'A', ['a'], true);
+    assert.deepEqual(selected.selections, [{ interface: 'A', members: ['a', 'b', 'c'] }]);
+    assert.deepEqual(selected.bindings, [], 'selection must not assign RTL ports');
+    assert.throws(() => pins.setPhysicalSelection(catalog, selected, 'B', ['c'], true), /Pin conflict/);
+    const released = pins.setPhysicalSelection(catalog, selected, 'A', ['c'], false);
+    assert.deepEqual(released.selections, []);
+    assert.equal(pins.setPhysicalSelection(catalog, released, 'B', ['a'], true).selections?.[0].interface, 'B');
+    const errors = pins.generateXdc(catalog, selected, []).diagnostics;
+    assert.ok(errors.some(d => /Unassigned/.test(d.message)));
+});
+
+test('selection checks Bank voltage and pairs without reserving unused expansion mates', () => {
+    const header = expansion();
+    const selected = pins.setPhysicalSelection(header, { board: 'user:test', bindings: [] }, 'VIDEO', ['data0_p'], true);
+    assert.deepEqual(selected.selections?.[0].members, ['data0_p']);
+    const tooHigh = { ...header, model: { ...header.model, rails: [{ id: 'v', millivolts: 3300 }] } };
+    assert.throws(() => pins.setPhysicalSelection(tooHigh, { board: 'user:test', bindings: [] }, 'VIDEO', ['data0_p'], true), /voltage/);
+    const fixed = pins.createPhysicalBoard(board, { 'video.json': video });
+    assert.deepEqual(pins.setPhysicalSelection(fixed, { board: 'user:test', bindings: [] }, 'VIDEO', ['data2_p'], true).selections?.[0].members, ['data2_p', 'data2_n']);
+});
 test('one differential bus binding maps P/N by declared HDL indices and exports six pins', () => {
     assert.equal(typeof pins.bindPhysicalSignal, 'function');
     const catalog = pins.createPhysicalBoard(board, { 'video.json': video });
@@ -156,7 +187,7 @@ test('actual AU15P HDMI maps six balls and requires actual J22/Bank settings; sh
 });
 test('AD physical bindings round trip, stay outside RTL fingerprint, and follow scalar changes', () => {
     const base = { ...createEmptyArchDesign('top'), ports: [{ name: 'gpio', direction: 'output' as const }] };
-    const physical = { board: 'board.json', bindings: [{ source: { interface: 'J16', member: '5' }, port: { name: 'gpio' } }] };
+    const physical = { board: 'user:board', selections: [{ interface: 'J16', members: ['5'] }], bindings: [{ source: { interface: 'J16', member: '5' }, port: { name: 'gpio' } }] };
     const stored = applyArchDesignEdit(base, { type: 'setPhysical', physical });
     const parsed = parseArchDesignText(serializeArchDesign(stored));
     assert.equal(parsed.status, 'editable');

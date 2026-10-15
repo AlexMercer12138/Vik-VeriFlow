@@ -17,6 +17,7 @@ export type PhysicalBinding = Readonly<{
 }>;
 export type PhysicalConfiguration = Readonly<{
     board: string;
+    selections?: readonly { interface: string; members: readonly string[] }[];
     boardSettings?: readonly {
         selector: string;
         value: string;
@@ -117,9 +118,19 @@ function records(value: Record<string, unknown>, field: string, allowed: string[
 const signalKey = (iface: string, member: string): string => JSON.stringify([iface, member]);
 export function parsePhysicalConfiguration(value: unknown): PhysicalConfiguration {
     requireValue(object(value), 'Physical configuration must be an object');
-    keys(value, ['board', 'boardSettings', 'railVoltages', 'bindings']);
+    keys(value, ['board', 'selections', 'boardSettings', 'railVoltages', 'bindings']);
     requireValue(typeof value.board === 'string' && value.board.length > 0 && !/[\r\n\0]/.test(value.board), 'Choose a board');
     requireValue(Array.isArray(value.bindings) && value.bindings.length <= 50000, 'Invalid pin bindings');
+    if (value.selections !== undefined) {
+        requireValue(Array.isArray(value.selections) && value.selections.length <= 4096, 'Invalid physical selections');
+        for (const selection of value.selections) {
+            requireValue(object(selection), 'Invalid physical selection');
+            keys(selection, ['interface', 'members']);
+            requireValue(typeof selection.interface === 'string' && id.test(selection.interface) && Array.isArray(selection.members) && selection.members.length > 0 && selection.members.length <= 50000 && selection.members.every(m => typeof m === 'string' && id.test(m)), 'Invalid physical selection');
+            unique(selection.members as string[], 'selected signal');
+        }
+        unique(value.selections.map(s => s.interface as string), 'selected interface');
+    }
     for (const binding of value.bindings) {
         requireValue(object(binding) && object(binding.source) && object(binding.port), 'Invalid pin binding');
         keys(binding, ['source', 'port']);
@@ -312,6 +323,45 @@ export function physicalGroupMembers(def: PhysicalInterface, group?: string): st
     requireValue(selection, 'Unknown signal group');
     return [...new Set(selection.members.flatMap(member => physicalSignalMembers(def, member)))];
 }
+export function physicalSelectionMembers(configuration: PhysicalConfiguration, iface: string): readonly string[] {
+    return configuration.selections?.find(s => s.interface === iface)?.members ??
+        (configuration.selections === undefined ? [...new Set(configuration.bindings.filter(b => b.source.interface === iface).map(b => b.source.member))] : []);
+}
+/** Reserve hardware independently from RTL assignments, including transitive mandatory groups. */
+export function setPhysicalSelection(board: PhysicalBoard, configuration: PhysicalConfiguration, iface: string, requested: readonly string[], checked: boolean): PhysicalConfiguration {
+    const def = board.definitions[iface];
+    requireValue(def && requested.length > 0 && requested.every(m => physicalMembers(def).includes(m)), 'Unknown physical selection');
+    const closure = new Set(requested);
+    let size: number;
+    do {
+        size = closure.size;
+        const units = [...(def.groups ?? []).filter(g => g.selection === 'together').map(g => g.members.flatMap(m => physicalSignalMembers(def, m))),
+            ...(def.kind === 'fixed' ? physicalPairs(def).map(p => [p.positive, p.negative]) : [])];
+        for (const unit of units)
+            if (unit.some(m => closure.has(m))) unit.forEach(m => closure.add(m));
+    } while (size !== closure.size);
+    const selected = new Set(physicalSelectionMembers(configuration, iface));
+    for (const member of closure) checked ? selected.add(member) : selected.delete(member);
+    const selections = board.model.interfaces.map(instance => ({ interface: instance.id,
+        members: instance.id === iface ? physicalMembers(def).filter(m => selected.has(m)) : [...physicalSelectionMembers(configuration, instance.id)] })).filter(s => s.members.length);
+    const next: PhysicalConfiguration = { ...configuration, selections,
+        bindings: configuration.bindings.filter(b => selections.some(s => s.interface === b.source.interface && s.members.includes(b.source.member))) };
+    if (checked) {
+        const ports: PhysicalPort[] = [], bindings: PhysicalBinding[] = [];
+        for (const selection of selections) {
+            const definition = board.definitions[selection.interface], instance = board.model.interfaces.find(i => i.id === selection.interface)!;
+            const role = instance.function ?? Object.keys(definition.function ?? {})[0];
+            for (const member of selection.members) {
+                const name = `selected_${ports.length}`;
+                ports.push({ name, direction: definition.kind === 'fixed' ? memberDirection(definition, role, member)! : 'inout' });
+                bindings.push({ source: { interface: selection.interface, member }, port: { name } });
+            }
+        }
+        const errors = generateXdc(board, { ...next, selections: undefined, bindings }, ports).diagnostics.filter(d => d.severity === 'error');
+        requireValue(!errors.length, errors.map(d => d.message).join('\n'));
+    }
+    return next;
+}
 /** Group selection reuses manual mappings and fills the remaining ports by unambiguous names. */
 export function bindPhysicalGroup(board: PhysicalBoard, ports: readonly PhysicalPort[], iface: string, group?: string, existing: readonly PhysicalBinding[] = []): PhysicalBinding[] {
     const def = board.definitions[iface];
@@ -340,6 +390,18 @@ export function generateXdc(board: PhysicalBoard, configuration: PhysicalConfigu
     const error = (message: string): void => { diagnostics.push({ severity: 'error', message }); };
     const warn = (message: string): void => { diagnostics.push({ severity: 'warning', message }); };
     const config = parsePhysicalConfiguration(configuration), model = board.model;
+    if (config.selections !== undefined) {
+        for (const selection of config.selections)
+            for (const member of selection.members) {
+                if (!board.definitions[selection.interface] || !physicalMembers(board.definitions[selection.interface]).includes(member))
+                    error(`Unknown selected signal: ${selection.interface}.${member}`);
+                if (!config.bindings.some(b => b.source.interface === selection.interface && b.source.member === member))
+                    error(`Unassigned signal: ${selection.interface}.${member}`);
+            }
+        for (const binding of config.bindings)
+            if (!physicalSelectionMembers(config, binding.source.interface).includes(binding.source.member))
+                error(`Signal is not selected: ${binding.source.interface}.${binding.source.member}`);
+    }
     try {
         unique(config.boardSettings?.map(s => s.selector) ?? [], 'jumper setting');
         unique(config.railVoltages?.map(s => s.rail) ?? [], 'rail setting');

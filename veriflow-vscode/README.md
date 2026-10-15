@@ -32,7 +32,7 @@ Select **Create Architecture Design** under **Architecture Design** in the sideb
 
 - Automatically recognizes **APB, AHB, and AXI** bus interfaces for quick master/slave connections.
 - Built-in **Logic Utility** components provide common combinational logic for more flexible connections.
-- **Pins / XDC** selects a user-defined workspace board, binds top-level ports, and exports XDC. Only reusable interface definitions ship with the extension; boards and daughtercards stay in the user's project. Board interfaces can reference `library:interfaces/uart.fixed.json` or a relative custom definition. AD stores bindings; RTL files offer a temporary tool from context menus or the command palette. Bus dragging also binds matching P/N ports. XDC follows the RTL output stem and appears beside RTL in the AD tree.
+- **Pins / XDC** shares saved boards between projects through `~/.veriflow_config.json`. Import a board once, select its interfaces on the left, assign top-level ports in the middle by dragging from the right, then confirm to generate XDC. Selection locks conflicting pins and mandatory groups before assignment. AD saves selections and bindings only on confirmation; RTL uses the same temporary tool with a save dialog. Bus dragging also binds matching P/N ports. AD XDC follows the RTL output stem and appears beside RTL in the AD tree. Only reusable interface definitions ship with the extension.
 
 The first device rules cover AU15P GPIO/LVDS and dedicated GT package locations. DDR/MIPI data pins require IP electrical rules and currently block export. See the [pin binding guide](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md).
 

@@ -69,5 +69,19 @@
       ],
       "selection": "together"
     }
-  ]
+  ],
+  "bus": {
+    "txd": [
+      "txd3",
+      "txd2",
+      "txd1",
+      "txd0"
+    ],
+    "rxd": [
+      "rxd3",
+      "rxd2",
+      "rxd1",
+      "rxd0"
+    ]
+  }
 }

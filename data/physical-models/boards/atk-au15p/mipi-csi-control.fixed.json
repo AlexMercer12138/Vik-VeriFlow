@@ -1,0 +1,37 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "sda",
+    "scl",
+    "pwdn",
+    "reset_n",
+    "mclk"
+  ],
+  "function": {
+    "mipi-csi-control": {
+      "sda": "inout",
+      "scl": "inout",
+      "pwdn": "output",
+      "reset_n": "output",
+      "mclk": "output"
+    }
+  },
+  "groups": [
+    {
+      "id": "i2c",
+      "members": [
+        "scl",
+        "sda"
+      ],
+      "selection": "together"
+    },
+    {
+      "id": "control",
+      "members": [
+        "pwdn",
+        "reset_n",
+        "mclk"
+      ]
+    }
+  ]
+}

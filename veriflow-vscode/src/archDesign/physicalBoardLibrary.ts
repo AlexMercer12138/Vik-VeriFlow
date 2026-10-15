@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
@@ -12,15 +11,6 @@ export type SavedPhysicalBoard = {
     definitions: Record<string, PhysicalInterface>;
 };
 const identifier = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
-export function verifiedPhysicalBoard(model: unknown, definitions: Record<string, unknown>): PhysicalBoard {
-    const board = createPhysicalBoard(model, definitions);
-    // Include resolved definitions, so moving files preserves the verified hardware identity.
-    const hardware = { ...board.model, interfaces: board.model.interfaces.map(instance => ({ ...instance, definition: definitions[instance.definition] })) };
-    const canonical = JSON.stringify(hardware, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
-        ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
-    if (createHash('sha256').update(canonical).digest('hex') === '152e79899337f2d5e1566e4953f8ec835410dd225daed97e82d1519a71314f94') board.profile = 'atk-au15p';
-    return board;
-}
 export async function readPhysicalBoardFile(file: string, interfaceRoot: string, sources?: (files: string[]) => void): Promise<Omit<SavedPhysicalBoard, 'id' | 'name'>> {
     const model = JSON.parse(await readFile(file, 'utf8')) as PhysicalBoardModel;
     if (!Array.isArray(model?.interfaces)) throw new Error('Board is missing interfaces');
@@ -36,7 +26,7 @@ export async function readPhysicalBoardFile(file: string, interfaceRoot: string,
         files.push(target); sources?.(files);
         definitions[reference] = JSON.parse(await readFile(target, 'utf8'));
     }
-    verifiedPhysicalBoard(model, definitions);
+    createPhysicalBoard(model, definitions);
     return { model, definitions };
 }
 export class UserPhysicalBoardLibrary {
@@ -61,19 +51,28 @@ export class UserPhysicalBoardLibrary {
         for (const item of config.boards) {
             if (!item || typeof item.id !== 'string' || !identifier.test(item.id) || typeof item.name !== 'string' || !item.name.trim() || !item.definitions || ids.has(item.id))
                 throw new Error('Invalid or duplicate saved board');
-            verifiedPhysicalBoard(item.model, item.definitions); ids.add(item.id);
+            this.resolve(item); ids.add(item.id);
         }
         return config.boards as SavedPhysicalBoard[];
+    }
+    private resolve(saved: SavedPhysicalBoard): PhysicalBoard {
+        const definitions = { ...saved.definitions };
+        for (const instance of saved.model.interfaces) {
+            if (!/^library:interfaces\/[A-Za-z0-9_][A-Za-z0-9_.-]*\.json$/.test(instance.definition)) continue;
+            definitions[instance.definition] = JSON.parse(readFileSync(path.join(this.options.interfaceRoot, instance.definition.slice('library:interfaces/'.length)), 'utf8'));
+        }
+        return createPhysicalBoard(saved.model, definitions);
     }
     list(): SavedPhysicalBoard[] { return this.records(this.config()); }
     load(id: string): PhysicalBoard {
         const saved = this.list().find(board => board.id === id);
         if (!saved) throw new Error('User board not found: ' + id);
-        return verifiedPhysicalBoard(saved.model, saved.definitions);
+        return this.resolve(saved);
     }
     ensureFile(): void { this.store.save(this.config()); }
     async importBoard(file: string, name?: string, requestedId?: string): Promise<string> {
         const data = await readPhysicalBoardFile(file, this.options.interfaceRoot);
+        data.definitions = Object.fromEntries(Object.entries(data.definitions).filter(([reference]) => !reference.startsWith('library:interfaces/')));
         const config = this.config(), records = this.records(config);
         const stem = path.basename(file, '.json'), base = stem === 'board' ? path.basename(path.dirname(file)) : stem;
         const candidate = base.replace(/[^A-Za-z0-9_.-]/g, '_') || 'board';

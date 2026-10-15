@@ -7,7 +7,7 @@ const { createRequire } = require('node:module');
 const root = path.resolve(__dirname, '..');
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 const Ajv = createRequire(path.join(root, 'veriflow-vscode/package.json'))('ajv');
-const schema = read(path.join(root, 'docs/schemas/physical-interface-model.schema.json'));
+const schema = read(path.join(root, 'data/physical-models/schemas/physical-interface-model.schema.json'));
 const ajv = new Ajv({ strict: false, allErrors: true });
 const shape = ajv.compile(schema);
 const documents = new Map();
@@ -22,8 +22,9 @@ function collect(directory) {
         }
     }
 }
-collect(path.join(root, 'docs/examples/physical-interfaces'));
-collect(path.join(root, 'docs/boards'));
+collect(path.join(root, 'data/physical-models/interfaces'));
+collect(path.join(root, 'data/physical-models/boards'));
+collect(path.join(root, 'data/physical-models/examples'));
 const unique = items => assert.equal(new Set(items).size, items.length, 'Duplicate ID');
 const byId = items => { unique(items.map(item => item.id)); return new Map(items.map(item => [item.id, item])); };
 const signalMembers = (def, signal) => {
@@ -39,7 +40,7 @@ const pairs = def => (def.differentialPairs ?? []).flatMap(pair => {
 const direction = (def, role, member) => def.function[role][def.signals.find(signal => signalMembers(def, signal).includes(member))];
 function resolve(owner, reference, kind) {
     const file = reference.startsWith('library:interfaces/')
-        ? path.join(root, 'docs/examples/physical-interfaces', reference.slice('library:interfaces/'.length))
+        ? path.join(root, 'data/physical-models/interfaces', reference.slice('library:interfaces/'.length))
         : path.resolve(path.dirname(owner), reference);
     const doc = documents.get(file);
     assert.ok(doc, `Missing model: ${file}`);
@@ -80,10 +81,6 @@ function expand(def, selection) {
     for (const member of selected) assert.ok(members(def).includes(member));
     return selected;
 }
-function states(selectors) {
-    return selectors.reduce((all, selector) => all.flatMap(state => selector.values.map(value => ({ ...state, [selector.id]: value }))), [{}]);
-}
-const active = (route, state) => (route.when ?? []).every(condition => state[condition.selector] === condition.value);
 for (const [file, doc] of documents) {
     if (['fixed', 'expansion'].includes(doc.kind)) {
         unique(doc.signals);
@@ -105,7 +102,7 @@ for (const [file, doc] of documents) {
         }
     } else if (doc.kind === 'board') {
         const pins = byId(doc.fpgaPins), banks = byId(doc.banks ?? []), rails = byId(doc.rails ?? []);
-        const interfaces = byId(doc.interfaces), selectors = byId(doc.selectors ?? []);
+        const interfaces = byId(doc.interfaces);
         checkPairs(doc.differentialPairs, [...pins.keys()]);
         for (const pair of doc.differentialPairs ?? []) assert.equal(pins.get(pair.positive).bank, pins.get(pair.negative).bank);
         for (const pin of pins.values()) if (pin.bank !== undefined) assert.ok(banks.has(pin.bank));
@@ -113,23 +110,17 @@ for (const [file, doc] of documents) {
         for (const route of doc.routes) {
             assert.ok(interfaces.has(route.interface) && pins.has(route.pin));
             assert.ok(members(definition(file, interfaces.get(route.interface))).includes(route.member));
-            unique((route.when ?? []).map(condition => condition.selector));
-            for (const condition of route.when ?? []) assert.ok(selectors.get(condition.selector)?.values.includes(condition.value));
         }
         for (const instance of interfaces.values()) {
             const def = definition(file, instance);
             const routes = doc.routes.filter(route => route.interface === instance.id);
             for (const member of members(def)) assert.ok(routes.some(route => route.member === member), `${file}: missing ${instance.id}.${member}`);
-            for (const state of states([...selectors.values()])) {
-                const available = routes.filter(route => active(route, state));
-                unique(available.map(route => route.member));
-                unique(available.map(route => route.pin));
-                for (const pair of pairs(def)) {
-                    const p = available.find(route => route.member === pair.positive);
-                    const n = available.find(route => route.member === pair.negative);
-                    assert.equal(Boolean(p), Boolean(n), 'Only one leg of a physical pair is connected');
-                    if (p) assert.ok(doc.differentialPairs?.some(pair => pair.positive === p.pin && pair.negative === n.pin), `${file}: pair polarity at ${instance.id}`);
-                }
+            unique(routes.map(route => route.member));
+            unique(routes.map(route => route.pin));
+            for (const pair of pairs(def)) {
+                const p = routes.find(route => route.member === pair.positive), n = routes.find(route => route.member === pair.negative);
+                assert.ok(p && n, 'Both differential legs must be mapped');
+                assert.ok(doc.differentialPairs?.some(pair => pair.positive === p.pin && pair.negative === n.pin), file + ': pair polarity');
             }
         }
         unique((doc.clocks ?? []).map(clock => `${clock.interface}.${clock.member}`));
@@ -180,8 +171,6 @@ for (const [file, doc] of documents) {
             }
         }
         unique(slots);
-        unique((doc.boardSettings ?? []).map(setting => setting.selector));
-        for (const setting of doc.boardSettings ?? []) assert.ok(board.selectors?.some(item => item.id === setting.selector && item.values.includes(setting.value)));
         unique((doc.railVoltages ?? []).map(setting => setting.rail));
         for (const setting of doc.railVoltages ?? []) {
             const rail = board.rails?.find(item => item.id === setting.rail);
@@ -200,7 +189,7 @@ for (const [file, doc] of documents) {
 }
 
 // Independent schematic spot checks: CORE 2/3/5/9 and BASE 1/2/3/9/10/11.
-const boardFile = path.join(root, 'docs/boards/atk-au15p/board.json');
+const boardFile = path.join(root, 'data/physical-models/boards/atk-au15p/board.json');
 const board = documents.get(boardFile);
 const pin = (iface, member) => board.routes.find(route => route.interface === iface && route.member === member)?.pin;
 for (const [iface, member, ball] of [
@@ -215,34 +204,28 @@ for (const [iface, member, ball] of [
     ['QSFP','rx1_p','M2'], ['QSFP','refclk_p','M7'], ['SD','clk','A12'], ['SD','cmd','A13'],
     ['CAN1','tx','J10'], ['RS4851','rx','K10'], ['J19','RXD','J11']
 ]) assert.equal(pin(iface, member), ball, `${iface}.${member}`);
-assert.equal(board.interfaces.length, 19); assert.equal(board.fpgaPins.length, 274); assert.equal(board.routes.length, 302);
+assert.equal(board.interfaces.length, 21); assert.equal(board.fpgaPins.length, 274); assert.equal(board.routes.length, 302);
 assert.deepEqual(board.clocks.map(clock => clock.frequencyHz), [100000000, 156250000]);
-assert.deepEqual(board.banks.filter(bank => Number(bank.id) >= 224), [{id:'224'},{id:'225'},{id:'226'}]);
+assert.deepEqual(board.banks.filter(bank => Number(bank.id) >= 224).map(({ type, ...bank }) => bank), [{id:'224'},{id:'225'},{id:'226'}]);
 for (const [id, mv] of [['VCCIO_B64',[1200,1800]], ['VCCIO_B65',[1200,1800]], ['DDR_1V2',1200], ['VCCIO_B84',3300], ['VCCIO_B85',[1800,2500,3300]], ['VCCIO_B86',[1800,2500,3300]]]) assert.deepEqual(board.rails.find(rail => rail.id === id).millivolts, mv);
-const header = documents.get(path.join(path.dirname(boardFile), 'header40.expansion.json'));
+const header = documents.get(path.join(root, 'data/physical-models/interfaces/header40.expansion.json'));
 assert.equal(header.signals.length, 36); assert.equal(header.differentialPairs.length, 18);
 assert.deepEqual([...expand(header, {members:['5']})], ['5']); // A single-ended use does not occupy its mate.
 assert.ok(header.differentialPairs.some(pair => pair.positive === '5' && pair.negative === '7'));
-const fmc = documents.get(path.join(path.dirname(boardFile), 'fmc-lpc.expansion.json'));
+const fmc = documents.get(path.join(root, 'data/physical-models/interfaces/fmc-lpc.expansion.json'));
 assert.equal(fmc.signals.length, 75); assert.equal(fmc.differentialPairs.length, 36);
 assert.ok(!fmc.signals.some(signal => signal.startsWith('DP')));
-const hdmi = documents.get(path.join(path.dirname(boardFile), 'hdmi-tmds.fixed.json'));
+const hdmi = documents.get(path.join(root, 'data/physical-models/interfaces/hdmi-tmds.fixed.json'));
 assert.deepEqual([...expand(hdmi, {members:['data0_p']})], ['data0_p','data0_n']);
 assert.equal(expand(hdmi, {groups:['tmds']}).size, 8);
 assert.equal(hdmi.signals.length, 8); // No invented DDC, HPD or CEC wires.
-const enabled = (iface, state) => board.routes.filter(route => route.interface === iface && active(route, state));
-assert.equal(enabled('HDMI_OUT', {}).length, 0); // Unknown jumper state is not silently inferred.
-assert.equal(enabled('HDMI_OUT', {J22:'hdmi'}).length, 8);
-assert.equal(enabled('HDMI_OUT', {J22:'dsi'}).length, 0);
-assert.equal(enabled('MIPI_DSI', {J22:'hdmi'}).length, 8); // Clock and controls are wired directly.
-assert.equal(enabled('MIPI_DSI', {J22:'dsi'}).length, 16);
-assert.equal(enabled('CAN1', {J17:'can'}).length, 2);
-assert.equal(enabled('CAN1', {J17:'atk'}).length, 0);
-assert.equal(enabled('RS4851', {J18:'rs485'}).length, 2);
-assert.equal(enabled('J19', {J17:'atk',J18:'atk'}).length, 4);
+assert.equal(board.selectors, undefined);
+assert.ok(board.routes.every(route => route.when === undefined));
+assert.equal(board.routes.filter(route => route.interface === 'HDMI_OUT').length, 8);
+assert.equal(board.routes.filter(route => route.interface === 'MIPI_DSI').length, 10);
 assert.equal(pin('CAN1','tx'), pin('J16','8')); // Jumpers do not disconnect J16.
 assert.equal(pin('SD','cmd'), pin('J16','31'));
-assert.equal(pin('MIPI_DSI','tp_scl'), pin('J16','39'));
+assert.equal(pin('MIPI_DSI_CTRL','tp_scl'), pin('J16','39'));
 assert.equal(pin('FMC_LPC','SCL'), pin('I2C4','scl'));
 for (const [target, key, value] of [
     [board, 'ioStandards', {}], [board.fpgaPins[0], 'allowedIoStandards', ['LVCMOS33']],
@@ -260,12 +243,12 @@ for (const reference of ['../uart.fixed.json', 'library:interfaces/uart.fixed.js
 for (const reference of ['library:interfaces/../boards/board.json', 'library:boards/board.json', 'https://example.com/uart.json', 'D:/uart.json', '/uart.json', 'uart\n.json']) {
     const copy = structuredClone(board); copy.interfaces[0].definition = reference; assert.equal(shape(copy), false, `Accepted invalid interface reference: ${reference}`);
 }
-const assembly = structuredClone(documents.get(path.join(root, 'docs/examples/physical-interfaces/demo.assembly.json')));
+const assembly = structuredClone(documents.get(path.join(root, 'data/physical-models/examples/demo.assembly.json')));
 assembly.bindings[0].ioStandard = 'TMDS_33'; assert.equal(shape(assembly), false);
 for (const match of fs.readFileSync(path.join(root, 'docs/physical-interface-model.md'), 'utf8').matchAll(/```json\s*([\s\S]*?)```/g)) {
     const doc = JSON.parse(match[1]);
     const validate = doc.kind ? shape : ajv.getSchema(`${schema.$id}#/definitions/${doc.pin ? 'boardRoute' : 'binding'}`);
     assert.ok(validate(doc), JSON.stringify(validate.errors));
 }
-console.log(`Validated ${documents.size} model JSON files: schema, references, signals/roles, groups, pairs, Banks/rails, routes, selectors, clocks and assembly links.`);
-console.log('AU15P: 19 interfaces, 274 package pins, 302 routes; schematic spot checks, selectable voltages, split expansion pairs and rejection of generator fields passed.');
+console.log(`Validated ${documents.size} model JSON files: schema, references, signals/roles, groups, pairs, Banks/rails, routes, clocks and assembly links.`);
+console.log('AU15P: 21 interfaces, 274 package pins, 302 routes; schematic spot checks, selectable voltages, split expansion pairs and rejection of generator fields passed.');

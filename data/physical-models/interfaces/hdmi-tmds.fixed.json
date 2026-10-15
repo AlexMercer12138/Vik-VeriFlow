@@ -20,6 +20,16 @@
       "data2_n": "output",
       "clock_p": "output",
       "clock_n": "output"
+    },
+    "hdmi-sink": {
+      "data0_p": "input",
+      "data0_n": "input",
+      "data1_p": "input",
+      "data1_n": "input",
+      "data2_p": "input",
+      "data2_n": "input",
+      "clock_p": "input",
+      "clock_n": "input"
     }
   },
   "groups": [

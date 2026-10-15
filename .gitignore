@@ -41,5 +41,5 @@ Thumbs.db
 superpowers/
 .veriflow/runs/
 .veriflow/cache/
-# Built-in physical model library is copied from docs during extension build.
+# Built-in interface library is copied from data/physical-models during extension build.
 veriflow-vscode/resources/physical-models/

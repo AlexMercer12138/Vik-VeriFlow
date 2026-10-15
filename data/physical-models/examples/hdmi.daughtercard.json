@@ -9,7 +9,7 @@
   "interfaces": [
     {
       "id": "HDMI0",
-      "definition": "hdmi.fixed.json",
+      "definition": "library:interfaces/hdmi.fixed.json",
       "function": "hdmi-source"
     }
   ],

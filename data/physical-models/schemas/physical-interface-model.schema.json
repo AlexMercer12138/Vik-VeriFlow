@@ -36,8 +36,13 @@
     },
     "interfaceDefinition": {
       "oneOf": [
-        { "$ref": "#/definitions/relativePath" },
-        { "type": "string", "pattern": "^library:interfaces/[A-Za-z0-9_][A-Za-z0-9_.-]*\\.json$" }
+        {
+          "$ref": "#/definitions/relativePath"
+        },
+        {
+          "type": "string",
+          "pattern": "^library:interfaces/[A-Za-z0-9_][A-Za-z0-9_.-]*\\.json$"
+        }
       ]
     },
     "pair": {
@@ -123,6 +128,14 @@
         },
         "supplyRail": {
           "$ref": "#/definitions/id"
+        },
+        "type": {
+          "enum": [
+            "hp",
+            "hr",
+            "hd",
+            "gt"
+          ]
         }
       },
       "required": [
@@ -147,6 +160,9 @@
         },
         "reservation": {
           "$ref": "#/definitions/reservation"
+        },
+        "clockCapable": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -173,45 +189,6 @@
       ],
       "additionalProperties": false
     },
-    "selector": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "$ref": "#/definitions/id"
-        },
-        "values": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        }
-      },
-      "required": [
-        "id",
-        "values"
-      ],
-      "additionalProperties": false
-    },
-    "when": {
-      "type": "object",
-      "properties": {
-        "selector": {
-          "$ref": "#/definitions/id"
-        },
-        "value": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "selector",
-        "value"
-      ],
-      "additionalProperties": false
-    },
     "boardRoute": {
       "type": "object",
       "properties": {
@@ -223,13 +200,6 @@
         },
         "pin": {
           "$ref": "#/definitions/memberId"
-        },
-        "when": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/when"
-          },
-          "minItems": 1
         }
       },
       "required": [
@@ -368,23 +338,6 @@
       "required": [
         "source",
         "port"
-      ],
-      "additionalProperties": false
-    },
-    "setting": {
-      "type": "object",
-      "properties": {
-        "selector": {
-          "$ref": "#/definitions/id"
-        },
-        "value": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "selector",
-        "value"
       ],
       "additionalProperties": false
     },
@@ -586,13 +539,6 @@
           },
           "minItems": 1
         },
-        "selectors": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/selector"
-          },
-          "minItems": 1
-        },
         "routes": {
           "type": "array",
           "items": {
@@ -670,13 +616,6 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/mount"
-          },
-          "minItems": 1
-        },
-        "boardSettings": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/setting"
           },
           "minItems": 1
         },

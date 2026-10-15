@@ -227,5 +227,47 @@
       "positive": "tx7_p",
       "negative": "tx7_n"
     }
-  ]
+  ],
+  "bus": {
+    "rx_p": [
+      "rx7_p",
+      "rx6_p",
+      "rx5_p",
+      "rx4_p",
+      "rx3_p",
+      "rx2_p",
+      "rx1_p",
+      "rx0_p"
+    ],
+    "rx_n": [
+      "rx7_n",
+      "rx6_n",
+      "rx5_n",
+      "rx4_n",
+      "rx3_n",
+      "rx2_n",
+      "rx1_n",
+      "rx0_n"
+    ],
+    "tx_p": [
+      "tx7_p",
+      "tx6_p",
+      "tx5_p",
+      "tx4_p",
+      "tx3_p",
+      "tx2_p",
+      "tx1_p",
+      "tx0_p"
+    ],
+    "tx_n": [
+      "tx7_n",
+      "tx6_n",
+      "tx5_n",
+      "tx4_n",
+      "tx3_n",
+      "tx2_n",
+      "tx1_n",
+      "tx0_n"
+    ]
+  }
 }

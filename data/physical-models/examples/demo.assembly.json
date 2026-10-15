@@ -17,12 +17,6 @@
       ]
     }
   ],
-  "boardSettings": [
-    {
-      "selector": "JP1",
-      "value": "header"
-    }
-  ],
   "selections": [
     {
       "interface": {

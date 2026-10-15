@@ -1,41 +1,29 @@
 {
   "kind": "fixed",
   "signals": [
-    "d0_p",
-    "d0_n",
     "d1_p",
     "d1_n",
+    "d0_p",
+    "d0_n",
     "d2_p",
     "d2_n",
     "d3_p",
     "d3_n",
     "clk_p",
-    "clk_n",
-    "reset_n",
-    "backlight",
-    "tp_int_n",
-    "tp_scl",
-    "tp_sda",
-    "tp_reset_n"
+    "clk_n"
   ],
   "function": {
-    "mipi-dsi-transmitter": {
-      "d0_p": "output",
-      "d0_n": "output",
-      "d1_p": "output",
-      "d1_n": "output",
-      "d2_p": "output",
-      "d2_n": "output",
-      "d3_p": "output",
-      "d3_n": "output",
-      "clk_p": "output",
-      "clk_n": "output",
-      "reset_n": "output",
-      "backlight": "output",
-      "tp_int_n": "input",
-      "tp_scl": "inout",
-      "tp_sda": "inout",
-      "tp_reset_n": "output"
+    "mipi-csi-receiver": {
+      "d1_p": "input",
+      "d1_n": "input",
+      "d0_p": "input",
+      "d0_n": "input",
+      "d2_p": "input",
+      "d2_n": "input",
+      "d3_p": "input",
+      "d3_n": "input",
+      "clk_p": "input",
+      "clk_n": "input"
     }
   },
   "groups": [
@@ -73,22 +61,6 @@
         "d3_p",
         "d3_n"
       ]
-    },
-    {
-      "id": "control",
-      "members": [
-        "reset_n",
-        "backlight"
-      ]
-    },
-    {
-      "id": "touch",
-      "members": [
-        "tp_int_n",
-        "tp_scl",
-        "tp_sda",
-        "tp_reset_n"
-      ]
     }
   ],
   "differentialPairs": [
@@ -112,5 +84,19 @@
       "positive": "d3_p",
       "negative": "d3_n"
     }
-  ]
+  ],
+  "bus": {
+    "data_p": [
+      "d3_p",
+      "d2_p",
+      "d1_p",
+      "d0_p"
+    ],
+    "data_n": [
+      "d3_n",
+      "d2_n",
+      "d1_n",
+      "d0_n"
+    ]
+  }
 }

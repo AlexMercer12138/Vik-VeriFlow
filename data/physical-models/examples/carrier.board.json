@@ -85,44 +85,23 @@
   "interfaces": [
     {
       "id": "UART0",
-      "definition": "uart.fixed.json"
+      "definition": "library:interfaces/uart.fixed.json"
     },
     {
       "id": "J1",
       "definition": "header40.expansion.json"
     }
   ],
-  "selectors": [
-    {
-      "id": "JP1",
-      "values": [
-        "uart",
-        "header"
-      ]
-    }
-  ],
   "routes": [
     {
       "interface": "UART0",
       "member": "tx",
-      "pin": "A9",
-      "when": [
-        {
-          "selector": "JP1",
-          "value": "uart"
-        }
-      ]
+      "pin": "A9"
     },
     {
       "interface": "UART0",
       "member": "rx",
-      "pin": "A10",
-      "when": [
-        {
-          "selector": "JP1",
-          "value": "uart"
-        }
-      ]
+      "pin": "A10"
     },
     {
       "interface": "J1",
@@ -167,24 +146,12 @@
     {
       "interface": "J1",
       "member": "io0",
-      "pin": "A9",
-      "when": [
-        {
-          "selector": "JP1",
-          "value": "header"
-        }
-      ]
+      "pin": "A9"
     },
     {
       "interface": "J1",
       "member": "io1",
-      "pin": "A10",
-      "when": [
-        {
-          "selector": "JP1",
-          "value": "header"
-        }
-      ]
+      "pin": "A10"
     },
     {
       "interface": "J1",

@@ -31,7 +31,7 @@ export async function syncVscodeWebAssets(repositoryRoot = root) {
     await recreate(physicalModels);
     const interfaces = path.join(physicalModels, 'interfaces');
     await recreate(interfaces);
-    const source = path.join(repositoryRoot, 'docs', 'examples', 'physical-interfaces');
+    const source = path.join(repositoryRoot, 'data', 'physical-models', 'interfaces');
     for (const name of await readdir(source)) {
         if (!/\.(fixed|expansion)\.json$/.test(name)) continue;
         const file = path.join(source, name);

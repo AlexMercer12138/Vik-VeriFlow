@@ -1,39 +1,29 @@
 {
   "kind": "fixed",
   "signals": [
-    "d1_p",
-    "d1_n",
     "d0_p",
     "d0_n",
+    "d1_p",
+    "d1_n",
     "d2_p",
     "d2_n",
     "d3_p",
     "d3_n",
     "clk_p",
-    "clk_n",
-    "sda",
-    "scl",
-    "pwdn",
-    "reset_n",
-    "mclk"
+    "clk_n"
   ],
   "function": {
-    "mipi-csi-receiver": {
-      "d1_p": "input",
-      "d1_n": "input",
-      "d0_p": "input",
-      "d0_n": "input",
-      "d2_p": "input",
-      "d2_n": "input",
-      "d3_p": "input",
-      "d3_n": "input",
-      "clk_p": "input",
-      "clk_n": "input",
-      "sda": "inout",
-      "scl": "inout",
-      "pwdn": "output",
-      "reset_n": "output",
-      "mclk": "output"
+    "mipi-dsi-transmitter": {
+      "d0_p": "output",
+      "d0_n": "output",
+      "d1_p": "output",
+      "d1_n": "output",
+      "d2_p": "output",
+      "d2_n": "output",
+      "d3_p": "output",
+      "d3_n": "output",
+      "clk_p": "output",
+      "clk_n": "output"
     }
   },
   "groups": [
@@ -71,22 +61,6 @@
         "d3_p",
         "d3_n"
       ]
-    },
-    {
-      "id": "i2c",
-      "members": [
-        "scl",
-        "sda"
-      ],
-      "selection": "together"
-    },
-    {
-      "id": "control",
-      "members": [
-        "pwdn",
-        "reset_n",
-        "mclk"
-      ]
     }
   ],
   "differentialPairs": [
@@ -110,5 +84,19 @@
       "positive": "d3_p",
       "negative": "d3_n"
     }
-  ]
+  ],
+  "bus": {
+    "data_p": [
+      "d3_p",
+      "d2_p",
+      "d1_p",
+      "d0_p"
+    ],
+    "data_n": [
+      "d3_n",
+      "d2_n",
+      "d1_n",
+      "d0_n"
+    ]
+  }
 }

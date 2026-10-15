@@ -1,55 +1,57 @@
 # 引脚绑定与 XDC
 
-在 AD 编辑器点击 **Pins / XDC**，或在 Architecture Design 树中右键选择 **Board / Pin Bindings (AD)**。普通 `.v` / `.sv` 文件可以从资源管理器、编辑器右键菜单或命令面板执行 **VeriFlow: Generate Pin Constraints (XDC)**；文件含多个模块时先选择模块。
+AD 编辑器点击 **Pins / XDC**。普通 `.v` / `.sv` 文件通过资源管理器、编辑器右键或命令面板执行 **VeriFlow: Generate Pin Constraints (XDC)**；文件含多个模块时先选模块。AD 与 RTL 使用同一面板。
 
-板卡保存在现有用户配置 `~/.veriflow_config.json` 的 `boards` 数组中，任意工程均可使用。点击 **Import board…** 导入 `kind: "board"` 的 JSON；导入时解析并保存所需接口定义，原始文件移动或工程切换后仍可使用。**User board library** 打开该配置，可直接维护板卡。导入会保留已有库目录、语言、主题和其他配置。
+## 用户板卡库
 
-每条记录包含 `id`、`name`、`model`（原板卡硬件模型）与 `definitions`（按原定义引用索引的接口快照）。AD 使用 `user:<id>` 引用，例如 `user:atk-au15p`，不会复制工程相关路径。内置接口仍随插件提供，导入文件可以引用 `library:interfaces/uart.fixed.json` 或相对文件路径。
+板卡保存在 `~/.veriflow_config.json` 的 `boards` 数组，跨工程使用。**Import board…** 导入板卡 JSON；**User board library** 打开用户配置。导入保留已有语言、主题、库目录等设置。
 
-仓库的 `docs/boards/atk-au15p/board.json` 可通过导入加入用户板卡库。板卡不打包进 VSIX。旧 AD 的相对板卡路径仍可读取；旧 `library:boards/...` 引用需先导入板卡，再重新选择用户板卡。
+板卡记录包含 `id`、`name`、`model` 和 `definitions`。通用接口通过 `library:interfaces/<文件名>.json` 引用插件的正式接口库，不重复嵌入各板卡；`definitions` 只保存相对文件引用的板卡专用或用户自定义定义，原文件移动后仍可使用。AD 用 `user:<id>` 引用板卡。旧 AD 相对板卡路径仍可读取。
 
-## 绑定
+正式数据统一位于 [data/physical-models](../data/physical-models/README.md)。[AU15P 板卡](../data/physical-models/boards/atk-au15p/board.json) 可直接导入；板卡、子卡及示例不打包进 VSIX。
 
-1. 选择已保存的板卡，按实物设置可选电源轨电压和复用跳线。固定电压无需填写。
-2. **左栏选择接口**：可勾选整个接口、分组或单个信号。勾选立即预留物理引脚，与 RTL 命名、是否已分配端口无关。复用冲突、非法电压、未定跳线、禁止预留脚等会禁用对应选项，悬停可查看原因。必须整体选择的组和固定功能差分对会传递补齐；其中一脚冲突则整组禁用。取消选择释放引脚，并移除对应草稿映射。
-3. **中栏分配端口**：所选信号或总线显示分配位置；将右栏顶层端口拖入，也可使用下拉框，或先选端口再点击 **Bind**。右栏保留全部顶层端口并显示已绑定状态。取消绑定不会取消硬件选择。
-4. 检查问题并点击 **Confirm & Generate XDC**。所选信号必须全部分配；引脚/端口重复、方向/位宽不符、差分极性错误、电平及器件规则问题会阻止生成。警告级预留脚保留提示。
+## 操作
 
-绑定只引用硬件成员与 RTL 端口，板卡 JSON 继续只保存硬件事实。生成器根据器件、Bank、实际供电与接口用途选择约束。
+1. 选择板卡。上方为每条可调供电轨列出 Bank 电压，只能选板卡声明的值；固定电压显示文本。共用轨的 Bank 使用同一电压，没有跳线设置。
+2. 左侧勾选接口、组或信号，立即预留引脚。复用信号自动禁用；必须整体选择的组有一脚冲突时整组禁用。固定功能差分对共同选择，扩展差分对仍可拆为单端。
+3. 中间每个信号只占两行：第一行为信号/引脚/Bank，第二行为端口和 IO 标准两个下拉框。拖动右侧端口也能绑定。端口选择空项解除映射；没有 Bind / Clear 按钮。
+4. **先确定上方 Bank 电压，再选 IO 标准。** 候选按电压、器件 Bank 类型、方向和单端/差分用途过滤。3.3V HR/HD 单端为 `LVCMOS33`、`LVTTL`；AMD 实际标准名是 `LVTTL`。更换电压后，旧标准若不再适用会标为 unavailable 并阻止导出，用户重新选择。
+5. 点击 **Confirm & Generate XDC**。所选信号须全部分配并显式选标准；未知引脚、非法标准、方向/位宽/差分配对错误等阻止导出。
 
-固定接口的差分 `_p` / `_n` 端口自动一起绑定，要求相同的声明索引。例如拖放 `[2:0] tmds_data_p` 到 HDMI `data_p`，会同时绑定 `tmds_data_n[2:0]`，共六个物理脚。数组型 `bus` 按定义顺序对应声明索引；升序及非零起点同样支持。参数范围通过已有整数表达式解析器求值；未解析、多维或超过 4096 位的端口需要先调整范围。
+用户决定 HDMI 等接口实际采用的 IO 标准，生成器不按板卡名猜测电路。DCI、VREF、终端和 DDR/MIPI/GT 的 IP 参数须按实际设计配置；此工具生成所选的封装脚、IOSTANDARD 和已知板载时钟约束。
 
-扩展口的差分对仍可拆开使用。把单端端口绑定到 J16 的一个信号，只占用这一脚，生成对应单端标准；另一脚可独立绑定。子卡安装和功能映射尚未接入此版面板。
+## 总线与差分
 
-## AD 保存和路径
+接口 `bus` 支持位宽或按顺序列出的成员别名。`[2:0] tmds_data_p` 拖到 `data_p` 时，按声明索引顺序映射；存在对应 `tmds_data_n[2:0]` 时同时绑定 P/N 六脚。为固定差分总线选择标准会同步其对应 N/P 成员。端口向量、方向和极性均校验。
 
-选择、设置和端口分配先保留为面板草稿，不立即修改 AD；关闭面板会丢弃未确认的更改。确认时通过 VS Code 文档编辑写入绑定，可撤销/重做，保存 AD 成功后生成 XDC。已存在的人工约束文件会在提交草稿前报告冲突。`physical` 是 AD V2 的可选字段，包含用户板卡引用、`selections` 所选物理成员、实际电压/跳线与逐位绑定，不影响 RTL 语义指纹。旧文件未写 `selections` 时从已有绑定推断选择。通过编辑器重命名、删除顶层端口或公开接口前缀时，会同步更新或移除相应绑定；手工修改文本导致的失效绑定会在面板中报错，可用 **Unbind** 清除。
+## AD 持久化
+
+选择、分配和标准先作为面板草稿，确认前不改 AD。确认时写入 `physical` 并保存 AD，随后生成 XDC。文档更改和输出文件冲突会重新检查。
 
 ```jsonc
 "physical": {
   "board": "user:atk-au15p",
-  "selections": [{"interface": "HDMI_OUT", "members": ["data2_p", "data2_n"]}],
-  "boardSettings": [{"selector": "J22", "value": "hdmi"}],
   "railVoltages": [{"rail": "VCCIO_B64", "millivolts": 1800}],
+  "selections": [{"interface": "HDMI_OUT", "members": ["data2_p", "data2_n"]}],
+  "ioStandards": [
+    {"interface": "HDMI_OUT", "member": "data2_p", "standard": "LVDS"},
+    {"interface": "HDMI_OUT", "member": "data2_n", "standard": "LVDS"}
+  ],
   "bindings": [
-    {"source": {"interface": "HDMI_OUT", "member": "data2_p"}, "port": {"name": "tmds_data_p", "bit": 2}}
+    {"source": {"interface": "HDMI_OUT", "member": "data2_p"}, "port": {"name": "tmds_data_p", "bit": 2}},
+    {"source": {"interface": "HDMI_OUT", "member": "data2_n"}, "port": {"name": "tmds_data_n", "bit": 2}}
   ]
 }
 ```
 
-示例只展示一个绑定条目，实际差分对需要完整绑定。
+旧 AD 没有 `selections` 时从绑定推断；旧跳线设置读取后忽略，新保存不再写入。已有绑定没有 IO 标准时须在面板选择，避免静默猜测。
 
-XDC 默认使用 AD 的 RTL 输出目录和文件主名：`top.ad → top.v/top.xdc`；RTL 路径设为 `generated/video.sv` 时，默认约束为 `generated/video.xdc`。在 AD 属性面板设置 **XDC output path**，对应可选的 `export.xdcOutput`，路径相对 AD 文件解析。留空即恢复默认路径。RTL 与 XDC 在 AD 树下并列显示，尚未生成的路径也显示。
+XDC 跟随 AD 的 RTL 输出目录和文件主名，例如 `generated/video.sv` 对应 `generated/video.xdc`。AD 属性 **XDC output path** 可覆盖路径，对应 `export.xdcOutput`。RTL 与 XDC 在 AD 树下并列显示。
 
-RTL 快速工具使用完全相同的三栏界面，配置仅保留在当前面板，关闭后清空。确认时使用 VS Code 的 `showSaveDialog` 选择 XDC 文件名和路径，与新建 HDL/ST 等操作一致；取消对话框保留草稿且不生成文件。RTL 内容不会改动，也不创建绑定配置文件。生成的 XDC 带来源标记，只覆盖同一来源生成的 XDC；人工文件或其他来源的输出会报告冲突。
+## RTL 快速工具
 
-## 首版生成器范围
+RTL 配置只保留在当前面板，不修改 RTL、不生成绑定配置。确认时用 VS Code `showSaveDialog` 选择 XDC 路径和文件名，和项目已有文件保存操作一致。取消保存保留草稿。
 
-- 输出 XDC，当前器件规则为 AMD `xcau15p-ffvb676-2-i`。普通 GPIO 按实际 VCCO 选择 LVCMOS，HP Bank 校验 1.8 V 上限。
-- 固定差分信号在受支持的 HP Bank / 1.8 V 条件下使用 LVDS。仓库 ATK AU15P 示例的 HDMI_OUT 使用专门的 AC 耦合发送电路规则，并要求 `J22=hdmi`；不直接套用 `TMDS_33`。生成器通过硬件模型指纹识别已验证的电路，不依赖内置板卡文件。修改硬件模型后需重新验证专用规则；其他 HDMI 电路需要新增生成器规则。
-- QSFP/PCIe 的专用 GT 管脚只生成封装脚位置，不附加普通 GPIO IOSTANDARD。板载振荡器根据实际频率生成 `create_clock`。GT 的 IP、参考时钟缓冲、收发器配置和时序仍由工程负责。
-- DDR4、MIPI 数据线需要对应 IP 电气配置，当前会明确报错并停止导出；已验证的 AU15P 示例的普通控制脚可以按 GPIO 绑定。其他器件缺少规则时也停止导出。
+XDC 包含来源标记，只覆盖同一来源生成的文件；人工文件和其他来源的文件会报告冲突。
 
-电平检查覆盖已支持的器件模式与 Bank 实际供电，尚不能判断任意板外负载或子卡的容忍电压。导出结果需结合 Vivado/IP 设计验证。
-
-模型录入规范见 [物理接口模型](physical-interface-model.md)，RGB 示例见 [rgb.fixed.json](examples/physical-interfaces/rgb.fixed.json)。
+图形化添加板卡的下一步方案见 [板卡编辑器方案](board-library-editor-proposal.md)。

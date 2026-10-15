@@ -177,5 +177,37 @@
       "positive": "dqs1_p",
       "negative": "dqs1_n"
     }
-  ]
+  ],
+  "bus": {
+    "dq": [
+      "dq15",
+      "dq14",
+      "dq13",
+      "dq12",
+      "dq11",
+      "dq10",
+      "dq9",
+      "dq8",
+      "dq7",
+      "dq6",
+      "dq5",
+      "dq4",
+      "dq3",
+      "dq2",
+      "dq1",
+      "dq0"
+    ],
+    "dm": [
+      "dm1",
+      "dm0"
+    ],
+    "dqs_p": [
+      "dqs1_p",
+      "dqs0_p"
+    ],
+    "dqs_n": [
+      "dqs1_n",
+      "dqs0_n"
+    ]
+  }
 }

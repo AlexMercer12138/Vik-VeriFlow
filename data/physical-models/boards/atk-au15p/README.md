@@ -1,6 +1,6 @@
 # ATK AU15P 核心板 + 底板 V1.0
 
-[board.json](board.json) 描述核心板与底板连接后的硬件，器件为 AMD `xcau15p-ffvb676-2-i`。19 个接口、274 个封装脚、302 条接口接线；不同接口可以引用同一个物理脚。模型不包含 I/O 标准和厂商约束命令，格式见 [物理模型规范](../../physical-interface-model.md)。此板卡仅作为仓库示例，不打包进 VSIX；在约束面板使用 **Import board…** 导入用户配置后，任意工程都可选择使用，不必逐工程复制。流程和电气规则范围见 [使用说明](../../physical-pin-bindings.md)。
+[board.json](board.json) 描述核心板与底板连接后的硬件，器件为 AMD `xcau15p-ffvb676-2-i`。21 个接口（含两组独立 MIPI 控制接口）、274 个封装脚、302 条接口接线；不同接口可以引用同一个物理脚。模型不包含 I/O 标准和厂商约束命令，格式见 [物理模型规范](../../../../docs/physical-interface-model.md)。此板卡仅作为仓库示例，不打包进 VSIX；在约束面板使用 **Import board…** 导入用户配置后，任意工程都可选择使用，不必逐工程复制。流程和电气规则范围见 [使用说明](../../../../docs/physical-pin-bindings.md)。
 
 ## 来源与覆盖范围
 
@@ -23,14 +23,14 @@
 | `CAN1` / `RS4851` | 2 / 2 | BASE 9–11；FPGA 侧 TX/RX，分别经 J17/J18 选择；RS485 自动收发方向电路没有独立 FPGA DE 信号 |
 | `J19` | 4 | BASE 11；ATK 模块扩展口 RXD/TXD 和 KEY/LED，分别受 J17/J18 控制 |
 | `HDMI_OUT` | 8 | BASE 1/4/11；四组 TMDS，经过 U17/U18 和 AC 耦合网络 |
-| `MIPI_CSI` | 15 | BASE 1/10；四条数据 lane、时钟、相机控制/I2C/MCLK |
-| `MIPI_DSI` | 16 | BASE 1/10/11；四条数据 lane、时钟、复位/背光、触摸控制/I2C |
+| `MIPI_CSI` / `MIPI_CSI_CTRL` | 10 / 5 | BASE 1/10；通用四 lane/时钟与板卡相机控制分开 |
+| `MIPI_DSI` / `MIPI_DSI_CTRL` | 10 / 6 | BASE 1/10/11；通用四 lane/时钟与板卡背光/触摸控制分开 |
 | `J16` | 36 | BASE 11；40 PIN 扩展口的 5–40 号脚，使用连接器脚号作为信号 ID |
 | `FMC_LPC` | 75 | BASE 1/3/8；LA00–LA33 共 34 对、两对 M2C 时钟、SCL/SDA、PG_C2M |
 | `QSFP` | 25 | BASE 1/2/6；四条 GT TX/RX、管理信号、156.25 MHz 板载参考时钟 |
 | `PCIE` | 35 | BASE 1/7；x8 GT TX/RX、外部参考时钟和复位 |
 
-接口定义均在本目录；UART、I2C 复用现有公共定义。固定接口的方向相对 FPGA。J19 用连接器原有的 RXD（4 号脚）、TXD（3 号脚）、KEY（2 号脚）、LED（1 号脚）作为扩展信号 ID，具体方向由所接子卡定义。DDR4 的 `odt` 对应原理图拼作 `DDR4_OTD` 的网名，`ras/cas/we` 对应 A16/A15/A14 命令复用脚；不额外虚构一组地址脚。
+通用接口位于 ../../interfaces，本目录只保留板卡专用信号定义。固定接口的方向相对 FPGA。J19 用连接器原有的 RXD（4 号脚）、TXD（3 号脚）、KEY（2 号脚）、LED（1 号脚）作为扩展信号 ID，具体方向由所接子卡定义。DDR4 的 `odt` 对应原理图拼作 `DDR4_OTD` 的网名，`ras/cas/we` 对应 A16/A15/A14 命令复用脚；不额外虚构一组地址脚。
 
 ## Bank 供电
 
@@ -44,14 +44,14 @@
 | 86 | `VCCIO_B86`：1.8 / 2.5 / 3.3 V | J25：位置同 J24，独立选择 |
 | 224 / 225 / 226 | GT 专用 Bank，无普通 GPIO VCCO | 不填写 `supplyRail`，由器件的专用收发器规则处理 |
 
-允许电压不代表当前实物跳线位置，也不保证每种已连接外设都能在全部电压下工作。工程装配必须按实际跳线填写 `railVoltages`。生成器不能把 1.8 V 的 HP Bank HDMI 接线直接翻译成 `TMDS_33`；需要结合器件与此板 AC 耦合发送方案。外设额定电平、MIPI/GT 和 DDR IP 规则仍需生成器校验，本数据不宣称仅凭供电表即可完成电气验证。
+允许电压不代表当前实物供电。约束面板先从板卡允许值选择 Bank 电压，再由用户选择合法 IO 标准。例如 1.8V HP Bank 不会列出 `TMDS_33`，本板 HDMI 可按实际电路选择 `LVDS`。外部电路、VREF、终端及 DDR/MIPI/GT 的 IP 参数由用户设计配置。
 
 ## 复用与共享接线
 
 - `J22=hdmi`：J22 1–2，U17/U18 选择 HDMI；`J22=dsi`：J22 2–3，选择 DSI 数据 lane。DSI 的时钟和控制线直接连接，不受 J22 切换。
 - `J17=can`：短接 1–3、2–4；`J17=atk`：短接 3–5、4–6。选择 CAN TX/RX 或 ATK 模块串口。
 - `J18=rs485`：短接 1–3、2–4；`J18=atk`：短接 3–5、4–6。选择 RS485 TX/RX 或 ATK 模块 KEY/LED。
-- J16 始终连接原网，选择 CAN/RS485/ATK 不会断开排针；SD 总线与 DSI 触摸控制也和 J16 共享。JSON 用相同封装脚表达共享，只有真实切换的通路才带 `when`。
+- J16 始终连接原网，选择 CAN/RS485/ATK 不会断开排针；SD 总线与 DSI 触摸控制也和 J16 共享。JSON 用相同封装脚表达复用，不记录条件 `when`。
 - I2C4 与 FMC 的 SCL/SDA 通过 R82/R83 的 0 Ω 电阻相连，是同一总线的两种访问位置。绑定时选择一个入口，不把它们作为两套独立 I2C 引脚。
 
 HDMI/DSI 数据 lane 的实际交换关系如下，均保持 P→P、N→N：
@@ -75,4 +75,4 @@ J16 的差分伙伴不一定是相邻脚，例如 5/7 为 G10/G9，6/8 为 J11/J
 
 ## 校验
 
-仓库根目录运行 `node scripts/verify-physical-models.cjs`。检查全部 JSON 的 Schema、文件引用、信号/角色覆盖、组与差分配对、Bank/电源引用、接线完整性、复用条件和时钟来源；并固定核对本板若干关键引脚与 lane 交换关系。原理图页码用于人工复查，离线校验不替代实物测试或厂商工具的电气/时序检查。
+仓库根目录运行 `node scripts/verify-physical-models.cjs`。检查全部 JSON 的 Schema、文件引用、信号/角色覆盖、组与差分配对、Bank/电源引用、接线完整性和时钟来源；并固定核对本板若干关键引脚与 lane 交换关系。原理图页码用于人工复查，离线校验不替代实物测试或厂商工具的电气/时序检查。

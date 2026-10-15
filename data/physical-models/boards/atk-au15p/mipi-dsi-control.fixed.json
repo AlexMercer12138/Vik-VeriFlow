@@ -1,0 +1,39 @@
+{
+  "kind": "fixed",
+  "signals": [
+    "reset_n",
+    "backlight",
+    "tp_int_n",
+    "tp_scl",
+    "tp_sda",
+    "tp_reset_n"
+  ],
+  "function": {
+    "mipi-dsi-control": {
+      "reset_n": "output",
+      "backlight": "output",
+      "tp_int_n": "input",
+      "tp_scl": "inout",
+      "tp_sda": "inout",
+      "tp_reset_n": "output"
+    }
+  },
+  "groups": [
+    {
+      "id": "control",
+      "members": [
+        "reset_n",
+        "backlight"
+      ]
+    },
+    {
+      "id": "touch",
+      "members": [
+        "tp_int_n",
+        "tp_scl",
+        "tp_sda",
+        "tp_reset_n"
+      ]
+    }
+  ]
+}

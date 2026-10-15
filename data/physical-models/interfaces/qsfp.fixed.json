@@ -150,5 +150,31 @@
       "positive": "refclk_p",
       "negative": "refclk_n"
     }
-  ]
+  ],
+  "bus": {
+    "rx_p": [
+      "rx4_p",
+      "rx3_p",
+      "rx2_p",
+      "rx1_p"
+    ],
+    "rx_n": [
+      "rx4_n",
+      "rx3_n",
+      "rx2_n",
+      "rx1_n"
+    ],
+    "tx_p": [
+      "tx4_p",
+      "tx3_p",
+      "tx2_p",
+      "tx1_p"
+    ],
+    "tx_n": [
+      "tx4_n",
+      "tx3_n",
+      "tx2_n",
+      "tx1_n"
+    ]
+  }
 }

@@ -1,9 +1,9 @@
 import * as path from 'path';
 import { readFile } from 'fs/promises';
 import * as vscode from 'vscode';
-import { applyArchDesignEdit, bindPhysicalSignal, generateXdc, parseArchDesignText, parsePhysicalConfiguration, physicalMembers, physicalGroupMembers, physicalPairs, physicalSelectionMembers, physicalSignalMembers, setPhysicalSelection, serializeArchDesign, type PhysicalBoard, type PhysicalConfiguration, type PhysicalPort } from '@veriflow/schematic-core/arch-design';
+import { applyArchDesignEdit, createPhysicalBoard, bindPhysicalSignal, physicalIoStandards, setPhysicalIoStandard, generateXdc, parseArchDesignText, parsePhysicalConfiguration, physicalMembers, physicalGroupMembers, physicalPairs, physicalSelectionMembers, physicalSignalMembers, setPhysicalSelection, serializeArchDesign, type PhysicalBoard, type PhysicalConfiguration, type PhysicalPort } from '@veriflow/schematic-core/arch-design';
 import { ArchDesignGeneratedFileConflictError, archDesignXdcOutputPath, publishGeneratedFile } from './archDesignExport';
-import { UserPhysicalBoardLibrary, readPhysicalBoardFile, verifiedPhysicalBoard } from './physicalBoardLibrary';
+import { UserPhysicalBoardLibrary, readPhysicalBoardFile } from './physicalBoardLibrary';
 import { physicalPinsHtml } from './physicalPinsView';
 
 type BoardChoice = { label: string; reference: string };
@@ -28,7 +28,7 @@ export class PhysicalPinsPanel {
         const file = path.resolve(path.dirname(owner.fsPath), reference);
         references?.([vscode.Uri.file(file)]);
         const data = await readPhysicalBoardFile(file, this.interfaceRoot, files => references?.(files.map(f => vscode.Uri.file(f))));
-        return verifiedPhysicalBoard(data.model, data.definitions);
+        return createPhysicalBoard(data.model, data.definitions);
     }
     async open(uri?: vscode.Uri): Promise<void> {
         uri ??= vscode.window.activeTextEditor?.document.uri;
@@ -94,7 +94,11 @@ export class PhysicalPinsPanel {
             try { output = isAd ? archDesignXdcOutputPath(owner.fsPath, getDesign()) : owner.fsPath.replace(/\.(v|sv)$/i, '.xdc'); }
             catch (error) { issues.push({ severity: 'error', message: error instanceof Error ? error.message : String(error) }); }
             await panel.webview.postMessage({ type: 'state', revision: ++revision, isAd, choices, ports, configuration,
-                board: board?.model, interfaces: board && Object.fromEntries(Object.entries(board.definitions).map(([id, def]) => [id, { ...def, members: physicalMembers(def) }])),
+                board: board?.model, ioOptions: board && Object.fromEntries(Object.entries(board.definitions).map(([id, def]) => [id, Object.fromEntries(physicalMembers(def).map(member => {
+                    const binding = configuration.bindings.find(b => b.source.interface === id && b.source.member === member);
+                    return [member, physicalIoStandards(board!, configuration, id, member, ports.find(p => p.name === binding?.port.name)?.direction)];
+                }))])),
+                interfaces: board && Object.fromEntries(Object.entries(board.definitions).map(([id, def]) => [id, { ...def, members: physicalMembers(def) }])),
                 availability: availability(), issues, notice, output: output ?? '(fix export settings)',
                 canConfirm: !!output && !!result?.text && configuration.bindings.length > 0 && !boardError && !libraryError });
         };
@@ -159,12 +163,19 @@ export class PhysicalPinsPanel {
                     this.library.ensureFile();
                     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(vscode.Uri.file(this.library.configPath)), { preview: false });
                 } else if (message.type === 'settings') {
-                    configuration = parsePhysicalConfiguration({ ...configuration, boardSettings: message.boardSettings, railVoltages: message.railVoltages });
+                    configuration = parsePhysicalConfiguration({ ...configuration, railVoltages: message.railVoltages });
+                } else if (message.type === 'standard') {
+                    if (!board || !Array.isArray(message.members) || typeof message.standard !== 'string') throw new Error('Invalid IO standard choice');
+                    configuration = setPhysicalIoStandard(board, configuration, message.interface, message.members, message.standard, ports);
                 } else if (message.type === 'select') {
                     if (!board || !Array.isArray(message.members) || typeof message.checked !== 'boolean') throw new Error('Invalid selection');
                     configuration = setPhysicalSelection(board, configuration, message.interface, message.members, message.checked);
                 } else if (message.type === 'bind') {
                     if (!board) throw new Error('Choose a board first');
+                    if (!message.port) {
+                        clear(message.interface, physicalSignalMembers(board.definitions[message.interface], message.signal));
+                        await publish(); return;
+                    }
                     const bindings = bindPhysicalSignal(board, ports, message.interface, message.signal, message.port);
                     if (bindings.some(b => !physicalSelectionMembers(configuration, b.source.interface).includes(b.source.member))) throw new Error('Select the physical signal before assigning a port');
                     const names = new Set(bindings.map(b => b.port.name)), targets = new Set(bindings.map(b => JSON.stringify(b.source)));

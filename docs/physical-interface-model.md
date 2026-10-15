@@ -21,9 +21,9 @@
 
 一份文件只定义一个模型，文件名承担定义名称。用户模型使用相对包含该引用的文件的路径，例如 `"definition": "spi.fixed.json"`、`"board": "carrier.board.json"`。接口的 `definition` 也可使用 `library:interfaces/<文件名>.json` 引用插件内置接口；不接受绝对路径、其他 URI 或库路径中的子目录。加载时规范化路径并检查被引用模型的 `kind`，不按相似文件名自动替换。若要同时维护不同硬件版本，使用不同文件路径。
 
-VSIX 内置 `uart.fixed.json`、`i2c.fixed.json`、`spi.fixed.json`、`rgb.fixed.json`、`hdmi.fixed.json` 和 `header40.expansion.json`，来源为仓库的 `docs/examples/physical-interfaces`。板卡导入用户配置，子卡/装配及板卡专用接口可由用户维护或从仓库示例导入，不随插件打包。AD 的 `physical.board` 使用 `user:<id>` 定位用户板卡，旧的相对板卡路径仍可读取；硬件模型内部的相对接口路径规则保持不变。子卡/装配对接口的库引用属于数据契约，安装面板仍待接入。
+正式模型统一放在 `data/physical-models`：通用定义在 `interfaces`，板卡及专用定义在 `boards/<id>`，Schema 在 `schemas`，演示数据在 `examples`。VSIX 只打包通用接口目录，包含 UART、I2C、SPI、RGB、HDMI/TMDS、DDR4 x16、MIPI、RGMII、SD、CAN、QSFP、PCIe x8、排针、FMC 等。AD 用 `user:<id>` 定位用户板卡，旧相对板卡路径仍可读取。通用定义按库引用复用，板卡专用和用户相对接口定义保存导入快照。子卡安装面板仍待接入。
 
-只给实际被引用的对象保留 ID：接口实例、分组、扩展实例、子卡挂载、封装脚、Bank、供电轨和复用选择器。信号直接使用字符串 ID。ID 区分大小写；对象 ID 匹配 `[A-Za-z_][A-Za-z0-9_.-]*`，信号、封装脚和 Bank ID 允许数字开头。
+只给实际被引用的对象保留 ID：接口实例、分组、扩展实例、子卡挂载、封装脚、Bank 和供电轨。信号直接使用字符串 ID。ID 区分大小写；对象 ID 匹配 `[A-Za-z_][A-Za-z0-9_.-]*`，信号、封装脚和 Bank ID 允许数字开头。
 
 ## 3. 固定接口
 
@@ -125,11 +125,10 @@ VSIX 内置 `uart.fixed.json`、`i2c.fixed.json`、`spi.fixed.json`、`rgb.fixed
 | `fpgaPins[].id`、`bank` | 输出封装脚约束，定位共享资源和所属 Bank；未知 Bank 可省略 |
 | `fpgaPins[].reservation` | `warn` 提示预留用途，`forbid` 阻止生成；省略表示无预留策略 |
 | `differentialPairs` | 封装真实 P/N 配对，检查功能和扩展映射；可用电气模式仍由器件规则判断 |
-| `banks[].id`、`supplyRail` | 将多个引脚连接到同一 VCCO 资源；供电未知或属于没有普通 VCCO 的收发器 Bank 时省略 `supplyRail` |
+| `banks[].id`、`supplyRail`、`type` | 定位 VCCO 资源；`type` 为硬件 Bank 类型 `hp`、`hr`、`hd`、`gt`，GT 可省略 `supplyRail` |
 | `rails[].id`、`millivolts` | 整数表示固定电压，数组表示允许的可选电压，省略电压表示未知；多个 Bank 可共用一条轨 |
 | `interfaces` | 本板固定接口与扩展接口实例，供接线和工程选择引用 |
-| `selectors[].id`、`values` | 定义合法复用设置，供条件接线与工程设置引用 |
-| `routes` | 接口成员到实际引脚的接线，以及使接线成立的硬件条件 |
+| `routes` | 接口成员到实际引脚的接线；复用接口直接引用相同封装脚 |
 | `clocks[].interface`、`member`、`frequencyHz` | 板载振荡器接到哪个输入以及其实际频率；生成器据此计算周期，差分时钟只引用正端 |
 
 `kind`、`vendor`、`device`、`fpgaPins`、`interfaces`、`routes` 必填，其余集合按需填写。厂商键使用小写，器件型号保留完整封装、速度等级等信息；不能只从型号前缀猜厂商。`clocks` 只写实际已知的板载时钟，不猜测外部输入或设计内部产生的时钟频率。
@@ -140,18 +139,17 @@ VSIX 内置 `uart.fixed.json`、`i2c.fixed.json`、`spi.fixed.json`、`rgb.fixed
 {
   "interface": "J1",
   "member": "io0",
-  "pin": "A9",
-  "when": [{ "selector": "JP1", "value": "header" }]
+  "pin": "A9"
 }
 ```
 
-`interface`、`member`、`pin` 分别定位来源和约束目标；`when` 的全部条件满足才启用此接线。省略 `when` 表示无条件；未设置相关跳线时不能猜测通路。同一成员在一个实际设置下最多一条活动接线；没有接线表示无法导出，不再创建 NC 目标对象。
+`interface`、`member`、`pin` 定位接口信号和封装脚。同一接口成员只能有一条接线；不同接口共享同一脚表示复用。勾选后占用引脚，另一接口的冲突成员和必须整体选择的组自动禁用。不记录跳线、选择器或条件接线。
 
-生成器沿 `route.pin → fpgaPins[].bank → banks[].supplyRail → rails[].millivolts` 取得实际供电，再结合 `vendor`、`device`、接口角色、单端/差分用途和端口方向选择厂商约束。比如同一根扩展脚映射为 UART 时按单端生成，映射为差分接口时再按成对用途判断；主板文件不为它预设一种标准。
+生成器沿 `route.pin → fpgaPins[].bank → banks[].supplyRail → rails[].millivolts` 取得供电。用户先在上方选择板卡允许的 Bank 电压，再在信号下拉框中选择该电压、Bank 类型、方向和单端/差分用途允许的 IO 标准。生成器验证并输出用户所选标准，不按板卡名或 HDMI/DDR/MIPI 角色猜测。
 
-电压统一用整数毫伏。可选供电轨由装配选择实物当前电压，所有引用该轨的 Bank 一同生效；允许值数组不暗示出厂跳线位置，装配设置也不会改变实物跳线。固定功能或原始 GPIO 最终落到同一脚时报告冲突。`when` 表示真实开关/跳线；始终相连的接口即使共享引脚也不能虚构互斥条件。
+电压统一使用整数毫伏。可选供电轨只允许选择板卡数组中的电压，固定电压只读显示。共用供电轨的 Bank 使用同一选择。更换电压使旧标准不合法时提示重新选择，禁止导出；固定功能或 GPIO 最终落到同一脚时报告冲突。
 
-Bank 电压不是完整电气规则：同电压下 GPIO、DDR4、MIPI 和专用 GT 的配置不同，差分配对也不保证支持任意差分标准。器件的引脚类型、输入/输出能力与接口使用方案由生成器的器件/接口规则提供，不在每块板里重复抄写。缺少规则、未知 Bank 或未知 VCCO 时不能猜约束；没有普通 VCCO 的 GT 应交给专用规则。板外负载、连接器兼容性和 IP 时序约束也不能仅凭 Bank 电压判为通过。以后需要手动生成选项时放在独立生成配置中，不回填到主板和端口绑定。
+AMD UltraScale/UltraScale+ 候选依据 UG571 v1.16 表 1-77/1-78 与 HD 表 3-2。DCI 参考电阻、VREF、终端、外部电路和 IP 参数由用户设计配置；候选提示相关条件。GT 的 `GT` 选项只生成封装脚，电气参数由收发器 IP 配置。工程选择写入 AD `physical.ioStandards` 的 `interface`、`member`、`standard`，不回填硬件 JSON。
 
 ## 7. 工程装配和约束输出
 
@@ -161,7 +159,6 @@ Bank 电压不是完整电气规则：同电压下 GPIO、DDR4、MIPI 和专用 
 | `board` | 定位主板定义 |
 | `mounts[].id`、`card`、`connections` | 将子卡扩展实例连接到主板扩展实例；映射字段为 `boardInterface` 和 `cardExpansion` |
 | `mounts[].installed` | 省略即已安装；`false` 保留配置但停止其活动约束和资源占用 |
-| `boardSettings[].selector`、`value` | 确定活动复用接线 |
 | `railVoltages[].rail`、`millivolts` | 为可选轨选择允许的实际电压；固定轨无需重复填写 |
 | `selections[].interface`、`groups`、`members` | 确定此次生成的接口和成员，至少选择组或成员之一 |
 | `bindings[].source`、`port` | 物理信号 → 顶层端口，端口向量位单独写 `bit` |
@@ -184,30 +181,30 @@ Bank 电压不是完整电气规则：同电压下 GPIO、DDR4、MIPI 和专用 
 
 JSON Schema 只检查形状；后续解析器还需检查：
 
-1. 引用路径和目标类型正确，实例、信号与分组 ID 唯一；所有被引用的成员、Bank、供电轨、选择器和角色存在。
+1. 引用路径和目标类型正确，实例、信号与分组 ID 唯一；所有被引用的成员、Bank、供电轨和角色存在。
 2. 每个角色完整覆盖固定信号；多角色实例显式选择，单角色实例使用唯一角色；扩展实例禁止填写角色。
 3. 配对不重叠且 P/N 不同；固定功能成对选择，扩展配对可拆为单端；差分用途与方向、极性和真实封装配对一致，生成器再检查器件支持的电气模式。
 4. 子卡功能映射完整、安装映射匹配、已占用线不能另作 GPIO；不同来源争用同一封装脚或同一端口位时报错。
-5. 活动接线唯一且指向可用引脚，复用设置有效，预留策略得到执行；未知跳线和缺失通路阻止相关约束生成。
+5. 接口成员接线唯一且指向可用引脚，预留策略得到执行；复用由引脚占用检查实现。
 6. 可选轨的设置合法，共享轨保持一致；生成器独立检查最终标准是否满足器件能力、用途和当前供电，电气资料不足时报告未验证。板载时钟必须映射到输入，差分时钟只定义一次。
 7. 顶层绑定存在且方向和位索引正确；分组重复选择只生成一次约束；拔卡保留配置、释放活动资源。
 
 ## 9. 示例
 
-[JSON Schema](schemas/physical-interface-model.schema.json) 与以下文件采用同一精简形状：
+[JSON Schema](../data/physical-models/schemas/physical-interface-model.schema.json) 与以下文件采用同一精简形状：
 
 | 文件 | 用途 |
 | --- | --- |
-| [uart.fixed.json](examples/physical-interfaces/uart.fixed.json) | UART 单角色 |
-| [i2c.fixed.json](examples/physical-interfaces/i2c.fixed.json) | I2C 单角色，SCL/SDA 均为 inout |
-| [spi.fixed.json](examples/physical-interfaces/spi.fixed.json) | SPI master/slave |
-| [hdmi.fixed.json](examples/physical-interfaces/hdmi.fixed.json) | HDMI source/sink，TMDS/DDC/HPD/CEC 部分选用 |
-| [header40.expansion.json](examples/physical-interfaces/header40.expansion.json) | 四个可拆为单端的差分能力对，另有四根单端信号 |
-| [hdmi.daughtercard.json](examples/physical-interfaces/hdmi.daughtercard.json) | 功能信号直接映射扩展信号 |
-| [carrier.board.json](examples/physical-interfaces/carrier.board.json) | 引脚、Bank、供电和 UART/排针复用 |
-| [demo.assembly.json](examples/physical-interfaces/demo.assembly.json) | 子卡安装、TMDS 选择和顶层端口绑定 |
-| [top.ad](examples/physical-interfaces/top.ad) | 使用现有 AD V2 格式的顶层端口 |
+| [uart.fixed.json](../data/physical-models/interfaces/uart.fixed.json) | UART 单角色 |
+| [i2c.fixed.json](../data/physical-models/interfaces/i2c.fixed.json) | I2C 单角色，SCL/SDA 均为 inout |
+| [spi.fixed.json](../data/physical-models/interfaces/spi.fixed.json) | SPI master/slave |
+| [hdmi.fixed.json](../data/physical-models/interfaces/hdmi.fixed.json) | HDMI source/sink，TMDS/DDC/HPD/CEC 部分选用 |
+| [header40.expansion.json](../data/physical-models/examples/header40.expansion.json) | 四个可拆为单端的差分能力对，另有四根单端信号 |
+| [hdmi.daughtercard.json](../data/physical-models/examples/hdmi.daughtercard.json) | 功能信号直接映射扩展信号 |
+| [carrier.board.json](../data/physical-models/examples/carrier.board.json) | 引脚、Bank、供电和 UART/排针复用 |
+| [demo.assembly.json](../data/physical-models/examples/demo.assembly.json) | 子卡安装、TMDS 选择和顶层端口绑定 |
+| [top.ad](../data/physical-models/examples/top.ad) | 使用现有 AD V2 格式的顶层端口 |
 
 以上演示目录中的器件型号、引脚、Bank 与电气值不能用于实物。真实板卡见 [ATK AU15P 核心板 + 底板 V1.0](boards/atk-au15p/README.md)。已有未发布草案直接修订，不增加兼容层；AD V2 增加可选 `physical` 和 `export.xdcOutput`，已有文件不需要迁移。
 
-运行 `node scripts/verify-physical-models.cjs` 校验全部模型的 Schema、引用、角色、总线展开、接线完整性、差分极性、Bank 与电源引用。插件也会校验所加载板卡与绑定；首版器件规则支持 AU15P，DDR/MIPI 数据线需要 IP 电气规则，当前会阻止导出。离线校验和导出校验均不代替实物及厂商工具验证。
+运行 `node scripts/verify-physical-models.cjs` 校验全部模型的 Schema、引用、角色、总线展开、接线完整性、差分极性、Bank 与电源引用。插件按 AMD UltraScale/UltraScale+ Bank 规则提供标准候选，AU15P 可由器件信息定位 Bank 类型，其他板卡可声明硬件 Bank 类型。DDR/MIPI 同样显式选标准，完整 IP 约束由用户设计提供。离线校验和导出校验不代替实物及厂商工具验证。

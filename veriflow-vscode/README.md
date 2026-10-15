@@ -34,7 +34,7 @@ Select **Create Architecture Design** under **Architecture Design** in the sideb
 - Built-in **Logic Utility** components provide common combinational logic for more flexible connections.
 - **Pins / XDC** shares saved boards between projects through `~/.veriflow_config.json`. Import a board once, select its interfaces on the left, assign top-level ports in the middle by dragging from the right, then confirm to generate XDC. Selection locks conflicting pins and mandatory groups before assignment. AD saves selections and bindings only on confirmation; RTL uses the same temporary tool with a save dialog. Bus dragging also binds matching P/N ports. AD XDC follows the RTL output stem and appears beside RTL in the AD tree. Only reusable interface definitions ship with the extension.
 
-The first device rules cover AU15P GPIO/LVDS and dedicated GT package locations. DDR/MIPI data pins require IP electrical rules and currently block export. See the [pin binding guide](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md).
+Select a board-declared Bank voltage first, then explicitly choose an allowed I/O standard in each compact two-line assignment row. AMD UltraScale/UltraScale+ choices follow Bank type, voltage, direction and differential use. DDR/MIPI IP settings, VREF and termination remain part of the user's design. See the [pin binding guide](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md).
 
 ![Graphical architecture design](https://i.imgs.ovh/2026/09/18/3254e83e61781f004e33ccb05d88f7f3.gif)
 

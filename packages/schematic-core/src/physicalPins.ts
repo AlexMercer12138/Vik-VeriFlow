@@ -1,3 +1,5 @@
+import { physicalStandardRules } from './physicalIoStandards';
+export { physicalPinVoltage } from './physicalIoStandards';
 /** Hardware facts stay in the board model; vendor constraint rules live here. */
 export type PhysicalPort = Readonly<{
     name: string;
@@ -18,10 +20,7 @@ export type PhysicalBinding = Readonly<{
 export type PhysicalConfiguration = Readonly<{
     board: string;
     selections?: readonly { interface: string; members: readonly string[] }[];
-    boardSettings?: readonly {
-        selector: string;
-        value: string;
-    }[];
+    ioStandards?: readonly { interface: string; member: string; standard: string }[];
     railVoltages?: readonly {
         rail: string;
         millivolts: number;
@@ -54,11 +53,13 @@ export type PhysicalBoardModel = {
     banks?: {
         id: string;
         supplyRail?: string;
+        type?: 'hp' | 'hr' | 'hd' | 'gt';
     }[];
     fpgaPins: {
         id: string;
         bank?: string;
         reservation?: 'warn' | 'forbid';
+        clockCapable?: boolean;
     }[];
     differentialPairs?: {
         positive: string;
@@ -69,18 +70,10 @@ export type PhysicalBoardModel = {
         definition: string;
         function?: string;
     }[];
-    selectors?: {
-        id: string;
-        values: string[];
-    }[];
     routes: {
         interface: string;
         member: string;
         pin: string;
-        when?: {
-            selector: string;
-            value: string;
-        }[];
     }[];
     clocks?: {
         interface: string;
@@ -91,7 +84,6 @@ export type PhysicalBoardModel = {
 export type PhysicalBoard = {
     model: PhysicalBoardModel;
     definitions: Record<string, PhysicalInterface>;
-    profile?: 'atk-au15p';
 };
 export type PinDiagnostic = {
     severity: 'error' | 'warning';
@@ -118,7 +110,7 @@ function records(value: Record<string, unknown>, field: string, allowed: string[
 const signalKey = (iface: string, member: string): string => JSON.stringify([iface, member]);
 export function parsePhysicalConfiguration(value: unknown): PhysicalConfiguration {
     requireValue(object(value), 'Physical configuration must be an object');
-    keys(value, ['board', 'selections', 'boardSettings', 'railVoltages', 'bindings']);
+    keys(value, ['board', 'selections', 'ioStandards', 'railVoltages', 'bindings', 'boardSettings']);
     requireValue(typeof value.board === 'string' && value.board.length > 0 && !/[\r\n\0]/.test(value.board), 'Choose a board');
     requireValue(Array.isArray(value.bindings) && value.bindings.length <= 50000, 'Invalid pin bindings');
     if (value.selections !== undefined) {
@@ -140,24 +132,27 @@ export function parsePhysicalConfiguration(value: unknown): PhysicalConfiguratio
         requireValue(typeof binding.port.name === 'string' && hdlId.test(binding.port.name), 'Invalid RTL port');
         requireValue(binding.port.bit === undefined || Number.isSafeInteger(binding.port.bit), 'Invalid port bit');
     }
-    for (const field of ['boardSettings', 'railVoltages'] as const) {
-        const list = value[field];
-        if (list === undefined)
-            continue;
-        requireValue(Array.isArray(list) && list.length <= 4096, `Invalid ${field}`);
-        for (const item of list) {
-            requireValue(object(item), `Invalid ${field}`);
-            if (field === 'boardSettings') {
-                keys(item, ['selector', 'value']);
-                requireValue(typeof item.selector === 'string' && id.test(item.selector) && typeof item.value === 'string' && item.value.length > 0, 'Invalid jumper setting');
-            }
-            else {
-                keys(item, ['rail', 'millivolts']);
-                requireValue(typeof item.rail === 'string' && id.test(item.rail) && Number.isSafeInteger(item.millivolts) && Number(item.millivolts) > 0, 'Invalid rail voltage');
-            }
+    if (value.ioStandards !== undefined) {
+        requireValue(Array.isArray(value.ioStandards) && value.ioStandards.length <= 50000, 'Invalid IO standards');
+        for (const entry of value.ioStandards) {
+            requireValue(object(entry), 'Invalid IO standard');
+            keys(entry, ['interface', 'member', 'standard']);
+            requireValue(typeof entry.interface === 'string' && id.test(entry.interface) && typeof entry.member === 'string' && id.test(entry.member)
+                && typeof entry.standard === 'string' && /^[A-Z][A-Z0-9_]*$/.test(entry.standard), 'Invalid IO standard');
+        }
+        unique(value.ioStandards.map(e => signalKey(e.interface as string, e.member as string)), 'IO standard');
+    }
+    if (value.railVoltages !== undefined) {
+        requireValue(Array.isArray(value.railVoltages) && value.railVoltages.length <= 4096, 'Invalid railVoltages');
+        for (const entry of value.railVoltages) {
+            requireValue(object(entry), 'Invalid rail voltage');
+            keys(entry, ['rail', 'millivolts']);
+            requireValue(typeof entry.rail === 'string' && id.test(entry.rail) && Number.isSafeInteger(entry.millivolts) && Number(entry.millivolts) > 0, 'Invalid rail voltage');
         }
     }
-    return JSON.parse(JSON.stringify(value)) as PhysicalConfiguration;
+    // Old ADs may contain jumper settings. Ignore them; resources are reserved by selection.
+    const { boardSettings: _legacy, ...current } = value;
+    return JSON.parse(JSON.stringify(current)) as PhysicalConfiguration;
 }
 export function physicalSignalMembers(def: PhysicalInterface, signal: string): string[] {
     const bus = Object.prototype.hasOwnProperty.call(def.bus ?? {}, signal) ? def.bus![signal] : undefined;
@@ -178,18 +173,44 @@ export function physicalPairs(def: PhysicalInterface): {
         return p.map((positive, i) => ({ positive, negative: n[i] }));
     });
 }
-export function createPhysicalBoard(value: unknown, definitions: Record<string, unknown>, profile?: 'atk-au15p'): PhysicalBoard {
+export function physicalIoStandards(board: PhysicalBoard, config: PhysicalConfiguration, iface: string, member: string, direction?: PhysicalPort['direction']) {
+    const def = board.definitions[iface], route = board.model.routes.find(r => r.interface === iface && r.member === member);
+    if (!def || !route) return [];
+    const pair = physicalPairs(def).some(p => p.positive === member || p.negative === member);
+    const instance = board.model.interfaces.find(i => i.id === iface)!;
+    const role = instance.function ?? Object.keys(def.function ?? {})[0];
+    return physicalStandardRules(board, config, route.pin, pair ? (def.kind === 'fixed' ? true : undefined) : false,
+        direction ?? (def.kind === 'fixed' ? memberDirection(def, role, member) : undefined));
+}
+export function setPhysicalIoStandard(board: PhysicalBoard, config: PhysicalConfiguration, iface: string, members: readonly string[], standard: string, ports: readonly PhysicalPort[] = []): PhysicalConfiguration {
+    const def = board.definitions[iface];
+    requireValue(def && members.length > 0 && members.every(m => physicalSelectionMembers(config, iface).includes(m)), 'Select the physical signal first');
+    const targets = new Set(members);
+    const firstBinding = config.bindings.find(b => b.source.interface === iface && b.source.member === members[0]);
+    const firstDirection = ports.find(p => p.name === firstBinding?.port.name)?.direction;
+    if (def.kind === 'fixed' || physicalIoStandards(board, config, iface, members[0], firstDirection).some(o => o.name === standard && o.differential))
+        for (const pair of physicalPairs(def))
+            if (targets.has(pair.positive) || targets.has(pair.negative)) { targets.add(pair.positive); targets.add(pair.negative); }
+    if (standard) for (const member of targets) {
+        requireValue(physicalSelectionMembers(config, iface).includes(member), 'Select both differential signals first');
+        const binding = config.bindings.find(b => b.source.interface === iface && b.source.member === member);
+        const direction = ports.find(p => p.name === binding?.port.name)?.direction;
+        requireValue(physicalIoStandards(board, config, iface, member, direction).some(o => o.name === standard), 'IO standard is not available for Bank voltage: ' + standard);
+    }
+    return { ...config, ioStandards: [...(config.ioStandards ?? []).filter(e => e.interface !== iface || !targets.has(e.member)),
+        ...[...targets].filter(() => standard).map(member => ({ interface: iface, member, standard }))] };
+}
+export function createPhysicalBoard(value: unknown, definitions: Record<string, unknown>): PhysicalBoard {
     requireValue(object(value) && value.kind === 'board', 'Not a board model');
-    keys(value, ['kind', 'vendor', 'device', 'rails', 'banks', 'fpgaPins', 'differentialPairs', 'interfaces', 'selectors', 'routes', 'clocks']);
+    keys(value, ['kind', 'vendor', 'device', 'rails', 'banks', 'fpgaPins', 'differentialPairs', 'interfaces', 'routes', 'clocks']);
     requireValue(typeof value.vendor === 'string' && typeof value.device === 'string', 'Missing board device/vendor');
     requireValue(Array.isArray(value.fpgaPins) && Array.isArray(value.interfaces) && Array.isArray(value.routes), 'Missing board pins, interfaces or routes');
     requireValue(/^[a-z][a-z0-9-]*$/.test(value.vendor) && value.device.length > 0, 'Invalid board device/vendor');
-    records(value, 'fpgaPins', ['id', 'bank', 'reservation'], ['id'], false);
+    records(value, 'fpgaPins', ['id', 'bank', 'reservation', 'clockCapable'], ['id'], false);
     records(value, 'interfaces', ['id', 'definition', 'function'], ['id', 'definition'], false);
-    records(value, 'routes', ['interface', 'member', 'pin', 'when'], ['interface', 'member', 'pin'], false);
+    records(value, 'routes', ['interface', 'member', 'pin'], ['interface', 'member', 'pin'], false);
     records(value, 'rails', ['id', 'millivolts'], ['id']);
-    records(value, 'banks', ['id', 'supplyRail'], ['id']);
-    records(value, 'selectors', ['id', 'values']);
+    records(value, 'banks', ['id', 'supplyRail', 'type'], ['id']);
     records(value, 'differentialPairs', ['positive', 'negative']);
     records(value, 'clocks', ['interface', 'member', 'frequencyHz']);
     const model = value as unknown as PhysicalBoardModel;
@@ -198,13 +219,15 @@ export function createPhysicalBoard(value: unknown, definitions: Record<string, 
     unique(model.interfaces.map(i => i.id), 'board interface');
     unique((model.banks ?? []).map(b => b.id), 'Bank');
     unique((model.rails ?? []).map(r => r.id), 'rail');
-    unique((model.selectors ?? []).map(s => s.id), 'selector');
+    unique(model.routes.map(r => signalKey(r.interface, r.member)), 'interface route');
     for (const pin of model.fpgaPins) {
         requireValue(typeof pin.id === 'string' && id.test(pin.id), 'Invalid package pin');
         requireValue(pin.reservation === undefined || ['warn', 'forbid'].includes(pin.reservation), 'Invalid pin reservation');
+        requireValue(pin.clockCapable === undefined || typeof pin.clockCapable === 'boolean', 'Invalid clock-capable pin');
         requireValue(pin.bank === undefined || model.banks?.some(bank => bank.id === pin.bank), `Unknown Bank of ${pin.id}`);
     }
     for (const bank of model.banks ?? []) {
+        requireValue(bank.type === undefined || ['hp', 'hr', 'hd', 'gt'].includes(bank.type), 'Invalid Bank type');
         requireValue(typeof bank.id === 'string' && id.test(bank.id), 'Invalid Bank ID');
         requireValue(bank.supplyRail === undefined || model.rails?.some(rail => rail.id === bank.supplyRail), `Unknown rail of Bank ${bank.id}`);
     }
@@ -215,10 +238,6 @@ export function createPhysicalBoard(value: unknown, definitions: Record<string, 
         const voltages = Array.isArray(rail.millivolts) ? rail.millivolts : [rail.millivolts];
         requireValue(voltages.length > 0 && voltages.every(v => Number.isSafeInteger(v) && v > 0), `Invalid voltage for ${rail.id}`);
         unique(voltages.map(String), 'rail voltage');
-    }
-    for (const selector of model.selectors ?? []) {
-        requireValue(typeof selector.id === 'string' && id.test(selector.id) && Array.isArray(selector.values) && selector.values.length > 0 && selector.values.every(v => typeof v === 'string' && v.length > 0), 'Invalid selector');
-        unique(selector.values, 'selector value');
     }
     for (const instance of model.interfaces) {
         requireValue(typeof instance.id === 'string' && id.test(instance.id) && typeof instance.definition === 'string' &&
@@ -273,10 +292,6 @@ export function createPhysicalBoard(value: unknown, definitions: Record<string, 
     }
     for (const route of model.routes) {
         requireValue(defs[route.interface] && physicalMembers(defs[route.interface]).includes(route.member) && model.fpgaPins.some(pin => pin.id === route.pin), 'Unknown board route');
-        records(route as unknown as Record<string, unknown>, 'when', ['selector', 'value']);
-        unique((route.when ?? []).map(c => c.selector), 'route selector');
-        for (const c of route.when ?? [])
-            requireValue(model.selectors?.some(s => s.id === c.selector && s.values.includes(c.value)), 'Unknown route condition');
     }
     for (const instance of model.interfaces)
         for (const member of physicalMembers(defs[instance.id]))
@@ -291,7 +306,7 @@ export function createPhysicalBoard(value: unknown, definitions: Record<string, 
         const role = instance?.function ?? Object.keys(def.function ?? {})[0];
         requireValue(memberDirection(def, role, clock.member) === 'input' && !physicalPairs(def).some(p => p.negative === clock.member), 'Invalid clock direction/polarity');
     }
-    return { model, definitions: defs, ...(profile ? { profile } : {}) };
+    return { model, definitions: defs };
 }
 export function bindPhysicalSignal(board: PhysicalBoard, ports: readonly PhysicalPort[], iface: string, signal: string, portName: string): PhysicalBinding[] {
     const def = board.definitions[iface], port = ports.find(p => p.name === portName);
@@ -345,20 +360,18 @@ export function setPhysicalSelection(board: PhysicalBoard, configuration: Physic
     const selections = board.model.interfaces.map(instance => ({ interface: instance.id,
         members: instance.id === iface ? physicalMembers(def).filter(m => selected.has(m)) : [...physicalSelectionMembers(configuration, instance.id)] })).filter(s => s.members.length);
     const next: PhysicalConfiguration = { ...configuration, selections,
-        bindings: configuration.bindings.filter(b => selections.some(s => s.interface === b.source.interface && s.members.includes(b.source.member))) };
+        bindings: configuration.bindings.filter(b => selections.some(s => s.interface === b.source.interface && s.members.includes(b.source.member))),
+        ...(configuration.ioStandards ? { ioStandards: configuration.ioStandards.filter(e => selections.some(s => s.interface === e.interface && s.members.includes(e.member))) } : {}) };
     if (checked) {
-        const ports: PhysicalPort[] = [], bindings: PhysicalBinding[] = [];
-        for (const selection of selections) {
-            const definition = board.definitions[selection.interface], instance = board.model.interfaces.find(i => i.id === selection.interface)!;
-            const role = instance.function ?? Object.keys(definition.function ?? {})[0];
-            for (const member of selection.members) {
-                const name = `selected_${ports.length}`;
-                ports.push({ name, direction: definition.kind === 'fixed' ? memberDirection(definition, role, member)! : 'inout' });
-                bindings.push({ source: { interface: selection.interface, member }, port: { name } });
-            }
+        const used = new Set<string>();
+        for (const selection of selections) for (const member of selection.members) {
+            const routes = board.model.routes.filter(r => r.interface === selection.interface && r.member === member);
+            requireValue(routes.length === 1, 'Missing or ambiguous route: ' + selection.interface + '.' + member);
+            const pin = board.model.fpgaPins.find(p => p.id === routes[0].pin)!;
+            requireValue(pin.reservation !== 'forbid', 'Reserved pin: ' + pin.id);
+            requireValue(!used.has(pin.id), 'Pin conflict: ' + pin.id);
+            used.add(pin.id);
         }
-        const errors = generateXdc(board, { ...next, selections: undefined, bindings }, ports).diagnostics.filter(d => d.severity === 'error');
-        requireValue(!errors.length, errors.map(d => d.message).join('\n'));
     }
     return next;
 }
@@ -403,15 +416,11 @@ export function generateXdc(board: PhysicalBoard, configuration: PhysicalConfigu
                 error(`Signal is not selected: ${binding.source.interface}.${binding.source.member}`);
     }
     try {
-        unique(config.boardSettings?.map(s => s.selector) ?? [], 'jumper setting');
         unique(config.railVoltages?.map(s => s.rail) ?? [], 'rail setting');
     }
     catch (e) {
         error(String(e));
     }
-    for (const setting of config.boardSettings ?? [])
-        if (!model.selectors?.some(s => s.id === setting.selector && s.values.includes(setting.value)))
-            error('Invalid jumper: ' + setting.selector);
     for (const setting of config.railVoltages ?? []) {
         const rail = model.rails?.find(r => r.id === setting.rail);
         if (!Array.isArray(rail?.millivolts) || !rail.millivolts.includes(setting.millivolts))
@@ -420,15 +429,17 @@ export function generateXdc(board: PhysicalBoard, configuration: PhysicalConfigu
     const usedPins = new Set<string>(), usedPorts = new Set<string>(), resolved = new Map<string, {
         pin: string;
         standard?: string;
+        differential?: boolean;
+        direction: PhysicalPort['direction'];
         port: string;
     }>();
     const bindings = new Map(config.bindings.map(b => [signalKey(b.source.interface, b.source.member), b]));
     if (bindings.size !== config.bindings.length)
         error('One physical signal is bound more than once');
-    if (model.vendor !== 'amd')
-        error('This first XDC generator supports AMD devices');
-    else if (model.device !== 'xcau15p-ffvb676-2-i')
-        error('XDC device rules are not available for ' + model.device);
+    if (model.vendor !== 'amd') error('This XDC generator supports AMD devices');
+    for (const entry of config.ioStandards ?? [])
+        if (!board.definitions[entry.interface] || !physicalMembers(board.definitions[entry.interface]).includes(entry.member))
+            error('Unknown IO standard signal: ' + entry.interface + '.' + entry.member);
     for (const binding of config.bindings) {
         const { source } = binding, def = board.definitions[source.interface], port = ports.find(p => p.name === binding.port.name);
         const label = `${source.interface}.${source.member}`;
@@ -444,9 +455,9 @@ export function generateXdc(board: PhysicalBoard, configuration: PhysicalConfigu
         const role = instance.function ?? Object.keys(def.function ?? {})[0];
         if (def.kind === 'fixed' && memberDirection(def, role, source.member) !== port.direction)
             error('Port direction differs from ' + label);
-        const routes = model.routes.filter(r => r.interface === source.interface && r.member === source.member && (r.when ?? []).every(c => config.boardSettings?.some(s => s.selector === c.selector && s.value === c.value)));
+        const routes = model.routes.filter(r => r.interface === source.interface && r.member === source.member);
         if (routes.length !== 1) {
-            error('Set physical jumpers / check route for ' + label);
+            error('Missing or ambiguous route for ' + label);
             continue;
         }
         const pin = model.fpgaPins.find(p => p.id === routes[0].pin)!;
@@ -461,57 +472,28 @@ export function generateXdc(board: PhysicalBoard, configuration: PhysicalConfigu
             error('Port conflict: ' + portTarget);
         usedPins.add(pin.id);
         usedPorts.add(portTarget);
-        const bank = model.banks?.find(b => b.id === pin.bank), rail = model.rails?.find(r => r.id === bank?.supplyRail);
-        const mv = Array.isArray(rail?.millivolts) ? config.railVoltages?.find(s => s.rail === rail.id)?.millivolts : rail?.millivolts;
         const differential = def.kind === 'fixed' && physicalPairs(def).some(p => p.positive === source.member || p.negative === source.member);
-        if (differential && physicalPairs(def).some(pair => (pair.positive === source.member && /_n$/.test(port.name)) || (pair.negative === source.member && /_p$/.test(port.name)))) {
+        if (differential && physicalPairs(def).some(pair => (pair.positive === source.member && /_n$/.test(port.name)) || (pair.negative === source.member && /_p$/.test(port.name))))
             error('Differential port polarity differs: ' + label);
-        }
-        let standard: string | undefined;
-        if (model.vendor === 'amd' && model.device === 'xcau15p-ffvb676-2-i' && ['224', '225', '226'].includes(pin.bank ?? '')) {
-            if (!['qsfp-host', 'pcie-endpoint'].includes(role ?? ''))
-                error('GT pins require a supported transceiver interface: ' + label);
-        }
-        else if (model.device === 'xcau15p-ffvb676-2-i' && !['64', '65', '66', '84', '85', '86'].includes(pin.bank ?? '')) {
-            error('Device Bank rules are not available for ' + label);
-        }
-        else if (mv === undefined) {
-            error('Set Bank voltage for ' + label);
-        }
-        else if (['ddr4-controller', 'mipi-csi-receiver', 'mipi-dsi-transmitter'].includes(role ?? '') && !(board.profile === 'atk-au15p' && ['tp_int_n', 'tp_scl', 'tp_sda', 'tp_reset_n', 'reset_n', 'backlight', 'pwdn', 'scl', 'sda', 'mclk'].includes(source.member))) {
-            error('A verified DDR/MIPI IP electrical profile is required for ' + label);
-        }
-        else if (differential) {
-            if (role?.startsWith('hdmi-') && !(role === 'hdmi-source' && board.profile === 'atk-au15p' && source.interface === 'HDMI_OUT'))
-                error('HDMI electrical circuit profile is required: ' + label);
-            else if (model.device === 'xcau15p-ffvb676-2-i' && ['64', '65', '66'].includes(pin.bank ?? '') && mv === 1800)
-                standard = 'LVDS';
-            else
-                error('Unsupported differential mode / Bank voltage: ' + label);
-        }
-        else if ([1200, 1500, 1800, 2500, 3300].includes(mv)) {
-            if (model.device === 'xcau15p-ffvb676-2-i' && ['64', '65', '66'].includes(pin.bank ?? '') && mv > 1800)
-                error('HP Bank voltage exceeds 1.8 V: ' + label);
-            else
-                standard = `LVCMOS${mv / 100}`;
-        }
-        else
-            error('Unsupported Bank voltage: ' + label);
-        resolved.set(signalKey(source.interface, source.member), { pin: pin.id, standard, port: portTarget });
+        const standard = config.ioStandards?.find(e => e.interface === source.interface && e.member === source.member)?.standard;
+        const options = physicalIoStandards(board, config, source.interface, source.member, port.direction);
+        if (!standard) error('Choose IO standard: ' + label);
+        else if (!options.some(o => o.name === standard)) error('IO standard is not available for Bank voltage / signal: ' + label + ' (' + standard + ')');
+        resolved.set(signalKey(source.interface, source.member), { pin: pin.id, standard,
+            differential: options.find(o => o.name === standard)?.differential, direction: port.direction, port: portTarget });
         lines.push(`set_property PACKAGE_PIN ${pin.id} [get_ports {${portTarget}}]`);
-        if (standard)
+        if (standard && standard !== 'GT')
             lines.push(`set_property IOSTANDARD ${standard} [get_ports {${portTarget}}]`);
     }
     for (const instance of model.interfaces) {
         const def = board.definitions[instance.id];
-        if (def.kind === 'fixed')
-            for (const pair of physicalPairs(def)) {
-                const p = resolved.get(signalKey(instance.id, pair.positive)), n = resolved.get(signalKey(instance.id, pair.negative));
-                if (!p && !n)
-                    continue;
-                if (!p || !n || p.standard !== n.standard || !model.differentialPairs?.some(pair => pair.positive === p.pin && pair.negative === n.pin))
-                    error('Incomplete or incorrect differential pair: ' + instance.id + '.' + pair.positive);
-            }
+        for (const pair of physicalPairs(def)) {
+            const p = resolved.get(signalKey(instance.id, pair.positive)), n = resolved.get(signalKey(instance.id, pair.negative));
+            if (!p && !n) continue;
+            if (def.kind === 'expansion' && ![p, n].some(endpoint => endpoint?.differential)) continue;
+            if (!p || !n || p.standard !== n.standard || p.direction !== n.direction || !model.differentialPairs?.some(pair => pair.positive === p.pin && pair.negative === n.pin))
+                error('Incomplete or incorrect differential pair: ' + instance.id + '.' + pair.positive);
+        }
         for (const group of def.groups ?? [])
             if (group.selection === 'together') {
                 const members = group.members.flatMap(m => physicalSignalMembers(def, m));

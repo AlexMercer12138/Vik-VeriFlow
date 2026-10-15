@@ -19,6 +19,61 @@ const video = {
     bus: { data_p: ['data2_p', 'data1_p', 'data0_p'], data_n: ['data2_n', 'data1_n', 'data0_n'] },
 };
 
+test('IO standards are explicit and filtered by the selected board voltage', () => {
+    const model = { ...board, banks: [{ id: '84', supplyRail: 'v' }],
+        rails: [{ id: 'v', millivolts: [1800, 3300] }], fpgaPins: board.fpgaPins.map(p => ({ ...p, bank: '84' })) };
+    const catalog = pins.createPhysicalBoard(model, { 'video.json': { kind: 'expansion', signals: video.signals } });
+    const config = { board: 'user:custom', railVoltages: [{ rail: 'v', millivolts: 3300 }], bindings: [] };
+    const options = pins.physicalIoStandards(catalog, config, 'VIDEO', 'data0_p');
+    assert.deepEqual(options.map(o => o.name), ['LVCMOS33', 'LVTTL']);
+    const ports = [{ name: 'gpio', direction: 'output' as const }];
+    const bindings = pins.bindPhysicalSignal(catalog, ports, 'VIDEO', 'data0_p', 'gpio');
+    assert.match(pins.generateXdc(catalog, { ...config, bindings }, ports).diagnostics.map(d => d.message).join('\n'), /Choose IO standard/);
+    const chosen = { ...config, bindings, ioStandards: [{ interface: 'VIDEO', member: 'data0_p', standard: 'LVTTL' }] };
+    assert.match(pins.generateXdc(catalog, chosen, ports).text!, /IOSTANDARD LVTTL/);
+    assert.equal(pins.generateXdc(catalog, { ...chosen, railVoltages: [{ rail: 'v', millivolts: 1800 }] }, ports).text, undefined);
+});
+
+test('hardware selection never requires an RTL assignment or an IO standard', () => {
+    const catalog = pins.createPhysicalBoard({ ...board, rails: [{ id: 'v', millivolts: [1200, 1800] }] }, { 'video.json': video });
+    const selected = pins.setPhysicalSelection(catalog, { board: 'user:test', bindings: [] }, 'VIDEO', ['data0_p'], true);
+    assert.deepEqual(selected.selections?.[0].members, ['data0_p', 'data0_n']);
+    assert.deepEqual(selected.bindings, []);
+});
+
+test('IO standard changes follow fixed P/N buses and stay limited to selected board voltages', () => {
+    const catalog = pins.createPhysicalBoard(board, { 'video.json': video });
+    const selected = pins.setPhysicalSelection(catalog, { board: 'user:test', bindings: [] }, 'VIDEO', ['data2_p', 'data1_p', 'data0_p'], true);
+    const configured = pins.setPhysicalIoStandard(catalog, selected, 'VIDEO', ['data2_p', 'data1_p', 'data0_p'], 'LVDS');
+    assert.equal(configured.ioStandards?.length, 6);
+    assert.ok(configured.ioStandards?.every(e => e.standard === 'LVDS'));
+    assert.throws(() => pins.setPhysicalIoStandard(catalog, configured, 'VIDEO', ['data2_p'], 'TMDS_33'), /Bank voltage/);
+    const cleared = pins.setPhysicalIoStandard(catalog, configured, 'VIDEO', ['data2_n'], '');
+    assert.equal(cleared.ioStandards?.length, 4);
+    assert.equal(pins.setPhysicalSelection(catalog, configured, 'VIDEO', ['data2_p'], false).ioStandards?.length, 4);
+});
+
+test('a shared supply voltage applies to every Bank and custom boards use device Bank rules', () => {
+    const catalog = pins.createPhysicalBoard({ ...board, device: 'xcku-other-package', rails: [{ id: 'v', millivolts: [1800, 3300] }],
+        banks: [{ id: '1', type: 'hr', supplyRail: 'v' }, { id: '2', type: 'hr', supplyRail: 'v' }],
+        fpgaPins: board.fpgaPins.map((pin, i) => ({ ...pin, bank: i < 2 ? '1' : '2' })), differentialPairs: undefined,
+    }, { 'video.json': { kind: 'expansion', signals: video.signals } });
+    const config = { board: 'user:other', bindings: [], railVoltages: [{ rail: 'v', millivolts: 3300 }] };
+    for (const member of ['data0_p', 'data1_p'])
+        assert.deepEqual(pins.physicalIoStandards(catalog, config, 'VIDEO', member).map(o => o.name), ['LVCMOS33', 'LVTTL']);
+    assert.deepEqual(pins.physicalIoStandards(catalog, { ...config, railVoltages: [] }, 'VIDEO', 'data0_p'), []);
+});
+
+test('HD Bank differential clock inputs require clock-capable pins and exclude HR-only outputs', () => {
+    const model = { ...board, rails: [{ id: 'v', millivolts: 2500 }], banks: [{ id: '85', supplyRail: 'v', type: 'hd' }],
+        fpgaPins: board.fpgaPins.map(p => ({ ...p, bank: '85', clockCapable: ['A1', 'A2'].includes(p.id) })) };
+    const definition = { ...video, function: { receiver: Object.fromEntries(video.signals.map(m => [m, 'input'])) } };
+    const catalog = pins.createPhysicalBoard(model, { 'video.json': definition });
+    assert.ok(pins.physicalIoStandards(catalog, { board: 'test', bindings: [] }, 'VIDEO', 'data0_p').some(o => o.name === 'LVDS_25'));
+    assert.ok(!pins.physicalIoStandards(catalog, { board: 'test', bindings: [] }, 'VIDEO', 'data1_p').some(o => o.name === 'LVDS_25'));
+    assert.ok(!pins.physicalIoStandards(catalog, { board: 'test', bindings: [] }, 'VIDEO', 'data0_p', 'output').some(o => ['LVDS_25', 'TMDS_33'].includes(o.name)));
+});
+
 test('selection reserves pins before assignments and closes mandatory groups transitively', () => {
     const model = { ...board, differentialPairs: undefined,
         interfaces: [{ id: 'A', definition: 'header.json' }, { id: 'B', definition: 'header.json' }],
@@ -40,15 +95,15 @@ test('selection reserves pins before assignments and closes mandatory groups tra
     assert.ok(errors.some(d => /Unassigned/.test(d.message)));
 });
 
-test('selection checks Bank voltage and pairs without reserving unused expansion mates', () => {
+test('selection closes fixed pairs without reserving unused expansion mates', () => {
     const header = expansion();
     const selected = pins.setPhysicalSelection(header, { board: 'user:test', bindings: [] }, 'VIDEO', ['data0_p'], true);
     assert.deepEqual(selected.selections?.[0].members, ['data0_p']);
-    const tooHigh = { ...header, model: { ...header.model, rails: [{ id: 'v', millivolts: 3300 }] } };
-    assert.throws(() => pins.setPhysicalSelection(tooHigh, { board: 'user:test', bindings: [] }, 'VIDEO', ['data0_p'], true), /voltage/);
     const fixed = pins.createPhysicalBoard(board, { 'video.json': video });
     assert.deepEqual(pins.setPhysicalSelection(fixed, { board: 'user:test', bindings: [] }, 'VIDEO', ['data2_p'], true).selections?.[0].members, ['data2_p', 'data2_n']);
 });
+const io = (bindings: readonly pins.PhysicalBinding[], standard: string) => bindings.map(b => ({ ...b.source, standard }));
+
 test('one differential bus binding maps P/N by declared HDL indices and exports six pins', () => {
     assert.equal(typeof pins.bindPhysicalSignal, 'function');
     const catalog = pins.createPhysicalBoard(board, { 'video.json': video });
@@ -56,7 +111,7 @@ test('one differential bus binding maps P/N by declared HDL indices and exports 
     const bindings = pins.bindPhysicalSignal(catalog, ports, 'VIDEO', 'data_p', 'tmds_data_p');
     assert.equal(bindings.length, 6);
     assert.deepEqual(bindings[0], { source: { interface: 'VIDEO', member: 'data2_p' }, port: { name: 'tmds_data_p', bit: 2 } });
-    const result = pins.generateXdc(catalog, { board: 'board.json', bindings }, ports);
+    const result = pins.generateXdc(catalog, { board: 'board.json', bindings, ioStandards: io(bindings, 'LVDS') }, ports);
     assert.equal(result.diagnostics.length, 0);
     assert.match(result.text!, /PACKAGE_PIN A5 \[get_ports \{tmds_data_p\[2\]\}\]/);
     assert.match(result.text!, /IOSTANDARD LVDS/);
@@ -83,9 +138,26 @@ test('expansion differential legs can independently carry single-ended signals',
     const ports = [{ name: 'gpio', direction: 'output' as const }];
     const bindings = pins.bindPhysicalSignal(catalog, ports, 'VIDEO', 'data0_p', 'gpio');
     assert.equal(bindings.length, 1);
-    const result = pins.generateXdc(catalog, { board: 'board.json', bindings }, ports);
+    const result = pins.generateXdc(catalog, { board: 'board.json', bindings, ioStandards: io(bindings, 'LVCMOS18') }, ports);
     assert.match(result.text!, /IOSTANDARD LVCMOS18/);
     assert.doesNotMatch(result.text!, /A2|LVDS/);
+});
+
+test('expansion differential input standards require both legs and matching RTL directions', () => {
+    const catalog = pins.createPhysicalBoard({ ...board, rails: [{ id: 'v', millivolts: 2500 }],
+        banks: [{ id: '85', type: 'hd', supplyRail: 'v' }],
+        fpgaPins: board.fpgaPins.map(p => ({ ...p, bank: '85', clockCapable: true })),
+    }, { 'video.json': { kind: 'expansion', signals: video.signals, differentialPairs: video.differentialPairs } });
+    const ports = [{ name: 'ref_p', direction: 'input' as const }, { name: 'ref_n', direction: 'input' as const }];
+    const bindings = ['p', 'n'].map((leg, i) => ({ source: { interface: 'VIDEO', member: 'data0_' + leg }, port: { name: ports[i].name } }));
+    const complete = { board: 'user:test', bindings, ioStandards: io(bindings, 'LVDS_25') };
+    assert.ok(pins.generateXdc(catalog, complete, ports).text);
+    const incomplete = { ...complete, bindings: bindings.slice(0, 1) };
+    assert.match(pins.generateXdc(catalog, incomplete, ports).diagnostics.map(d => d.message).join('\n'), /Incomplete or incorrect differential pair/);
+
+    const hp = expansion();
+    const mixed = [ports[0], { ...ports[1], direction: 'output' as const }];
+    assert.match(pins.generateXdc(hp, { ...complete, ioStandards: io(bindings, 'LVDS') }, mixed).diagnostics.map(d => d.message).join('\n'), /Incomplete or incorrect differential pair/);
 });
 test('interface/group selection reuses manual bindings and matches a differential bus once', () => {
     const catalog = pins.createPhysicalBoard(board, { 'video.json': { ...video, groups: [{ id: 'data', members: ['data_p', 'data_n'] }] } });
@@ -107,13 +179,13 @@ test('reservation policy and complete-group requirements control publication', (
     const bindings=pins.bindPhysicalSignal(header,ports,'VIDEO','data0_p','gpio');
     for(const reservation of ['warn','forbid'] as const) {
         const model={...header.model,fpgaPins:header.model.fpgaPins.map(pin=>pin.id==='A1'?{...pin,reservation}:pin)};
-        const result=pins.generateXdc({...header,model},{board:'board.json',bindings},ports);
+        const result=pins.generateXdc({...header,model},{board:'board.json',bindings,ioStandards:io(bindings,'LVCMOS18')},ports);
         assert.equal(result.diagnostics[0].severity,reservation==='warn'?'warning':'error');
         assert.equal(result.text!==undefined,reservation==='warn');
     }
     const together={...header,definitions:{VIDEO:{...header.definitions.VIDEO,groups:[{id:'pair',members:['data0_p','data0_n'],selection:'together' as const}]}}};
-    const incomplete=pins.generateXdc(together,{board:'board.json',bindings},ports);
-    assert.equal(incomplete.text,undefined);assert.match(incomplete.diagnostics[0].message,/complete group/);
+    const incomplete=pins.generateXdc(together,{board:'board.json',bindings,ioStandards:io(bindings,'LVCMOS18')},ports);
+    assert.equal(incomplete.text,undefined);assert.match(incomplete.diagnostics.map(d=>d.message).join('\n'),/complete group/);
 });
 test('invalid nested board data and bus aliases are rejected at load time', () => {
     const load = (value: unknown, def: unknown = video) => pins.createPhysicalBoard(value, { 'video.json': def });
@@ -141,50 +213,56 @@ test('export blocks pin conflicts, unresolved voltages, wrong directions and inc
     const duplicate = pins.generateXdc(catalog, { board: 'board.json', bindings: [...bindings, bindings[0]] }, ports);
     assert.equal(duplicate.text, undefined);
     assert.match(duplicate.diagnostics.map(d => d.message).join('\n'), /Pin conflict/);
-    const wrong = pins.generateXdc(catalog, { board: 'board.json', bindings }, ports.map(p => ({ ...p, direction: 'input' as const })));
+    const wrong = pins.generateXdc(catalog, { board: 'board.json', bindings, ioStandards: io(bindings, 'LVDS') }, ports.map(p => ({ ...p, direction: 'input' as const })));
     assert.equal(wrong.text, undefined);
     assert.match(wrong.diagnostics[0].message, /direction/);
     const swapped = pins.generateXdc(catalog, { board: 'board.json', bindings: bindings.map(b => ({...b, port:{...b.port, name:b.port.name==='data_p'?'data_n':'data_p'}})) }, ports);
     assert.equal(swapped.text,undefined);assert.match(swapped.diagnostics.map(d=>d.message).join('\n'),/polarity/);
     const selectable = pins.createPhysicalBoard({ ...board, rails: [{ id: 'v', millivolts: [1200, 1800] }] }, { 'video.json': video });
-    assert.equal(pins.generateXdc(selectable, { board: 'board.json', bindings }, ports).text, undefined);
-    assert.equal(pins.generateXdc(selectable, { board: 'board.json', railVoltages: [{ rail: 'v', millivolts: 1800 }], bindings }, ports).diagnostics.length, 0);
+    assert.equal(pins.generateXdc(selectable, { board: 'board.json', bindings, ioStandards: io(bindings, 'LVDS') }, ports).text, undefined);
+    assert.equal(pins.generateXdc(selectable, { board: 'board.json', railVoltages: [{ rail: 'v', millivolts: 1800 }], bindings, ioStandards: io(bindings, 'LVDS') }, ports).diagnostics.length, 0);
     assert.equal(pins.generateXdc(selectable, { board: 'board.json', railVoltages: [{ rail: 'v', millivolts: 3300 }], bindings }, ports).text, undefined);
     const header = expansion(), unknown = { ...header, model: { ...header.model, device: 'unknown-amd-device' } };
     assert.equal(pins.generateXdc(unknown, { board: 'board.json', bindings: [bindings[0]] }, ports).text, undefined);
 });
-test('actual AU15P HDMI maps six balls and requires actual J22/Bank settings; shared pins conflict', () => {
-    const root = path.resolve(__dirname, '../../../../docs/boards/atk-au15p');
+test('AU15P uses reusable definitions and user-selected standards without jumper profiles', () => {
+    const root = path.resolve(__dirname, '../../../../data/physical-models/boards/atk-au15p');
     const value = JSON.parse(readFileSync(path.join(root, 'board.json'), 'utf8'));
-    const definitions = Object.fromEntries(value.interfaces.map((i: {
-        definition: string;
-    }) => [i.definition, JSON.parse(readFileSync(path.resolve(root, i.definition), 'utf8'))]));
-    const catalog = pins.createPhysicalBoard(value, definitions, 'atk-au15p');
-    const ports = ['p', 'n'].map(leg => ({ name: `tmds_data_${leg}`, direction: 'output' as const, indices: [2, 1, 0] }));
+    const definitions = Object.fromEntries(value.interfaces.map((i: { definition: string }) => [i.definition,
+        JSON.parse(readFileSync(i.definition.startsWith('library:interfaces/') ? path.resolve(root, '../../interfaces', i.definition.slice('library:interfaces/'.length)) : path.resolve(root, i.definition), 'utf8'))]));
+    const catalog = pins.createPhysicalBoard(value, definitions);
+    const ports = ['p', 'n'].map(leg => ({ name: 'tmds_data_' + leg, direction: 'output' as const, indices: [2, 1, 0] }));
     const bindings = pins.bindPhysicalSignal(catalog, ports, 'HDMI_OUT', 'data_p', 'tmds_data_p');
-    const config = { board: 'board.json', boardSettings: [{ selector: 'J22', value: 'hdmi' }], railVoltages: [{ rail: 'VCCIO_B64', millivolts: 1800 }], bindings };
+    const config = { board: 'board.json', railVoltages: [{ rail: 'VCCIO_B64', millivolts: 1800 }], bindings, ioStandards: io(bindings, 'LVDS') };
     const result = pins.generateXdc(catalog, config, ports);
     assert.equal(result.diagnostics.length, 0);
     assert.match(result.text!, /PACKAGE_PIN AB17 \[get_ports \{tmds_data_p\[2\]\}\]/);
     assert.match(result.text!, /PACKAGE_PIN AC17 \[get_ports \{tmds_data_n\[2\]\}\]/);
-    assert.equal(pins.generateXdc(catalog, { ...config, boardSettings: [] }, ports).text, undefined);
+    assert.equal('selectors' in value, false);
+    const selected = pins.setPhysicalSelection(catalog, { board: 'user:test', bindings: [] }, 'HDMI_OUT', ['data2_p'], true);
+    assert.throws(() => pins.setPhysicalSelection(catalog, selected, 'MIPI_DSI', ['d3_p'], true), /Pin conflict/);
     const more = [...ports, { name: 'can_tx', direction: 'output' as const }, { name: 'gpio', direction: 'output' as const }];
-    const conflict = pins.generateXdc(catalog, { ...config, boardSettings: [...config.boardSettings, { selector: 'J17', value: 'can' }], railVoltages: [...config.railVoltages, { rail: 'VCCIO_B85', millivolts: 3300 }], bindings: [
-            ...bindings, ...pins.bindPhysicalSignal(catalog, more, 'CAN1', 'tx', 'can_tx'), ...pins.bindPhysicalSignal(catalog, more, 'J16', '8', 'gpio'),
-        ] }, more);
-    assert.equal(conflict.text, undefined);
+    const conflict = pins.generateXdc(catalog, { ...config, railVoltages: [...config.railVoltages, { rail: 'VCCIO_B85', millivolts: 3300 }], bindings: [
+        ...bindings, ...pins.bindPhysicalSignal(catalog, more, 'CAN1', 'tx', 'can_tx'), ...pins.bindPhysicalSignal(catalog, more, 'J16', '8', 'gpio'),
+    ] }, more);
     assert.match(conflict.diagnostics.map(d => d.message).join('\n'), /Pin conflict: J10/);
-    const clockPorts=['p','n'].map(leg=>({name:`clock_${leg}`,direction:'input' as const}));
-    const clock=pins.generateXdc(catalog,{...config,railVoltages:[...config.railVoltages,{rail:'VCCIO_B65',millivolts:1800}],bindings:pins.bindPhysicalSignal(catalog,clockPorts,'SYS_CLK','clock_p','clock_p')},clockPorts);
-    assert.match(clock.text!,/create_clock -period 10.000000 \[get_ports \{clock_p\}\]/);
-    assert.equal((clock.text!.match(/create_clock/g)??[]).length,1);
-    const gtPorts=['p','n'].map(leg=>({name:`refclk_${leg}`,direction:'input' as const}));
-    const gt=pins.generateXdc(catalog,{...config,bindings:pins.bindPhysicalSignal(catalog,gtPorts,'QSFP','refclk_p','refclk_p')},gtPorts);
-    assert.match(gt.text!,/PACKAGE_PIN M7/);assert.doesNotMatch(gt.text!,/IOSTANDARD/);
-    const ddrPorts=[{name:'dq',direction:'inout' as const}];
-    const ddr=pins.generateXdc(catalog,{...config,bindings:pins.bindPhysicalSignal(catalog,ddrPorts,'DDR4','dq0','dq')},ddrPorts);
-    assert.equal(ddr.text,undefined);assert.match(ddr.diagnostics.map(d=>d.message).join('\n'),/DDR\/MIPI IP/);
+    const clockPorts = ['p', 'n'].map(leg => ({ name: 'clock_' + leg, direction: 'input' as const }));
+    const clockBindings = pins.bindPhysicalSignal(catalog, clockPorts, 'SYS_CLK', 'clock_p', 'clock_p');
+    const clock = pins.generateXdc(catalog, { ...config, railVoltages: [...config.railVoltages, { rail: 'VCCIO_B65', millivolts: 1800 }],
+        bindings: clockBindings, ioStandards: io(clockBindings, 'LVDS') }, clockPorts);
+    assert.match(clock.text!, /create_clock -period 10.000000 \[get_ports \{clock_p\}\]/);
+    assert.equal((clock.text!.match(/create_clock/g) ?? []).length, 1);
+    const gtPorts = ['p', 'n'].map(leg => ({ name: 'refclk_' + leg, direction: 'input' as const }));
+    const gtBindings = pins.bindPhysicalSignal(catalog, gtPorts, 'QSFP', 'refclk_p', 'refclk_p');
+    const gt = pins.generateXdc(catalog, { ...config, bindings: gtBindings, ioStandards: io(gtBindings, 'GT') }, gtPorts);
+    assert.match(gt.text!, /PACKAGE_PIN M7/); assert.doesNotMatch(gt.text!, /IOSTANDARD/);
+    const ddrPorts = [{ name: 'dq', direction: 'inout' as const }];
+    assert.ok(pins.physicalIoStandards(catalog, config, 'DDR4', 'dq0', 'inout').some(o => o.name === 'SSTL12_DCI'));
+    const ddrBindings = pins.bindPhysicalSignal(catalog, ddrPorts, 'DDR4', 'dq0', 'dq');
+    const ddr = pins.generateXdc(catalog, { ...config, bindings: ddrBindings, ioStandards: io(ddrBindings, 'SSTL12_DCI') }, ddrPorts);
+    assert.doesNotMatch(ddr.diagnostics.map(d => d.message).join('\n'), /profile/);
 });
+
 test('AD physical bindings round trip, stay outside RTL fingerprint, and follow scalar changes', () => {
     const base = { ...createEmptyArchDesign('top'), ports: [{ name: 'gpio', direction: 'output' as const }] };
     const physical = { board: 'user:board', selections: [{ interface: 'J16', members: ['5'] }], bindings: [{ source: { interface: 'J16', member: '5' }, port: { name: 'gpio' } }] };

@@ -58,6 +58,7 @@ assert.deepStrictEqual(workflowViews.map((item: any) => item.name), ['Module Bro
 assert.deepStrictEqual(workflowViews.map((item: any) => item.contextualTitle), ['Module Browser', 'Architecture Design', 'Simulation Task']);
 assert.deepStrictEqual(manifest.contributes.menus['veriflow.hdl'].map((item: any) => item.command), [
     'veriflow.insertHdlTemplate', 'veriflow.instantiateModule', 'veriflow.formatHdl', 'veriflow.runTraditionalTestbench',
+    'veriflow.generatePinConstraints', 'veriflow.bindArchDesignPins',
 ]);
 for (const setting of ['veriflow.simulator', 'veriflow.waveViewer']) {
     assert.deepStrictEqual(manifest.contributes.configuration.properties[setting].enum, ['builtin', 'custom']);

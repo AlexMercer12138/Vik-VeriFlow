@@ -483,6 +483,7 @@ export function activate(context: vscode.ExtensionContext): void {
             return rtlPhysicalPorts(selected.ports, selected.parameters);
         },
     });
+    pinBindings.registerBoardEditor();
     const adDetails = async (uri: vscode.Uri) => {
         const parsed = parseArchDesignText((await vscode.workspace.openTextDocument(uri)).getText());
         if (parsed.status !== 'editable') throw new Error('Invalid Architecture Design');
@@ -707,6 +708,8 @@ export function activate(context: vscode.ExtensionContext): void {
         ['veriflow.bindArchDesignPins', (uri?: unknown) => pinBindings.open(commandUri(uri) ?? getActiveCanvas()?.uri)
             .catch(error => vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)))],
         ['veriflow.generatePinConstraints', (uri?: unknown) => pinBindings.open(commandUri(uri))
+            .catch(error => vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)))],
+        ['veriflow.manageBoards', () => pinBindings.manageBoards()
             .catch(error => vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)))],
     ];
     for (const [name, fn] of cmds) {

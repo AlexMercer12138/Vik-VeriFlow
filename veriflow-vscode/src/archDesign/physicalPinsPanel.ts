@@ -5,6 +5,7 @@ import { applyArchDesignEdit, createPhysicalBoard, bindPhysicalSignal, physicalI
 import { ArchDesignGeneratedFileConflictError, archDesignXdcOutputPath, publishGeneratedFile } from './archDesignExport';
 import { UserPhysicalBoardLibrary, readPhysicalBoardFile } from './physicalBoardLibrary';
 import { physicalPinsHtml } from './physicalPinsView';
+import { BoardLibraryEditor } from './boardLibraryEditor';
 
 type BoardChoice = { label: string; reference: string };
 export type PhysicalPinsPanelServices = {
@@ -15,10 +16,19 @@ const relativeModelPath = /^(?![A-Za-z][A-Za-z0-9+.-]*:)(?![/\\])(?!.*[\r\n\0]).
 export class PhysicalPinsPanel {
     private readonly panels = new Map<string, vscode.WebviewPanel>();
     private userLibrary?: UserPhysicalBoardLibrary;
+    private boardEditor?: BoardLibraryEditor;
+    private readonly libraryRefresh = new Set<() => void>();
     constructor(private readonly context: vscode.ExtensionContext, private readonly services: PhysicalPinsPanelServices) {}
     private get interfaceRoot(): string { return path.join(this.context.extensionUri.fsPath, 'resources', 'physical-models', 'interfaces'); }
     private get library(): UserPhysicalBoardLibrary { return this.services.library ?? (this.userLibrary ??= new UserPhysicalBoardLibrary({ interfaceRoot: this.interfaceRoot })); }
-    dispose(): void { for (const panel of [...this.panels.values()]) panel.dispose(); }
+    private get editor(): BoardLibraryEditor {
+        return this.boardEditor ??= new BoardLibraryEditor(this.context, () => this.library, () => this.interfaceRoot, () => {
+            for (const refresh of this.libraryRefresh) refresh();
+        });
+    }
+    async manageBoards(): Promise<void> { await this.editor.open(); }
+    registerBoardEditor(): void { void this.editor; }
+    dispose(): void { this.boardEditor?.dispose(); for (const panel of [...this.panels.values()]) panel.dispose(); }
     async loadBoard(owner: vscode.Uri, reference: string, references?: (sources: vscode.Uri[]) => void): Promise<PhysicalBoard> {
         if (/^user:[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(reference)) {
             references?.([vscode.Uri.file(this.library.configPath)]);
@@ -131,7 +141,9 @@ export class PhysicalPinsPanel {
             tail = tail.then(async () => { notice = ''; await load(); await publish(); }).catch(report);
         };
         const changes = [watcher, userWatcher].flatMap(w => [w.onDidChange(refresh), w.onDidCreate(refresh), w.onDidDelete(refresh)]);
-        panel.onDidDispose(() => { disposed = true; subscription.dispose(); watcher.dispose(); userWatcher.dispose(); changes.forEach(s => s.dispose()); this.panels.delete(owner.toString()); });
+        const refreshLibrary = () => { tail = tail.then(async () => { await load(); await publish(); }).catch(report); };
+        this.libraryRefresh.add(refreshLibrary);
+        panel.onDidDispose(() => { disposed = true; subscription.dispose(); watcher.dispose(); userWatcher.dispose(); changes.forEach(s => s.dispose()); this.libraryRefresh.delete(refreshLibrary); this.panels.delete(owner.toString()); });
         const clear = (iface: string, members: readonly string[]) => {
             const definition = board?.definitions[iface];
             if (!definition) throw new Error('Unknown interface');
@@ -153,15 +165,9 @@ export class PhysicalPinsPanel {
                     const loaded = await this.loadBoard(owner, message.reference, value => { sources = value; });
                     configuration = { board: message.reference, selections: [], bindings: [] }; board = loaded; boardError = undefined;
                 } else if (message.type === 'import') {
-                    const files = await vscode.window.showOpenDialog({ title: 'Import board into user library', canSelectMany: false, filters: { 'Board JSON': ['json'] } });
-                    if (files?.[0]) {
-                        const id = await this.library.importBoard(files[0].fsPath);
-                        configuration = { board: 'user:' + id, selections: [], bindings: [] };
-                        await load();
-                    }
+                    await this.editor.importBoard();
                 } else if (message.type === 'library') {
-                    this.library.ensureFile();
-                    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(vscode.Uri.file(this.library.configPath)), { preview: false });
+                    await this.editor.open(configuration.board.startsWith('user:') ? configuration.board.slice(5) : undefined);
                 } else if (message.type === 'settings') {
                     configuration = parsePhysicalConfiguration({ ...configuration, railVoltages: message.railVoltages });
                 } else if (message.type === 'standard') {

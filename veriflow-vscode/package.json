@@ -39,6 +39,12 @@
   "contributes": {
     "customEditors": [
       {
+        "viewType": "veriflow.boardLibrary",
+        "displayName": "VeriFlow Board Library Editor",
+        "selector": [{ "filenamePattern": "*.vfboard" }],
+        "priority": "default"
+      },
+      {
         "viewType": "veriflow.waveformEditor",
         "displayName": "VeriFlow Waveform Viewer",
         "selector": [
@@ -360,6 +366,12 @@
         "title": "Generate Pin Constraints (XDC)",
         "category": "VeriFlow",
         "icon": "$(circuit-board)"
+      },
+      {
+        "command": "veriflow.manageBoards",
+        "title": "Manage Boards",
+        "category": "VeriFlow",
+        "icon": "$(circuit-board)"
       }
     ],
     "menus": {
@@ -488,6 +500,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "veriflow.manageBoards",
+          "when": "true"
+        },
         {
           "command": "veriflow.bindArchDesignPins",
           "when": "resourceExtname == .ad || activeCustomEditorId == veriflow.archDesignEditor"

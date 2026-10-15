@@ -1,5 +1,5 @@
 import { physicalStandardRules } from './physicalIoStandards';
-export { physicalPinVoltage } from './physicalIoStandards';
+export { physicalPinVoltage, physicalBankType } from './physicalIoStandards';
 /** Hardware facts stay in the board model; vendor constraint rules live here. */
 export type PhysicalPort = Readonly<{
     name: string;

@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import * as path from 'node:path';
+import { readPhysicalBoardFile, type SavedPhysicalBoard } from '../archDesign/physicalBoardLibrary';
+import { inspectBoardDraft, wiringRows, validateInterfaceDefinition, inferredBankType, parseBoardDraft } from '../archDesign/boardEditorModel';
+
+async function main(): Promise<void> {
+    const root = path.resolve(__dirname, '../../..', 'data/physical-models');
+    const au15p = await readPhysicalBoardFile(path.join(root, 'boards/atk-au15p/board.json'), path.join(root, 'interfaces'));
+    const draft: SavedPhysicalBoard = { id: 'au15p', name: 'AU15P', ...au15p };
+    assert.deepEqual(inspectBoardDraft(draft).issues.filter(i => i.severity === 'error'), []);
+    assert.equal(wiringRows(draft).length, 302);
+    assert.ok(inspectBoardDraft(draft).summary.sharedPins > 0);
+    assert.equal(draft.model.interfaces.length, 21);
+    assert.equal(inferredBankType(draft.model, '84'), 'hd');
+    assert.equal(inferredBankType({ ...draft.model, vendor: 'intel' }, '84'), undefined);
+    const missing = structuredClone(draft); missing.model.routes.shift();
+    assert.ok(inspectBoardDraft(missing).issues.some(i => i.message.includes('No package pin')));
+    const duplicate = structuredClone(draft); duplicate.model.routes.push({ ...duplicate.model.routes[0] });
+    assert.ok(inspectBoardDraft(duplicate).issues.some(i => i.message.includes('Duplicate signal mapping')));
+    const invalidBank = structuredClone(draft); invalidBank.model.fpgaPins[0].bank = 'UNKNOWN';
+    assert.ok(inspectBoardDraft(invalidBank).issues.some(i => i.target.startsWith('pin:')));
+    const clock = structuredClone(draft); clock.model.clocks![0].frequencyHz = -1;
+    assert.ok(inspectBoardDraft(clock).issues.some(i => i.target.startsWith('route:')));
+    const badRail = structuredClone(draft); badRail.model.rails![0].millivolts = 0;
+    assert.ok(inspectBoardDraft(badRail).issues.some(i => i.target === 'rail:' + badRail.model.rails![0].id));
+    const badRole = structuredClone(draft); badRole.model.interfaces[0].function = 'missing';
+    assert.ok(inspectBoardDraft(badRole).issues.some(i => i.target === 'interface:' + badRole.model.interfaces[0].id));
+    assert.throws(() => parseBoardDraft({ ...draft, model: { ...draft.model, fpgaPins: [null] } }), /pins/i);
+    const broken = structuredClone(draft);
+    broken.model.routes[1].pin = broken.model.routes[0].pin;
+    assert.ok(inspectBoardDraft(broken).issues.some(i => i.message.includes('same interface')));
+    const unknown = structuredClone(draft); unknown.model.routes[0].pin = 'UNKNOWN';
+    assert.ok(inspectBoardDraft(unknown).issues.some(i => i.target.startsWith('route:') && i.severity === 'error'));
+    const pair = draft.model.differentialPairs![0];
+    const reversed = structuredClone(draft); reversed.model.differentialPairs![0] = { positive: pair.negative, negative: pair.positive };
+    assert.ok(inspectBoardDraft(reversed).issues.some(i => i.message.includes('Differential')));
+    assert.throws(() => validateInterfaceDefinition({ kind: 'fixed', signals: ['s'], function: { role: { s: 'output' } }, bus: { s: 0 } }), /width/);
+    console.log('Board editor AU15P, manual wiring validation and pin sharing passed');
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

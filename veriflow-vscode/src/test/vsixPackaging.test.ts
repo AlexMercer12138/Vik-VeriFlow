@@ -275,6 +275,7 @@ function run(): void {
             'veriflow.addModuleToCanvas',
             'veriflow.bindArchDesignPins',
             'veriflow.generatePinConstraints',
+            'veriflow.manageBoards',
         ]) {
             assert.ok(
                 packagedManifest.contributes.commands.some(

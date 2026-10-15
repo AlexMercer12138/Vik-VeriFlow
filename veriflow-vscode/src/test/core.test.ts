@@ -2527,6 +2527,7 @@ function testModuleInstantiationManifestContribution(): void {
     });
     assert.deepStrictEqual(editorMenu, {
         command: 'veriflow.instantiateModule',
+        when: 'editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv',
         group: '1_edit@2',
     });
 }

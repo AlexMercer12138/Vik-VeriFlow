@@ -2,7 +2,9 @@
 
 在 AD 编辑器点击 **Pins / XDC**，或在 Architecture Design 树中右键选择 **Board / Pin Bindings (AD)**。普通 `.v` / `.sv` 文件可以从资源管理器、编辑器右键菜单或命令面板执行 **VeriFlow: Generate Pin Constraints (XDC)**；文件含多个模块时先选择模块。
 
-板卡列表包含插件内置的 **ATK AU15P**，以及工作区内 `kind: "board"` 的 JSON。工作区板卡按相对 AD/RTL 文件的路径引用，其接口定义按相对板卡的路径加载。内置板卡引用为 `library:boards/atk-au15p/board.json`。
+板卡由用户维护，列表从工作区内发现 `kind: "board"` 的 JSON，按相对 AD/RTL 文件的路径引用。VSIX 只打包通用接口定义，不包含板卡、子卡或装配示例。接口定义可以使用相对板卡的路径，也可引用内置接口，例如 `"definition": "library:interfaces/uart.fixed.json"`。内置 UART、I2C、SPI、RGB、HDMI 和排针接口的文件名见 [物理接口模型](physical-interface-model.md#2-引用和-id)。
+
+仓库的 `docs/boards/atk-au15p` 是板卡录入示例，需要复制到用户工程后使用。复制时同时保留其接口定义及 `../../examples/physical-interfaces` 下的 UART/I2C 定义和相对目录关系，或自行调整引用路径。旧的 `library:boards/...` 引用需改为用户板卡的相对路径。
 
 ## 绑定
 
@@ -23,7 +25,7 @@ AD 绑定通过 VS Code 文档编辑写入，可撤销/重做，按正常 Save �
 
 ```jsonc
 "physical": {
-  "board": "library:boards/atk-au15p/board.json",
+  "board": "boards/atk-au15p/board.json",
   "boardSettings": [{"selector": "J22", "value": "hdmi"}],
   "railVoltages": [{"rail": "VCCIO_B64", "millivolts": 1800}],
   "bindings": [
@@ -41,9 +43,9 @@ RTL 快速工具配置仅保留在当前面板，关闭后清空；不改动 RTL
 ## 首版生成器范围
 
 - 输出 XDC，当前器件规则为 AMD `xcau15p-ffvb676-2-i`。普通 GPIO 按实际 VCCO 选择 LVCMOS，HP Bank 校验 1.8 V 上限。
-- 固定差分信号在受支持的 HP Bank / 1.8 V 条件下使用 LVDS。内置 ATK AU15P 的 HDMI_OUT 使用专门的 AC 耦合发送电路规则，并要求 `J22=hdmi`；不直接套用 `TMDS_33`。其他 HDMI 电路需要新增生成器规则。
+- 固定差分信号在受支持的 HP Bank / 1.8 V 条件下使用 LVDS。仓库 ATK AU15P 示例的 HDMI_OUT 使用专门的 AC 耦合发送电路规则，并要求 `J22=hdmi`；不直接套用 `TMDS_33`。生成器通过硬件模型指纹识别已验证的电路，不依赖内置板卡文件。修改硬件模型后需重新验证专用规则；其他 HDMI 电路需要新增生成器规则。
 - QSFP/PCIe 的专用 GT 管脚只生成封装脚位置，不附加普通 GPIO IOSTANDARD。板载振荡器根据实际频率生成 `create_clock`。GT 的 IP、参考时钟缓冲、收发器配置和时序仍由工程负责。
-- DDR4、MIPI 数据线需要对应 IP 电气配置，当前会明确报错并停止导出；内置板卡的普通控制脚可以按 GPIO 绑定。其他器件缺少规则时也停止导出。
+- DDR4、MIPI 数据线需要对应 IP 电气配置，当前会明确报错并停止导出；已验证的 AU15P 示例的普通控制脚可以按 GPIO 绑定。其他器件缺少规则时也停止导出。
 
 电平检查覆盖已支持的器件模式与 Bank 实际供电，尚不能判断任意板外负载或子卡的容忍电压。导出结果需结合 Vivado/IP 设计验证。
 

@@ -38,7 +38,9 @@ const pairs = def => (def.differentialPairs ?? []).flatMap(pair => {
 });
 const direction = (def, role, member) => def.function[role][def.signals.find(signal => signalMembers(def, signal).includes(member))];
 function resolve(owner, reference, kind) {
-    const file = path.resolve(path.dirname(owner), reference);
+    const file = reference.startsWith('library:interfaces/')
+        ? path.join(root, 'docs/examples/physical-interfaces', reference.slice('library:interfaces/'.length))
+        : path.resolve(path.dirname(owner), reference);
     const doc = documents.get(file);
     assert.ok(doc, `Missing model: ${file}`);
     if (kind) assert.equal(doc.kind, kind, file);
@@ -252,6 +254,12 @@ for (const [target, key, value] of [
 }
 const missingVendor = structuredClone(board); delete missingVendor.vendor; assert.equal(shape(missingVendor), false);
 const upperVendor = structuredClone(board); upperVendor.vendor = 'AMD'; assert.equal(shape(upperVendor), false);
+for (const reference of ['../uart.fixed.json', 'library:interfaces/uart.fixed.json']) {
+    const copy = structuredClone(board); copy.interfaces[0].definition = reference; assert.ok(shape(copy), `Rejected interface reference: ${reference}`);
+}
+for (const reference of ['library:interfaces/../boards/board.json', 'library:boards/board.json', 'https://example.com/uart.json', 'D:/uart.json', '/uart.json', 'uart\n.json']) {
+    const copy = structuredClone(board); copy.interfaces[0].definition = reference; assert.equal(shape(copy), false, `Accepted invalid interface reference: ${reference}`);
+}
 const assembly = structuredClone(documents.get(path.join(root, 'docs/examples/physical-interfaces/demo.assembly.json')));
 assembly.bindings[0].ioStandard = 'TMDS_33'; assert.equal(shape(assembly), false);
 for (const match of fs.readFileSync(path.join(root, 'docs/physical-interface-model.md'), 'utf8').matchAll(/```json\s*([\s\S]*?)```/g)) {

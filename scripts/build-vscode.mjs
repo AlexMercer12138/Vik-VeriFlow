@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { copyFile, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildWeb } from './build-web.mjs';
@@ -28,8 +29,17 @@ export async function syncVscodeWebAssets(repositoryRoot = root) {
     }
     const physicalModels = path.join(targetExtensionRoot, 'resources', 'physical-models');
     await recreate(physicalModels);
-    await copyTree(path.join(repositoryRoot, 'docs', 'boards'), path.join(physicalModels, 'boards'));
-    await copyTree(path.join(repositoryRoot, 'docs', 'examples', 'physical-interfaces'), path.join(physicalModels, 'examples', 'physical-interfaces'));
+    const interfaces = path.join(physicalModels, 'interfaces');
+    await recreate(interfaces);
+    const source = path.join(repositoryRoot, 'docs', 'examples', 'physical-interfaces');
+    for (const name of await readdir(source)) {
+        if (!/\.(fixed|expansion)\.json$/.test(name)) continue;
+        const file = path.join(source, name);
+        const model = JSON.parse(await readFile(file, 'utf8'));
+        if (!['fixed', 'expansion'].includes(model.kind))
+            throw new Error(`Expected reusable physical interface: ${file}`);
+        await copyFile(file, path.join(interfaces, name));
+    }
 }
 
 export async function buildVscode() {

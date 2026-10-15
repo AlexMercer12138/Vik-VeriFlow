@@ -92,6 +92,14 @@ test('invalid nested board data and bus aliases are rejected at load time', () =
     assert.throws(() => load(board, { ...video, bus: { repeated: ['data0_p', 'data0_p'] } }), /Duplicate bus member/);
     assert.throws(() => load(board, { ...video, function: { lvds: { ...video.function.lvds, data0_n: 'input' } } }), /pair direction/);
 });
+
+test('board interfaces accept workspace paths and library interfaces only', () => {
+    const load = (definition: string) => pins.createPhysicalBoard({ ...board, interfaces: [{ id: 'VIDEO', definition }] }, { [definition]: video });
+    for (const reference of ['../video.json', 'library:interfaces/video.fixed.json'])
+        assert.equal(load(reference).definitions.VIDEO.kind, 'fixed');
+    for (const reference of ['library:interfaces/../boards/board.json', 'library:boards/board.json', 'https://example.com/video.json', 'D:/video.json', '/video.json', 'video\n.json'])
+        assert.throws(() => load(reference), /Invalid board interface/);
+});
 test('export blocks pin conflicts, unresolved voltages, wrong directions and incomplete pairs', () => {
     const catalog = pins.createPhysicalBoard(board, { 'video.json': video });
     const ports = ['p', 'n'].map(leg => ({ name: `data_${leg}`, direction: 'output' as const, indices: [2, 1, 0] }));

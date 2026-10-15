@@ -68,7 +68,7 @@ async function main(): Promise<void> {
         },
         workspace: {
             fs: { readFile: (uri: Uri) => fs.readFile(uri.fsPath), readDirectory: async (uri: Uri) => (await fs.readdir(uri.fsPath, { withFileTypes: true })).map(e => [e.name, e.isDirectory() ? 2 : 1]) },
-            findFiles: async () => [], asRelativePath: (uri: Uri) => path.relative(directory, uri.fsPath),
+            findFiles: async () => [Uri.file(path.join(directory, 'boards/atk-au15p/board.json'))], asRelativePath: (uri: Uri) => path.relative(directory, uri.fsPath),
             openTextDocument: async (uri: Uri) => documents.get(uri.toString()) ?? { uri, getText: async () => fs.readFile(uri.fsPath, 'utf8') },
             applyEdit: async (edit: any) => { applyCount++; documents.get(edit.uri.toString())!.change(edit.text); return true; },
             onDidChangeTextDocument: (listener: (event: any) => void) => { listeners.add(listener); return { dispose() { listeners.delete(listener); } }; },
@@ -90,6 +90,13 @@ async function main(): Promise<void> {
     };
     loader._load = function (name: string, ...args: any[]): any { return name === 'vscode' ? mock : originalLoad.call(this, name, ...args); };
     try {
+        const repositoryRoot = path.resolve(__dirname, '../../..');
+        await fs.cp(path.join(repositoryRoot, 'docs/boards/atk-au15p'), path.join(directory, 'boards/atk-au15p'), { recursive: true });
+        await fs.cp(path.join(repositoryRoot, 'docs/examples/physical-interfaces'), path.join(directory, 'examples/physical-interfaces'), { recursive: true });
+        const extensionRoot = path.join(directory, 'extension');
+        const interfaceRoot = path.join(extensionRoot, 'resources/physical-models/interfaces');
+        await fs.mkdir(interfaceRoot, { recursive: true });
+        await fs.copyFile(path.join(repositoryRoot, 'docs/examples/physical-interfaces/uart.fixed.json'), path.join(interfaceRoot, 'uart.fixed.json'));
         const { PhysicalPinsPanel } = require('../archDesign/physicalPinsPanel');
         const ports = [...['p', 'n'].map(leg => ({ name: `tmds_data_${leg}`, direction: 'output' as const, indices: [2, 1, 0] })), ...['p', 'n'].map(leg => ({ name: `tmds_clock_${leg}`, direction: 'output' as const, indices: undefined }))];
         const adUri = Uri.file(path.join(directory, 'video.ad')), rtlUri = Uri.file(path.join(directory, 'quick.sv'));
@@ -99,10 +106,33 @@ async function main(): Promise<void> {
         documents.set(rtlUri.toString(), new Document(rtlUri, rtlText));
         await fs.writeFile(adUri.fsPath, adText);
         await fs.writeFile(rtlUri.fsPath, rtlText);
-        const manager = new PhysicalPinsPanel({ extensionUri: Uri.file(path.resolve(__dirname, '../..')) }, { ports: async () => ports });
-        const workspaceOwner = Uri.file(path.resolve(__dirname, '../../../docs/examples/physical-interfaces/top.ad'));
-        const workspaceBoard = path.relative(path.dirname(workspaceOwner.fsPath), path.resolve(__dirname, '../../../docs/boards/atk-au15p/board.json')).replace(/\\/g, '/');
-        assert.equal((await manager.loadBoard(workspaceOwner, workspaceBoard)).profile, 'atk-au15p', 'a repository copy of the bundled hardware uses the same circuit rules');
+        const manager = new PhysicalPinsPanel({ extensionUri: Uri.file(extensionRoot) }, { ports: async () => ports });
+        const workspaceBoard = 'boards/atk-au15p/board.json';
+        const loaded = await manager.loadBoard(adUri, workspaceBoard);
+        assert.equal(loaded.profile, 'atk-au15p', 'verified circuit rules must work without a bundled board');
+        const libraryBoard = { ...loaded.model, interfaces: loaded.model.interfaces.map((instance: any) => instance.id === 'UART1' ? { ...instance, definition: 'library:interfaces/uart.fixed.json' } : instance) };
+        await fs.writeFile(path.join(directory, 'boards/atk-au15p/library.board.json'), JSON.stringify(libraryBoard));
+        assert.equal((await manager.loadBoard(adUri, 'boards/atk-au15p/library.board.json')).profile, 'atk-au15p', 'relocating an unchanged interface definition must preserve verified circuit rules');
+        const changedBoard = { ...loaded.model, clocks: loaded.model.clocks.map((clock: any, index: number) => index === 0 ? { ...clock, frequencyHz: 50000000 } : clock) };
+        // Resolve the same definitions beside the copied board; an edited hardware model must not inherit its circuit profile.
+        await fs.writeFile(path.join(directory, 'boards/atk-au15p/changed.board.json'), JSON.stringify(changedBoard));
+        assert.equal((await manager.loadBoard(adUri, 'boards/atk-au15p/changed.board.json')).profile, undefined);
+        const customBoard = {
+            kind: 'board', vendor: 'amd', device: 'xcau15p-ffvb676-2-i',
+            rails: [{ id: 'v', millivolts: 3300 }], banks: [{ id: '84', supplyRail: 'v' }],
+            fpgaPins: [{ id: 'W16', bank: '84' }, { id: 'Y16', bank: '84' }],
+            interfaces: [{ id: 'UART', definition: 'library:interfaces/uart.fixed.json' }],
+            routes: [{ interface: 'UART', member: 'tx', pin: 'W16' }, { interface: 'UART', member: 'rx', pin: 'Y16' }],
+        };
+        await fs.writeFile(path.join(directory, 'custom.board.json'), JSON.stringify(customBoard));
+        let sources: Uri[] = [];
+        assert.equal((await manager.loadBoard(adUri, 'custom.board.json', (uris: Uri[]) => { sources = uris; })).definitions.UART.function.uart.tx, 'output');
+        assert.ok(sources.some(uri => uri.fsPath === path.join(interfaceRoot, 'uart.fixed.json')), 'watch the resolved library interface');
+        await assert.rejects(() => manager.loadBoard(adUri, 'library:boards/atk-au15p/board.json'), /relative workspace board/);
+        for (const reference of ['library:interfaces/../boards/board.json', 'library:interfaces/..\\board.json', 'library:boards/board.json', 'https://example.com/uart.json']) {
+            await fs.writeFile(path.join(directory, 'invalid.board.json'), JSON.stringify({ ...customBoard, interfaces: [{ id: 'UART', definition: reference }] }));
+            await assert.rejects(() => manager.loadBoard(adUri, 'invalid.board.json'), /[Ii]nterface definition/);
+        }
         const launch = async (uri: Uri): Promise<Page> => {
             await manager.open(uri);
             const panel = panels[panels.length - 1], page = await browser.newPage();
@@ -111,7 +141,8 @@ async function main(): Promise<void> {
             page.on('pageerror', error => { console.error('Pin panel browser error:', error); });
             await page.exposeFunction('sendMockMessage', (message: any) => panel.receive(message));
             await page.setContent(panel.webview.html.replace(/(<script nonce="[^"]+">)/, '$1\nfunction acquireVsCodeApi(){return{postMessage:message=>window.sendMockMessage(message)}};'));
-            await page.selectOption('#board', 'library:boards/atk-au15p/board.json');
+            await page.selectOption('#board', workspaceBoard);
+            assert.equal(await page.locator('#board option').count(), 2, 'only workspace boards may be offered');
             await page.locator('select[data-rail="VCCIO_B64"]').selectOption('1800');
             await page.waitForFunction(() => (globalThis as any).document.body.dataset.pending === 'false' && (globalThis as any).document.querySelector('select[data-rail="VCCIO_B64"]')?.value === '1800');
             await page.locator('select[data-selector="J22"]').selectOption('hdmi');

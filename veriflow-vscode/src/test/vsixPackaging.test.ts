@@ -244,13 +244,15 @@ function run(): void {
         );
         const packagedManifest = JSON.parse(entryText('extension/package.json'));
         const physicalRoot = 'extension/resources/physical-models';
-        const boardRoot = `${physicalRoot}/boards/atk-au15p`;
-        const packagedBoard = JSON.parse(entryText(`${boardRoot}/board.json`));
-        assert.deepStrictEqual(packagedBoard, JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'docs/boards/atk-au15p/board.json'), 'utf8')));
-        for (const instance of packagedBoard.interfaces) {
-            assert.ok(JSON.parse(entryText(path.posix.join(boardRoot, instance.definition))).kind, `Missing packaged interface ${instance.definition}`);
+        const physicalEntries = entries.filter(name => name.startsWith(`${physicalRoot}/`));
+        const interfaceNames = ['uart.fixed.json', 'i2c.fixed.json', 'spi.fixed.json', 'rgb.fixed.json', 'hdmi.fixed.json', 'header40.expansion.json'];
+        assert.deepStrictEqual(physicalEntries.sort(), interfaceNames.map(name => `${physicalRoot}/interfaces/${name}`).sort(), 'VSIX must contain only reusable interfaces, without boards, daughtercards or assemblies');
+        for (const name of interfaceNames) {
+            const definition = JSON.parse(entryText(`${physicalRoot}/interfaces/${name}`));
+            assert.ok(['fixed', 'expansion'].includes(definition.kind));
+            assert.deepStrictEqual(definition, JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'docs/examples/physical-interfaces', name), 'utf8')));
         }
-        assert.equal(JSON.parse(entryText(`${physicalRoot}/examples/physical-interfaces/rgb.fixed.json`)).bus.pdata, 24);
+        assert.equal(JSON.parse(entryText(`${physicalRoot}/interfaces/rgb.fixed.json`)).bus.pdata, 24);
         const archDesignEditor = packagedManifest.contributes.customEditors.find(
             (item: { viewType?: string }) => item.viewType === 'veriflow.archDesignEditor'
         );

@@ -10,7 +10,7 @@
 | --- | --- |
 | 删除 | 文档级 `id`、`revision`、`name`、`description`、`format`、`schemaVersion`、`$schema`；文件路径已经定位定义，说明移到本文 |
 | 删除 | 信号与实例显示名称、差分对 ID、跳线的物理类型、自由文本 `capabilities`；没有独立的生成或校验用途 |
-| 简化 | `signals` 直接列 ID 字符串；引用直接写相对路径；接线直接写 `pin`；来源有 `mount` 即表示子卡，无需重复来源类型 |
+| 简化 | `signals` 直接列 ID 字符串；引用写相对路径或内置接口路径；接线直接写 `pin`；来源有 `mount` 即表示子卡，无需重复来源类型 |
 | 简化 | 完整器件型号写在 `device` 一个字段；电压直接写整数或允许值数组，不再额外写 fixed/selectable/unknown |
 | 分离 | 主板只记录硬件事实；删除 `ioStandards`、`allowedIoStandards`、`fpgaElectrical` 和绑定中的 `ioStandard`。厂商约束与标准选择归生成器管理 |
 | 保留 | 分组与选择、角色方向、实际引脚和差分配对、Bank 与供电轨、复用条件、子卡安装和信号映射、AD/HDL 端口绑定、输出格式与路径 |
@@ -19,7 +19,9 @@
 
 ## 2. 引用和 ID
 
-一份文件只定义一个模型，文件名承担定义名称。所有引用都是相对包含该引用的文件的路径，例如 `"definition": "spi.fixed.json"`、`"board": "carrier.board.json"`。加载时规范化路径并检查被引用模型的 `kind`，不按相似文件名自动替换。若要同时维护不同硬件版本，使用不同文件路径。
+一份文件只定义一个模型，文件名承担定义名称。用户模型使用相对包含该引用的文件的路径，例如 `"definition": "spi.fixed.json"`、`"board": "carrier.board.json"`。接口的 `definition` 也可使用 `library:interfaces/<文件名>.json` 引用插件内置接口；不接受绝对路径、其他 URI 或库路径中的子目录。加载时规范化路径并检查被引用模型的 `kind`，不按相似文件名自动替换。若要同时维护不同硬件版本，使用不同文件路径。
+
+VSIX 内置 `uart.fixed.json`、`i2c.fixed.json`、`spi.fixed.json`、`rgb.fixed.json`、`hdmi.fixed.json` 和 `header40.expansion.json`，来源为仓库的 `docs/examples/physical-interfaces`。板卡、子卡、装配模型及板卡专用接口留在用户工程或仓库示例中，不随插件打包。子卡/装配对接口的库引用属于数据契约，安装面板仍待接入。
 
 只给实际被引用的对象保留 ID：接口实例、分组、扩展实例、子卡挂载、封装脚、Bank、供电轨和复用选择器。信号直接使用字符串 ID。ID 区分大小写；对象 ID 匹配 `[A-Za-z_][A-Za-z0-9_.-]*`，信号、封装脚和 Bank ID 允许数字开头。
 

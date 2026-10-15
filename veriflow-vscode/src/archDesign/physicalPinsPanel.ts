@@ -1,7 +1,6 @@
 import * as crypto from 'crypto';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { isDeepStrictEqual } from 'util';
 import { applyArchDesignEdit, bindPhysicalSignal, bindPhysicalGroup, createPhysicalBoard, generateXdc, parseArchDesignText, parsePhysicalConfiguration, physicalMembers, physicalGroupMembers, physicalPairs, physicalSignalMembers, serializeArchDesign, type PhysicalBoard, type PhysicalConfiguration, type PhysicalPort, } from '@veriflow/schematic-core/arch-design';
 import { archDesignXdcOutputPath, publishGeneratedFile } from './archDesignExport';
 type BoardChoice = {
@@ -13,6 +12,7 @@ export type PhysicalPinsPanelServices = {
     ports(document: vscode.TextDocument): Promise<readonly PhysicalPort[]>;
 };
 const excluded = '**/{node_modules,.git,.trash,.veriflow,dist,out,web-dist}/**';
+const relativeModelPath = /^(?![A-Za-z][A-Za-z0-9+.-]*:)(?![/\\])(?!.*[\r\n\0]).+$/;
 const readJson = async (uri: vscode.Uri): Promise<unknown> => JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8'));
 function folder(uri: vscode.Uri): vscode.Uri { return uri.with({ path: path.posix.dirname(uri.path) }); }
 function relative(owner: vscode.Uri, target: vscode.Uri): string { return path.posix.relative(path.posix.dirname(owner.path), target.path); }
@@ -23,36 +23,18 @@ export class PhysicalPinsPanel {
         panel.dispose(); }
     private libraryRoot(): vscode.Uri { return vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'physical-models'); }
     private resolveBoard(owner: vscode.Uri, reference: string): vscode.Uri {
-        if (reference.startsWith('library:')) {
-            const suffix = reference.slice(8);
-            if (!suffix || suffix.split('/').includes('..') || suffix.startsWith('/'))
-                throw new Error('Invalid library board path');
-            return vscode.Uri.joinPath(this.libraryRoot(), suffix);
-        }
-        if (path.isAbsolute(reference) || /^[A-Za-z]+:/.test(reference))
+        if (!relativeModelPath.test(reference))
             throw new Error('Use a relative workspace board path');
         return vscode.Uri.joinPath(folder(owner), reference);
     }
+    private resolveInterface(board: vscode.Uri, reference: string): vscode.Uri {
+        if (/^library:interfaces\/[A-Za-z0-9_][A-Za-z0-9_.-]*\.json$/.test(reference))
+            return vscode.Uri.joinPath(this.libraryRoot(), reference.slice(8));
+        if (!relativeModelPath.test(reference))
+            throw new Error('Interface definition must use a relative path or library:interfaces/<file>.json');
+        return vscode.Uri.joinPath(folder(board), reference);
+    }
     private async boards(owner: vscode.Uri): Promise<BoardChoice[]> {
-        const builtins: BoardChoice[] = [];
-        const walk = async (dir: vscode.Uri): Promise<void> => {
-            for (const [name, type] of await vscode.workspace.fs.readDirectory(dir)) {
-                const uri = vscode.Uri.joinPath(dir, name);
-                if (type === vscode.FileType.Directory)
-                    await walk(uri);
-                else if (name === 'board.json')
-                    builtins.push({ label: path.posix.basename(folder(uri).path), reference: 'library:' + path.posix.relative(this.libraryRoot().path, uri.path), uri });
-            }
-        };
-        try {
-            await walk(vscode.Uri.joinPath(this.libraryRoot(), 'boards'));
-        }
-        catch (error) {
-            if ((error as {
-                code?: string;
-            }).code !== 'FileNotFound')
-                throw error;
-        }
         const files = await vscode.workspace.findFiles('**/*.json', excluded);
         const workspace: BoardChoice[] = [];
         for (let start = 0; start < files.length; start += 32) {
@@ -68,7 +50,7 @@ export class PhysicalPinsPanel {
                 catch { /* Non-model JSON is not a board candidate. */ }
             }));
         }
-        return [...builtins, ...workspace.sort((a, b) => a.reference.localeCompare(b.reference))];
+        return workspace.sort((a, b) => a.reference.localeCompare(b.reference));
     }
     async loadBoard(owner: vscode.Uri, reference: string, references?: (sources: vscode.Uri[]) => void): Promise<PhysicalBoard> {
         const uri = this.resolveBoard(owner, reference);
@@ -79,16 +61,19 @@ export class PhysicalPinsPanel {
         };
         if (!value || !Array.isArray(value.interfaces))
             throw new Error('Board is missing interfaces');
-        references?.([uri, ...value.interfaces.filter(instance => typeof instance?.definition === 'string').map(instance => vscode.Uri.joinPath(folder(uri), instance.definition))]);
+        references?.([uri, ...value.interfaces.filter(instance => typeof instance?.definition === 'string').map(instance => this.resolveInterface(uri, instance.definition))]);
         const definitions: Record<string, unknown> = Object.create(null);
         for (const instance of value.interfaces) {
-            if (!instance || typeof instance.definition !== 'string' || path.isAbsolute(instance.definition) || /^[A-Za-z]+:/.test(instance.definition))
+            if (!instance || typeof instance.definition !== 'string')
                 throw new Error('Interface definition must use a relative path');
-            definitions[instance.definition] = await readJson(vscode.Uri.joinPath(folder(uri), instance.definition));
+            definitions[instance.definition] = await readJson(this.resolveInterface(uri, instance.definition));
         }
-        // A workspace copy of the same hardware model uses the same generator circuit rules.
-        const builtin = 'library:boards/atk-au15p/board.json';
-        const profile = reference === builtin || isDeepStrictEqual(value, await readJson(this.resolveBoard(owner, builtin))) ? 'atk-au15p' : undefined;
+        // Recognize the previously verified circuit without shipping its board JSON.
+        // Hash resolved definitions so relocating files does not change the hardware identity.
+        const hardware = { ...value, interfaces: value.interfaces.map(instance => ({ ...instance, definition: definitions[instance.definition] })) };
+        const canonical = JSON.stringify(hardware, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
+            ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
+        const profile = crypto.createHash('sha256').update(canonical).digest('hex') === '152e79899337f2d5e1566e4953f8ec835410dd225daed97e82d1519a71314f94' ? 'atk-au15p' : undefined;
         return createPhysicalBoard(value, definitions, profile);
     }
     async open(uri?: vscode.Uri): Promise<void> {
@@ -124,6 +109,7 @@ export class PhysicalPinsPanel {
                 configuration = getDesign().physical ?? { board: '', bindings: [] };
             board = undefined;
             boardError = undefined;
+            modelSources = [];
             if (configuration.board)
                 try {
                     modelSources = [this.resolveBoard(uri!, configuration.board)];
@@ -135,7 +121,7 @@ export class PhysicalPinsPanel {
             if (document.version !== version)
                 throw new Error('Document changed; wait for refresh');
             loadedVersion = version;
-            if (configuration.board && !choices.some(c => c.reference === configuration.board))
+            if (configuration.board && !choices.some(c => c.reference === configuration.board) && relativeModelPath.test(configuration.board))
                 choices.push({ label: configuration.board, reference: configuration.board, uri: this.resolveBoard(uri!, configuration.board) });
         };
         const publish = async () => {
@@ -186,9 +172,7 @@ export class PhysicalPinsPanel {
         const refresh = (changed: vscode.Uri) => {
             if (!configuration.board)
                 return;
-            const boardUri = this.resolveBoard(uri!, configuration.board);
-            const sources = [boardUri, ...modelSources];
-            if (!sources.some(source => source.toString() === changed.toString()))
+            if (!modelSources.some(source => source.toString() === changed.toString()))
                 return;
             tail = tail.then(async () => { await load(); await publish(); }).catch(report);
         };
@@ -211,11 +195,12 @@ export class PhysicalPinsPanel {
                     const choice = choices.find(c => c.reference === message.reference);
                     if (!choice)
                         throw new Error('Unknown board');
-                    const loaded = await this.loadBoard(uri!, choice.reference);
+                    let sources: vscode.Uri[] = [];
+                    const loaded = await this.loadBoard(uri!, choice.reference, resolved => { sources = resolved; });
                     await save({ board: choice.reference, bindings: [] });
                     board = loaded;
                     boardError = undefined;
-                    modelSources = [choice.uri, ...loaded.model.interfaces.map(i => vscode.Uri.joinPath(folder(choice.uri), i.definition))];
+                    modelSources = sources;
                 }
                 else if (message.type === 'settings') {
                     const next = parsePhysicalConfiguration({ ...configuration, boardSettings: message.boardSettings, railVoltages: message.railVoltages });

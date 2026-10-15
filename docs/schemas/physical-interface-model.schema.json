@@ -32,7 +32,13 @@
     "relativePath": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*[\\r\\n\\u0000]).+$"
+      "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?![/\\\\])(?!.*[\\r\\n\\u0000]).+$"
+    },
+    "interfaceDefinition": {
+      "oneOf": [
+        { "$ref": "#/definitions/relativePath" },
+        { "type": "string", "pattern": "^library:interfaces/[A-Za-z0-9_][A-Za-z0-9_.-]*\\.json$" }
+      ]
     },
     "pair": {
       "type": "object",
@@ -155,7 +161,7 @@
           "$ref": "#/definitions/id"
         },
         "definition": {
-          "$ref": "#/definitions/relativePath"
+          "$ref": "#/definitions/interfaceDefinition"
         },
         "function": {
           "$ref": "#/definitions/id"

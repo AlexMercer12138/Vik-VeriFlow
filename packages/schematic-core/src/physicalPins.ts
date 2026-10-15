@@ -210,7 +210,9 @@ export function createPhysicalBoard(value: unknown, definitions: Record<string, 
         unique(selector.values, 'selector value');
     }
     for (const instance of model.interfaces) {
-        requireValue(typeof instance.id === 'string' && id.test(instance.id) && typeof instance.definition === 'string' && /^(?![A-Za-z]:)(?![/\\])(?!.*[\r\n\u0000]).+$/.test(instance.definition), 'Invalid board interface');
+        requireValue(typeof instance.id === 'string' && id.test(instance.id) && typeof instance.definition === 'string' &&
+            (/^library:interfaces\/[A-Za-z0-9_][A-Za-z0-9_.-]*\.json$/.test(instance.definition) ||
+                /^(?![A-Za-z][A-Za-z0-9+.-]*:)(?![/\\])(?!.*[\r\n\u0000]).+$/.test(instance.definition)), 'Invalid board interface');
         const def = definitions[instance.definition];
         requireValue(object(def) && (def.kind === 'fixed' || def.kind === 'expansion') && Array.isArray(def.signals), 'Missing interface definition: ' + instance.definition);
         keys(def, ['kind', 'signals', 'function', 'bus', 'groups', 'differentialPairs']);

@@ -11,6 +11,7 @@ import {
 import {
     SquarePlus as AddBox,
     Cable,
+    CircuitBoard,
     ChevronDown,
     ChevronUp,
     Component,
@@ -2638,6 +2639,7 @@ function installIcons(): void {
         [dom.addPortButton, PanelTopOpen],
         [dom.connectButton, Cable],
         [dom.exportButton, FileOutput],
+        [dom.physicalPinsButton, CircuitBoard],
         [dom.deleteButton, Trash2],
     ] as const;
     for (const [button, icon] of icons) {

@@ -949,12 +949,14 @@ async function testSchematicAssets(): Promise<void> {
         'id="add-port-button"',
         'id="connect-button"',
         'id="export-button"',
+        'id="physical-pins-button"',
         'id="delete-button"',
         'title="Add instance"',
         'title="Logic Utility"',
         'title="Add port"',
         'title="Connect pins"',
         'title="Export RTL"',
+        'title="Board and pin bindings"',
         'title="Delete selection"',
         'id="add-instance-dialog"',
         'id="instance-name-input"',
@@ -980,6 +982,7 @@ async function testSchematicAssets(): Promise<void> {
         assert.ok(html.includes(expected), `HTML is missing ${expected}`);
     }
     assert.match(html, /id="authoring-actions"[^>]*\shidden(?:\s|>)/);
+    assert.match(html, /<button[^>]+id="physical-pins-button"[^>]+class="icon-button"[^>]*>\s*<span data-icon-slot><\/span>\s*<\/button>/);
     assert.ok(
         html.indexOf('for="instance-module-select"')
             < html.indexOf('for="instance-name-input"'),

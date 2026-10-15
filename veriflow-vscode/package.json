@@ -366,18 +366,8 @@
       "editor/context": [
         {
           "submenu": "veriflow.hdl",
-          "when": "editorLangId == verilog || editorLangId == systemverilog",
+          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .ad",
           "group": "navigation@90"
-        },
-        {
-          "command": "veriflow.generatePinConstraints",
-          "when": "resourceExtname == .v || resourceExtname == .sv",
-          "group": "veriflow@8"
-        },
-        {
-          "command": "veriflow.bindArchDesignPins",
-          "when": "resourceExtname == .ad",
-          "group": "veriflow@8"
         }
       ],
       "explorer/context": [
@@ -392,13 +382,8 @@
           "group": "navigation@10"
         },
         {
-          "command": "veriflow.generatePinConstraints",
-          "when": "resourceExtname == .v || resourceExtname == .sv",
-          "group": "veriflow@8"
-        },
-        {
-          "command": "veriflow.bindArchDesignPins",
-          "when": "resourceExtname == .ad",
+          "submenu": "veriflow.hdl",
+          "when": "resourceExtname == .v || resourceExtname == .sv || resourceExtname == .ad",
           "group": "veriflow@8"
         }
       ],
@@ -473,19 +458,33 @@
       "veriflow.hdl": [
         {
           "command": "veriflow.insertHdlTemplate",
+          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv",
           "group": "1_edit@1"
         },
         {
           "command": "veriflow.instantiateModule",
+          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv",
           "group": "1_edit@2"
         },
         {
           "command": "veriflow.formatHdl",
+          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv",
           "group": "1_edit@3"
         },
         {
           "command": "veriflow.runTraditionalTestbench",
+          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv",
           "group": "2_simulation@1"
+        },
+        {
+          "command": "veriflow.generatePinConstraints",
+          "when": "resourceExtname == .v || resourceExtname == .sv",
+          "group": "3_physical@1"
+        },
+        {
+          "command": "veriflow.bindArchDesignPins",
+          "when": "resourceExtname == .ad",
+          "group": "3_physical@2"
         }
       ],
       "commandPalette": [

@@ -33,7 +33,7 @@
       "source": {
         "mount": "video0",
         "interface": "HDMI0",
-        "member": "data0_p"
+        "member": "data_p.0"
       },
       "port": {
         "name": "hdmi_data_p",
@@ -44,7 +44,7 @@
       "source": {
         "mount": "video0",
         "interface": "HDMI0",
-        "member": "data0_n"
+        "member": "data_n.0"
       },
       "port": {
         "name": "hdmi_data_n",
@@ -55,7 +55,7 @@
       "source": {
         "mount": "video0",
         "interface": "HDMI0",
-        "member": "data1_p"
+        "member": "data_p.1"
       },
       "port": {
         "name": "hdmi_data_p",
@@ -66,7 +66,7 @@
       "source": {
         "mount": "video0",
         "interface": "HDMI0",
-        "member": "data1_n"
+        "member": "data_n.1"
       },
       "port": {
         "name": "hdmi_data_n",
@@ -77,7 +77,7 @@
       "source": {
         "mount": "video0",
         "interface": "HDMI0",
-        "member": "data2_p"
+        "member": "data_p.2"
       },
       "port": {
         "name": "hdmi_data_p",
@@ -88,7 +88,7 @@
       "source": {
         "mount": "video0",
         "interface": "HDMI0",
-        "member": "data2_n"
+        "member": "data_n.2"
       },
       "port": {
         "name": "hdmi_data_n",

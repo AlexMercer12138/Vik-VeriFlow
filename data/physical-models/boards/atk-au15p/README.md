@@ -58,16 +58,16 @@ HDMI/DSI 数据 lane 的实际交换关系如下，均保持 P→P、N→N：
 
 | FPGA 网 | 封装 P / N | HDMI | DSI |
 | --- | --- | --- | --- |
-| `HDMI_DSI_IO0` | AC18 / AD18 | data0 | d0 |
-| `HDMI_DSI_IO1` | AD16 / AE16 | clock | d1 |
-| `HDMI_DSI_IO2` | AB17 / AC17 | data2 | d3 |
-| `HDMI_DSI_IO3` | AF18 / AF19 | data1 | d2 |
+| `HDMI_DSI_IO0` | AC18 / AD18 | data[0] | data[0] |
+| `HDMI_DSI_IO1` | AD16 / AE16 | clock | data[1] |
+| `HDMI_DSI_IO2` | AB17 / AC17 | data[2] | data[3] |
+| `HDMI_DSI_IO3` | AF18 / AF19 | data[1] | data[2] |
 
 J16 的差分伙伴不一定是相邻脚，例如 5/7 为 G10/G9，6/8 为 J11/J10。扩展定义中的 18 对只表示配对关系，两端可以分别映射单端信号；器件是否支持指定电气模式仍由生成器检查。FMC 的 `LA00_CC`、`LA01_CC`、`LA17_CC`、`LA18_CC` 保留原连接器 ID。
 
 ## 明确未纳入的连接
 
-- HDMI 的 DDC、HPD、CEC 未接 FPGA；只提供真实的四组 TMDS，不复用带完整边带信号的 HDMI 模板。
+- HDMI 的 DDC、HPD、CEC 未接 FPGA；从通用 HDMI 模板通过实例 `signals` 引用 `data_p`、`data_n`、`clock_p`、`clock_n`，只映射真实的四组 TMDS。
 - FMC 的 DP0/GTH 通道未接通，不因连接器上有名称就列为可用信号；FMC JTAG 属配置链，不作为用户 IO。
 - 核心板配置 Flash、JTAG、DONE/PROG_B、XADC 和 VBATT 不属于本次用户数字接口约束范围，不伪装成普通 GPIO。PCIe 未接通的 SMBus、WAKE 等也不录入。
 - `ADJ_PWR_EN` 是板间供电控制线，原理图没有普通 FPGA IO 封装脚映射；不将邻近的 VBATT Y9 错配给它。

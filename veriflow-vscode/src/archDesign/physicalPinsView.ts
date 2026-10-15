@@ -17,12 +17,28 @@ export function physicalPinsHtml(): string {
     const vscode=acquireVsCodeApi(),el=id=>document.getElementById(id);let state;
     function post(type,data={}){el('error').textContent='';document.body.dataset.pending='true';document.querySelectorAll('select,button,input').forEach(c=>c.disabled=true);vscode.postMessage({type,revision:state?.revision,...data});}
     function option(value,text){const o=document.createElement('option');o.value=value;o.textContent=text;return o;}
-    const expand=(def,signal)=>typeof def.bus?.[signal]==='number'?Array.from({length:def.bus[signal]},(_,i)=>signal+'.'+(def.bus[signal]-1-i)):def.bus?.[signal]??[signal];
+    const expand=(def,signal)=>def.bus?.[signal]===undefined?[signal]:Array.from({length:def.bus[signal]},(_,i)=>signal+'.'+(def.bus[signal]-1-i));
+    const signalLabel=(def,signal)=>def.bus?.[signal]===undefined?signal.replace(/\.(\d+)$/, '[$1]'):signal+'['+(def.bus[signal]-1)+':0]';
+    const pairedMembers=def=>(def.kind==='fixed'?def.differentialPairs??[]:[]).flatMap(p=>expand(def,p.positive).map((positive,i)=>({positive,negative:expand(def,p.negative)[i]})));
+    function slots(def,members){
+        const entries=def.signals.flatMap(signal=>{const bits=expand(def,signal);return bits.every(m=>members.includes(m))?[{signal,bits}]:bits.filter(m=>members.includes(m)).map(m=>({signal:m,bits:[m]}));});
+        const covered=new Set(),pairs=pairedMembers(def),result=[];
+        for(const entry of entries){
+            if(covered.has(entry.signal))continue;
+            const partners=entry.bits.map(m=>pairs.find(p=>p.positive===m)?.negative??pairs.find(p=>p.negative===m)?.positive);
+            const mate=partners.every(Boolean)?entries.find(e=>JSON.stringify(e.bits)===JSON.stringify(partners)):undefined;
+            let primary=entry,secondary=mate;
+            if(mate&&pairs.some(p=>p.negative===entry.bits[0])){primary=mate;secondary=entry;}
+            covered.add(entry.signal);if(mate)covered.add(mate.signal);
+            result.push({...primary,allBits:secondary?[...primary.bits,...secondary.bits]:primary.bits,label:signalLabel(def,primary.signal)+(secondary?' / '+signalLabel(def,secondary.signal):'')});
+        }
+        return result;
+    }
     const selected=iface=>state.configuration.selections?.find(s=>s.interface===iface)?.members??(state.configuration.selections===undefined?state.configuration.bindings.filter(b=>b.source.interface===iface).map(b=>b.source.member):[]);
     function settings(){const railVoltages=[];el('settings').querySelectorAll('select').forEach(s=>{if(s.value)railVoltages.push({rail:s.dataset.rail,millivolts:Number(s.value)});});post('settings',{railVoltages});}
     function choice(iface,members,label,reason,group){const row=document.createElement('label');row.className='choice'+(reason?' blocked':'')+(group?' group':'');row.title=reason||label;const box=document.createElement('input');box.type='checkbox';box.setAttribute('aria-label',label);const count=members.filter(m=>selected(iface).includes(m)).length;box.checked=count===members.length;box.indeterminate=count>0&&count<members.length;box.disabled=!!reason&&!box.checked;box.onclick=e=>e.stopPropagation();box.onchange=()=>post('select',{interface:iface,members,checked:box.checked});row.onclick=e=>e.stopPropagation();row.append(box,document.createTextNode(label.startsWith(iface+' / ')?label.slice(iface.length+3):label));return row;}
     function render(){
-        const positions=Object.fromEntries(['interfaces','assignments','ports'].map(id=>[id,el(id).scrollTop]));const expanded=new Map([...el('interfaces').querySelectorAll('details')].map(d=>[d.dataset.iface,d.open]));
+        const positions=Object.fromEntries(['interfaces','assignments','ports'].map(id=>[id,el(id).scrollTop]));const expanded=new Map([...el('interfaces').querySelectorAll('details')].map(d=>[d.dataset.iface??d.dataset.slot,d.open]));
         document.body.dataset.pending='false';document.querySelectorAll('select,button,input').forEach(c=>c.disabled=false);el('confirm').disabled=!state.canConfirm;el('mode').textContent=state.isAd?'Choose a saved user board → select signals → assign ports → confirm. Confirmation saves the bindings inside this AD file.':'Choose a saved user board → select signals → assign ports → confirm. Bindings stay in this panel; confirmation asks where to save the XDC.';
         el('board').replaceChildren(option('','Choose a saved board'),...state.choices.map(c=>option(c.reference,c.label)));el('board').value=state.configuration.board;
         el('output').textContent=state.isAd?'Output: '+state.output:'Choose output filename and location on confirmation';el('notice').textContent=state.notice||'';
@@ -34,32 +50,35 @@ export function physicalPinsHtml(): string {
             else{label.className='fixed-voltage';label.textContent+=' · '+(rail.millivolts===undefined?'Voltage unknown':rail.millivolts/1000+' V');}
             el('settings').append(label);
         }
-        el('interfaces').replaceChildren();for(const [iface,def] of Object.entries(state.interfaces??{})){const availability=state.availability[iface],detail=document.createElement('details');detail.className='interface';detail.dataset.iface=iface;detail.open=expanded.get(iface)??false;const summary=document.createElement('summary');summary.append(choice(iface,def.members,iface,availability.interface,true));detail.append(summary);const body=document.createElement('div');body.className='choices';for(const group of def.groups??[])body.append(choice(iface,[...new Set(group.members.flatMap(m=>expand(def,m)))],iface+' / '+group.id,availability.groups[group.id],true));const members=document.createElement('div');members.className='members';for(const member of def.members)members.append(choice(iface,[member],iface+' / '+member,availability.members[member],false));body.append(members);detail.append(body);el('interfaces').append(detail);}
+        el('interfaces').replaceChildren();for(const [iface,def] of Object.entries(state.interfaces??{})){const availability=state.availability[iface],detail=document.createElement('details');detail.className='interface';detail.dataset.iface=iface;detail.open=expanded.get(iface)??false;const summary=document.createElement('summary');summary.append(choice(iface,def.members,iface,availability.interface,true));detail.append(summary);const body=document.createElement('div');body.className='choices';for(const group of def.groups??[])body.append(choice(iface,[...new Set(group.members.flatMap(m=>expand(def,m)))],iface+' / '+group.id,availability.groups[group.id],true));const members=document.createElement('div');members.className='members';for(const slot of slots(def,def.members)){
+            const checkbox=choice(iface,slot.allBits,iface+' / '+slot.label,slot.allBits.map(m=>availability.members[m]).find(Boolean),false);
+            if(def.bus?.[slot.signal]!==undefined){const bus=document.createElement('details');bus.dataset.slot=iface+' / '+slot.signal;bus.open=expanded.get(bus.dataset.slot)??false;bus.style.gridColumn='1 / -1';const title=document.createElement('summary');title.append(checkbox);bus.append(title);const bits=document.createElement('div');bits.className='members';for(const member of slot.bits){const pair=pairedMembers(def).find(p=>p.positive===member||p.negative===member);const selectedBits=pair?[pair.positive,pair.negative]:[member];const label=selectedBits.map(m=>signalLabel(def,m)).join(' / ');bits.append(choice(iface,selectedBits,iface+' / '+label,selectedBits.map(m=>availability.members[m]).find(Boolean),false));}bus.append(bits);members.append(bus);}else members.append(checkbox);
+        }body.append(members);detail.append(body);el('interfaces').append(detail);}
         if(!state.choices.length&&!state.board){const hint=document.createElement('p');hint.className='empty hint';hint.textContent='No saved boards. Use Import board to save a board and its interface definitions in your user configuration.';el('interfaces').append(hint);}
-        el('assignments').replaceChildren();let assignmentCount=0;for(const [iface,def] of Object.entries(state.interfaces??{})){const members=selected(iface);if(!members.length)continue;const heading=document.createElement('h3');heading.textContent=iface;el('assignments').append(heading);const covered=new Set(),signals=[];for(const signal of Object.keys(def.bus??{})){const bits=expand(def,signal);if(bits.every(m=>members.includes(m)&&!covered.has(m))){signals.push(signal);bits.forEach(m=>covered.add(m));}}signals.push(...def.members.filter(m=>members.includes(m)&&!covered.has(m)));
-        for(const signal of signals){
+        el('assignments').replaceChildren();let assignmentCount=0;for(const [iface,def] of Object.entries(state.interfaces??{})){const members=selected(iface);if(!members.length)continue;const heading=document.createElement('h3');heading.textContent=iface;el('assignments').append(heading);for(const slot of slots(def,members)){
             assignmentCount++;
-            const bits=expand(def,signal),bindings=state.configuration.bindings.filter(b=>b.source.interface===iface&&bits.includes(b.source.member)),row=document.createElement('div');
+            const {signal,bits,allBits}=slot,bindings=state.configuration.bindings.filter(b=>b.source.interface===iface&&bits.includes(b.source.member)),row=document.createElement('div');
             row.className='signal'+(bindings.length===bits.length?' bound':'');row.dataset.iface=iface;row.dataset.signal=signal;
             const info=document.createElement('div');info.className='signal-info';
-            const pins=state.board.routes.filter(r=>r.interface===iface&&bits.includes(r.member)).map(r=>{const pin=state.board.fpgaPins.find(p=>p.id===r.pin);return r.pin+(pin?.bank?' / B'+pin.bank:'');}).join(', ');
-            info.textContent=signal+(bits.length>1?' ['+bits.length+']':'')+' · '+pins;info.title=info.textContent;row.append(info);
+            const pins=state.board.routes.filter(r=>r.interface===iface&&allBits.includes(r.member)).map(r=>{const pin=state.board.fpgaPins.find(p=>p.id===r.pin);return r.pin+(pin?.bank?' / B'+pin.bank:'');}).join(', ');
+            info.textContent=slot.label+' · '+pins;info.title=info.textContent;row.append(info);
             const controls=document.createElement('div');controls.className='signal-controls';
             const port=document.createElement('select');port.dataset.portSelect='';port.setAttribute('aria-label',iface+' / '+signal+' port');
-            port.append(option('','— Unassigned —'),...state.ports.filter(p=>!p.unresolved&&(!p.indices?1:p.indices.length)===bits.length).map(p=>option(p.name,p.name)));
+            const leg=pairedMembers(def).some(p=>p.negative===bits[0])?/_n$/:/_p$/;
+            port.append(option('','— Unassigned —'),...state.ports.filter(p=>!p.unresolved&&(!p.indices?1:p.indices.length)===bits.length&&(allBits.length===bits.length||leg.test(p.name))).map(p=>option(p.name,p.name+(p.indices?' ['+p.indices[0]+':'+p.indices[p.indices.length-1]+']':''))));
             port.value=bindings.length===bits.length&&new Set(bindings.map(b=>b.port.name)).size===1?bindings[0].port.name:'';
             if(bindings.length&&!port.value){const stale=option('__existing__',bindings.map(b=>b.port.name).join(', ')+' (partial / missing)');stale.disabled=true;port.append(stale);port.value=stale.value;}
             port.onchange=()=>post('bind',{interface:iface,signal,port:port.value});controls.append(port);
             const standard=document.createElement('select');standard.dataset.standard='';standard.setAttribute('aria-label',iface+' / '+signal+' IO standard');
-            const options=(state.ioOptions[iface][bits[0]]??[]).filter(o=>bits.every(m=>(state.ioOptions[iface][m]??[]).some(x=>x.name===o.name)));
+            const options=(state.ioOptions[iface][bits[0]]??[]).filter(o=>allBits.every(m=>(state.ioOptions[iface][m]??[]).some(x=>x.name===o.name)));
             standard.append(option('','— IO standard —'),...options.map(o=>{const value=option(o.name,o.name+(o.millivolts?' · '+o.millivolts/1000+' V':''));value.title=o.description||'';return value;}));
-            const configured=bits.map(m=>state.configuration.ioStandards?.find(e=>e.interface===iface&&e.member===m)?.standard);
+            const configured=allBits.map(m=>state.configuration.ioStandards?.find(e=>e.interface===iface&&e.member===m)?.standard);
             if(configured.every(v=>v===configured[0])&&configured[0]){
                 if(!options.some(o=>o.name===configured[0])){const invalid=option(configured[0],configured[0]+' (unavailable)');invalid.disabled=true;standard.append(invalid);}
                 standard.value=configured[0];
             }
             standard.title=options.length?'IO standards allowed by the device, Bank voltage and signal type':'Select a supported Bank voltage above';
-            standard.onchange=()=>post('standard',{interface:iface,members:bits,standard:standard.value});controls.append(standard);row.append(controls);
+            standard.onchange=()=>post('standard',{interface:iface,members:allBits,standard:standard.value});controls.append(standard);row.append(controls);
             row.ondragover=e=>{e.preventDefault();row.classList.add('drag-over');};row.ondragleave=()=>row.classList.remove('drag-over');
             row.ondrop=e=>{e.preventDefault();post('bind',{interface:iface,signal,port:e.dataTransfer.getData('text/plain')});};
             el('assignments').append(row);
@@ -73,7 +92,7 @@ export function physicalPinsHtml(): string {
             const name=document.createElement('strong');name.textContent=p.name+(p.indices?' ['+p.indices[0]+':'+p.indices[p.indices.length-1]+']':'');item.append(name);
             const info=document.createElement('small');info.textContent=p.direction+(p.unresolved?' · unresolved range':'')+(bindings.length?' · '+bindings.length+' bound':'');item.append(info);
             item.ondragstart=e=>e.dataTransfer.setData('text/plain',p.name);
-            if(bindings.length){const mapped=document.createElement('small');mapped.className='mapped';mapped.textContent=[...new Set(bindings.map(b=>b.source.interface+'.'+b.source.member))].join(', ');item.append(mapped);}
+            if(bindings.length){const mapped=document.createElement('small');mapped.className='mapped';const targets=[];for(const [iface,def] of Object.entries(state.interfaces??{}))for(const signal of def.signals){const bits=expand(def,signal),used=bits.filter(m=>bindings.some(b=>b.source.interface===iface&&b.source.member===m));if(used.length===bits.length)targets.push(iface+'.'+signalLabel(def,signal));else targets.push(...used.map(m=>iface+'.'+signalLabel(def,m)));}mapped.textContent=targets.join(', ');item.append(mapped);}
             el('ports').append(item);
         }
         for(const [id,position] of Object.entries(positions))el(id).scrollTop=position;

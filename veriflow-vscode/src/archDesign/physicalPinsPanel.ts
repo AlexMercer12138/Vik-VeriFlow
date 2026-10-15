@@ -176,7 +176,15 @@ export class PhysicalPinsPanel {
                         clear(message.interface, physicalSignalMembers(board.definitions[message.interface], message.signal));
                         await publish(); return;
                     }
-                    const bindings = bindPhysicalSignal(board, ports, message.interface, message.signal, message.port);
+                    const definition = board.definitions[message.interface];
+                    let signal = message.signal;
+                    if (definition?.kind === 'fixed') {
+                        const members = physicalSignalMembers(definition, signal), pairs = physicalPairs(definition);
+                        const partners = members.map(member => /_n$/.test(message.port) ? pairs.find(p => p.positive === member)?.negative
+                            : /_p$/.test(message.port) ? pairs.find(p => p.negative === member)?.positive : undefined);
+                        if (partners.every(Boolean)) signal = definition.signals.find(s => JSON.stringify(physicalSignalMembers(definition, s)) === JSON.stringify(partners)) ?? partners[0];
+                    }
+                    const bindings = bindPhysicalSignal(board, ports, message.interface, signal, message.port);
                     if (bindings.some(b => !physicalSelectionMembers(configuration, b.source.interface).includes(b.source.member))) throw new Error('Select the physical signal before assigning a port');
                     const names = new Set(bindings.map(b => b.port.name)), targets = new Set(bindings.map(b => JSON.stringify(b.source)));
                     configuration = { ...configuration, bindings: [...configuration.bindings.filter(b => !names.has(b.port.name) && !targets.has(JSON.stringify(b.source))), ...bindings] };

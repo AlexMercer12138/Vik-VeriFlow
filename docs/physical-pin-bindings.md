@@ -22,7 +22,7 @@ AD 编辑器点击 **Pins / XDC**。普通 `.v` / `.sv` 文件通过资源管理
 
 ## 总线与差分
 
-接口 `bus` 支持位宽或按顺序列出的成员别名。`[2:0] tmds_data_p` 拖到 `data_p` 时，按声明索引顺序映射；存在对应 `tmds_data_n[2:0]` 时同时绑定 P/N 六脚。为固定差分总线选择标准会同步其对应 N/P 成员。端口向量、方向和极性均校验。
+接口 `signals` 只列逻辑信号，`bus` 统一保存数字位宽，例如 `"data_p": 3`，不再使用成员数组。界面显示 `data_p[2:0] / data_n[2:0]`，P/N 共用一个绑定项；拖入 `tmds_data_p[2:0]` 或 `tmds_data_n[2:0]` 任一端，按声明索引顺序同时绑定六脚。展开左侧总线可按位选择。为固定差分总线选择标准会同步其对应 N/P 成员。端口向量、方向和极性均校验。
 
 ## AD 持久化
 
@@ -32,14 +32,14 @@ AD 编辑器点击 **Pins / XDC**。普通 `.v` / `.sv` 文件通过资源管理
 "physical": {
   "board": "user:atk-au15p",
   "railVoltages": [{"rail": "VCCIO_B64", "millivolts": 1800}],
-  "selections": [{"interface": "HDMI_OUT", "members": ["data2_p", "data2_n"]}],
+  "selections": [{"interface": "HDMI_OUT", "members": ["data_p.2", "data_n.2"]}],
   "ioStandards": [
-    {"interface": "HDMI_OUT", "member": "data2_p", "standard": "LVDS"},
-    {"interface": "HDMI_OUT", "member": "data2_n", "standard": "LVDS"}
+    {"interface": "HDMI_OUT", "member": "data_p.2", "standard": "LVDS"},
+    {"interface": "HDMI_OUT", "member": "data_n.2", "standard": "LVDS"}
   ],
   "bindings": [
-    {"source": {"interface": "HDMI_OUT", "member": "data2_p"}, "port": {"name": "tmds_data_p", "bit": 2}},
-    {"source": {"interface": "HDMI_OUT", "member": "data2_n"}, "port": {"name": "tmds_data_n", "bit": 2}}
+    {"source": {"interface": "HDMI_OUT", "member": "data_p.2"}, "port": {"name": "tmds_data_p", "bit": 2}},
+    {"source": {"interface": "HDMI_OUT", "member": "data_n.2"}, "port": {"name": "tmds_data_n", "bit": 2}}
   ]
 }
 ```

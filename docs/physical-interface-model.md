@@ -13,7 +13,7 @@
 | 简化 | `signals` 直接列 ID 字符串；引用写相对路径或内置接口路径；接线直接写 `pin`；来源有 `mount` 即表示子卡，无需重复来源类型 |
 | 简化 | 完整器件型号写在 `device` 一个字段；电压直接写整数或允许值数组，不再额外写 fixed/selectable/unknown |
 | 分离 | 主板只记录硬件事实；删除 `ioStandards`、`allowedIoStandards`、`fpgaElectrical` 和绑定中的 `ioStandard`。厂商约束与标准选择归生成器管理 |
-| 保留 | 分组与选择、角色方向、实际引脚和差分配对、Bank 与供电轨、复用条件、子卡安装和信号映射、AD/HDL 端口绑定、输出格式与路径 |
+| 保留 | 分组与选择、角色方向、实际引脚和差分配对、Bank 与供电轨、引脚复用、子卡安装和信号映射、AD/HDL 端口绑定、输出格式与路径 |
 
 物理模型只用一个 `kind` 区分五类文件：`fixed`、`expansion`、`board`、`daughtercard`、`assembly`。Schema 拒绝未知属性。Schema 文件本身的 `$schema` 等是验证器元数据，不属于物理数据。
 
@@ -21,7 +21,7 @@
 
 一份文件只定义一个模型，文件名承担定义名称。用户模型使用相对包含该引用的文件的路径，例如 `"definition": "spi.fixed.json"`、`"board": "carrier.board.json"`。接口的 `definition` 也可使用 `library:interfaces/<文件名>.json` 引用插件内置接口；不接受绝对路径、其他 URI 或库路径中的子目录。加载时规范化路径并检查被引用模型的 `kind`，不按相似文件名自动替换。若要同时维护不同硬件版本，使用不同文件路径。
 
-正式模型统一放在 `data/physical-models`：通用定义在 `interfaces`，板卡及专用定义在 `boards/<id>`，Schema 在 `schemas`，演示数据在 `examples`。VSIX 只打包通用接口目录，包含 UART、I2C、SPI、RGB、HDMI/TMDS、DDR4 x16、MIPI、RGMII、SD、CAN、QSFP、PCIe x8、排针、FMC 等。AD 用 `user:<id>` 定位用户板卡，旧相对板卡路径仍可读取。通用定义按库引用复用，板卡专用和用户相对接口定义保存导入快照。子卡安装面板仍待接入。
+正式模型统一放在 `data/physical-models`：通用定义在 `interfaces`，板卡及专用定义在 `boards/<id>`，Schema 在 `schemas`，演示数据在 `examples`。VSIX 只打包通用接口目录，包含 UART、I2C、SPI、RGB、HDMI、DDR4 x16、MIPI、RGMII、SD、CAN、QSFP、PCIe x8、排针、FMC 等。AD 用 `user:<id>` 定位用户板卡，旧相对板卡路径仍可读取。通用定义按库引用复用，板卡专用和用户相对接口定义保存导入快照。子卡安装面板仍待接入。
 
 只给实际被引用的对象保留 ID：接口实例、分组、扩展实例、子卡挂载、封装脚、Bank 和供电轨。信号直接使用字符串 ID。ID 区分大小写；对象 ID 匹配 `[A-Za-z_][A-Za-z0-9_.-]*`，信号、封装脚和 Bank ID 允许数字开头。
 
@@ -48,13 +48,15 @@
 | `groups[].id`、`members` | 通过组选择本次参与约束生成的信号 |
 | `groups[].selection` | 省略即 `individual`，可部分选用；`together` 表示任一成员启用都必须补齐全组 |
 | `differentialPairs[].positive`、`negative` | 实际功能差分对，用于成对选择、极性检查和资源占用 |
-| `bus` | 数值位宽展开物理成员，或用有序成员数组组成拖放总线；用于批量绑定与位宽校验 |
+| `bus` | 只保存信号的整数位宽，用于成员展开、批量绑定与位宽校验；不接受数组或别名 |
 
 `groups`、`differentialPairs`、`bus` 可省略。每个方向表恰好覆盖 `signals`，方向始终相对 FPGA 顶层端口。同一功能差分对在每个角色下 P/N 方向一致。未定义位宽的信号表示一根标量线。
 
 `"bus": {"pdata": 24}` 要求 `signals` 含 `pdata`，路由/子卡映射使用展开后的 `pdata.23` 至 `pdata.0`。方向仍由 `function[角色].pdata` 定义。差分对可以引用两个等宽逻辑总线，逐位展开配对。
 
-`"bus": {"data_p": ["data2_p", "data1_p", "data0_p"]}` 将已有标量组成别名，数组成员必须存在且不重复，别名不得覆盖 `signals`。板卡原有路由无需改写。数组顺序对应 RTL 声明从左到右：绑定 `[2:0] tmds_data_p` 时 `data2_p → [2]`；绑定 `[4:6]` 时第一个成员对应 `[4]`。固定差分信号会一起绑定同名 `_p`/`_n` 端口，要求两侧索引一致。缺少对应端口、位宽不一致或 P/N 反接会提示错误。
+HDMI 的 `signals` 只列 `data_p`、`data_n`、`clock_p`、`clock_n` 及边带信号，`"bus": {"data_p": 3, "data_n": 3}`，差分对引用 `data_p` / `data_n`。组负责组合信号，`bus` 不再承担组的含义。界面显示 `data_p[2:0] / data_n[2:0]`，绑定区合为一项；拖入任一 `_p` 或 `_n` 端口会自动绑定另一端，要求两侧方向和索引一致。内部成员 `data_p.2` 对应 `[2:0]` RTL 的 `[2]`；对 `[4:6]` RTL 则按声明从左到右对应 `[4]`。缺少配对端口、位宽不一致或极性错误会阻止导出。
+
+接口实例可用 `signals` 只引用实际接通的完整信号，省略即使用整个模板。例如 AU15P 的 HDMI 实例引用 `library:interfaces/hdmi.fixed.json`，并设置 `"signals": ["data_p", "data_n", "clock_p", "clock_n"]`；不再创建单独的 HDMI TMDS 定义。未接通的 DDC/HPD/CEC 不显示、不要求接线。子集不能拆开固定差分对或 `together` 组；引用的每个总线位仍须有实际路由。工程面板可展开总线，按位选用。
 
 | 接口 | function | 方向规则 |
 | --- | --- | --- |
@@ -110,7 +112,7 @@
 | `interfaces[].id`、`definition`、`function` | 引用功能信号和角色方向，供勾选与 AD 绑定使用 |
 | `mappings[].interface`、`expansion`、`signals` | 功能信号 ID → 扩展信号 ID → 主板封装脚 |
 
-每根功能信号必须映射一次，不同功能不能映射到同一根扩展信号。一个功能跨多个扩展口时可拆为多张映射表。固定功能差分对要映射到同一个扩展差分对，P/N 极性一致。
+实例引用的每根功能信号必须映射一次，不同功能不能映射到同一根扩展信号。一个功能跨多个扩展口时可拆为多张映射表。固定功能差分对要映射到同一个扩展差分对，P/N 极性一致。
 
 上例的 TX/RX 是两个独立单端信号。也可将 RX 改映射为 `io0`，此时未使用的 `dp0_n` 仍可作为原始 GPIO。没有额外的子卡触点、电源或地映射。
 
@@ -127,7 +129,7 @@
 | `differentialPairs` | 封装真实 P/N 配对，检查功能和扩展映射；可用电气模式仍由器件规则判断 |
 | `banks[].id`、`supplyRail`、`type` | 定位 VCCO 资源；`type` 为硬件 Bank 类型 `hp`、`hr`、`hd`、`gt`，GT 可省略 `supplyRail` |
 | `rails[].id`、`millivolts` | 整数表示固定电压，数组表示允许的可选电压，省略电压表示未知；多个 Bank 可共用一条轨 |
-| `interfaces` | 本板固定接口与扩展接口实例，供接线和工程选择引用 |
+| `interfaces` | 本板固定接口与扩展接口实例；可选 `signals` 限定实际接通的模板信号，省略则使用全部 |
 | `routes` | 接口成员到实际引脚的接线；复用接口直接引用相同封装脚 |
 | `clocks[].interface`、`member`、`frequencyHz` | 板载振荡器接到哪个输入以及其实际频率；生成器据此计算周期，差分时钟只引用正端 |
 
@@ -168,7 +170,7 @@ AMD UltraScale/UltraScale+ 候选依据 UG571 v1.16 表 1-77/1-78 与 HD 表 3-2
 
 ```json
 {
-  "source": { "mount": "video0", "interface": "HDMI0", "member": "data0_p" },
+  "source": { "mount": "video0", "interface": "HDMI0", "member": "data_p.0" },
   "port": { "name": "hdmi_data_p", "bit": 0 }
 }
 ```

@@ -181,6 +181,15 @@
         },
         "function": {
           "$ref": "#/definitions/id"
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/memberId"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Connected whole signals from the reusable interface; omitted means all signals."
         }
       },
       "required": [
@@ -760,22 +769,9 @@
         "$ref": "#/definitions/memberId"
       },
       "additionalProperties": {
-        "oneOf": [
-          {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 4096
-          },
-          {
-            "type": "array",
-            "items": {
-              "$ref": "#/definitions/memberId"
-            },
-            "minItems": 1,
-            "maxItems": 4096,
-            "uniqueItems": true
-          }
-        ]
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4096
       }
     }
   }

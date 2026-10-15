@@ -130,11 +130,19 @@ async function main(): Promise<void> {
         await settings(page, '#board', 'user:atk-au15p');
         await settings(page, 'select[data-rail="VCCIO_B64"]', '1800');
         await expand(page, 'HDMI_OUT');
-        for (const bit of [2, 1, 0]) { await checkbox(page, 'HDMI_OUT / data' + bit + '_p').check(); await ready(page); }
-        assert.equal(await page.locator('.signal').count(), 2, 'P/N bus assignment slots are shown separately');
+        await checkbox(page, 'HDMI_OUT / data_p[2:0] / data_n[2:0]').evaluate((element: any) => { element.closest('details').open = true; });
+        await checkbox(page, 'HDMI_OUT / data_p[1] / data_n[1]').check(); await ready(page);
+        assert.equal(await page.locator('.signal').count(), 1, 'individual lanes remain selectable');
+        assert.match(await page.locator('.signal-info').textContent() ?? '', /data_p\[1\] \/ data_n\[1\]/);
+        await checkbox(page, 'HDMI_OUT / data_p[2:0] / data_n[2:0]').check(); await ready(page);
+        assert.equal(await page.locator('.signal').count(), 1, 'P/N share one assignment slot');
+        assert.match(await page.locator('.signal-info').textContent() ?? '', /data_p\[2:0\] \/ data_n\[2:0\]/);
+        assert.equal(await checkbox(page, 'HDMI_OUT / ddc_scl').count(), 0, 'unconnected template signals are omitted by the board subset');
         assert.equal(await page.locator('#confirm').isDisabled(), true, 'selected signals require assignments');
-        const source = page.locator('.port[data-port="tmds_data_p"]'), target = page.locator('.signal[data-signal="data_p"]');
+        const source = page.locator('.port[data-port="tmds_data_n"]'), target = page.locator('.signal[data-signal="data_p"]');
         await source.dragTo(target); await ready(page);
+        assert.equal(await page.locator('.port[data-port="tmds_data_p"] .mapped').textContent(), 'HDMI_OUT.data_p[2:0]');
+        assert.equal(await page.locator('.port[data-port="tmds_data_n"] .mapped').textContent(), 'HDMI_OUT.data_n[2:0]');
         assert.equal(await page.getByRole('button', { name: 'Bind', exact: true }).count(), 0);
         assert.equal(await page.getByRole('button', { name: 'Clear', exact: true }).count(), 0);
         assert.equal(await page.locator('select[data-selector]').count(), 0);
@@ -192,7 +200,7 @@ async function main(): Promise<void> {
         await settings(quick, '#board', 'user:atk-au15p');
         await settings(quick, 'select[data-rail="VCCIO_B64"]', '1800');
         await expand(quick, 'HDMI_OUT');
-        for (const bit of [2, 1, 0]) { await checkbox(quick, 'HDMI_OUT / data' + bit + '_p').check(); await ready(quick); }
+        await checkbox(quick, 'HDMI_OUT / data_p[2:0] / data_n[2:0]').check(); await ready(quick);
         await settings(quick, '.signal[data-signal="data_p"] select[data-port-select]', 'tmds_data_p');
         await settings(quick, '.signal[data-signal="data_p"] select[data-standard]', 'LVDS');
         assert.equal(applyCount, beforeQuick); assert.equal(await fs.readFile(rtlUri.fsPath, 'utf8'), rtlText);

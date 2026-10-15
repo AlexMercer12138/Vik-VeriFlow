@@ -31,7 +31,7 @@ export type PhysicalInterface = {
     kind: 'fixed' | 'expansion';
     signals: string[];
     function?: Record<string, Record<string, 'input' | 'output' | 'inout'>>;
-    bus?: Record<string, number | string[]>;
+    bus?: Record<string, number>;
     groups?: {
         id: string;
         members: string[];
@@ -69,6 +69,7 @@ export type PhysicalBoardModel = {
         id: string;
         definition: string;
         function?: string;
+        signals?: string[];
     }[];
     routes: {
         interface: string;
@@ -156,7 +157,7 @@ export function parsePhysicalConfiguration(value: unknown): PhysicalConfiguratio
 }
 export function physicalSignalMembers(def: PhysicalInterface, signal: string): string[] {
     const bus = Object.prototype.hasOwnProperty.call(def.bus ?? {}, signal) ? def.bus![signal] : undefined;
-    return typeof bus === 'number' ? Array.from({ length: bus }, (_, i) => `${signal}.${bus - 1 - i}`) : bus ?? [signal];
+    return bus === undefined ? [signal] : Array.from({ length: bus }, (_, i) => `${signal}.${bus - 1 - i}`);
 }
 export function physicalMembers(def: PhysicalInterface): string[] { return def.signals.flatMap(signal => physicalSignalMembers(def, signal)); }
 function memberDirection(def: PhysicalInterface, role: string, member: string): PhysicalPort['direction'] | undefined {
@@ -172,6 +173,27 @@ export function physicalPairs(def: PhysicalInterface): {
         requireValue(p.length === n.length, 'Differential bus widths differ');
         return p.map((positive, i) => ({ positive, negative: n[i] }));
     });
+}
+/** Hardware instances can use part of a shared template without redefining it. */
+export function physicalInterfaceSubset(def: PhysicalInterface, signals?: readonly string[]): PhysicalInterface {
+    if (signals === undefined) return def;
+    requireValue(Array.isArray(signals) && signals.length > 0 && signals.every(s => def.signals.includes(s)), 'Unknown interface signal in subset');
+    unique(signals, 'interface subset signal');
+    const members = new Set(signals.flatMap(s => physicalSignalMembers(def, s)));
+    if (def.kind === 'fixed') for (const pair of physicalPairs(def))
+        requireValue(members.has(pair.positive) === members.has(pair.negative), 'Select the complete differential pair in the interface subset');
+    const groups = (def.groups ?? []).map(group => {
+        const remaining = group.members.filter(m => physicalSignalMembers(def, m).every(bit => members.has(bit)));
+        requireValue(group.selection !== 'together' || !remaining.length || remaining.length === group.members.length, 'Select the complete group in the interface subset');
+        return { ...group, members: remaining };
+    }).filter(group => group.members.length);
+    const pairs = (def.differentialPairs ?? []).filter(pair => [pair.positive, pair.negative].every(s => physicalSignalMembers(def, s).every(m => members.has(m))));
+    const bus = Object.fromEntries(Object.entries(def.bus ?? {}).filter(([s]) => signals.includes(s)));
+    return { ...def, signals: def.signals.filter(s => signals.includes(s)),
+        ...(def.function ? { function: Object.fromEntries(Object.entries(def.function).map(([role, dirs]) => [role,
+            Object.fromEntries(Object.entries(dirs).filter(([s]) => signals.includes(s)))])) } : {}),
+        bus: Object.keys(bus).length ? bus : undefined, groups: groups.length ? groups : undefined,
+        differentialPairs: pairs.length ? pairs : undefined };
 }
 export function physicalIoStandards(board: PhysicalBoard, config: PhysicalConfiguration, iface: string, member: string, direction?: PhysicalPort['direction']) {
     const def = board.definitions[iface], route = board.model.routes.find(r => r.interface === iface && r.member === member);
@@ -207,7 +229,7 @@ export function createPhysicalBoard(value: unknown, definitions: Record<string, 
     requireValue(Array.isArray(value.fpgaPins) && Array.isArray(value.interfaces) && Array.isArray(value.routes), 'Missing board pins, interfaces or routes');
     requireValue(/^[a-z][a-z0-9-]*$/.test(value.vendor) && value.device.length > 0, 'Invalid board device/vendor');
     records(value, 'fpgaPins', ['id', 'bank', 'reservation', 'clockCapable'], ['id'], false);
-    records(value, 'interfaces', ['id', 'definition', 'function'], ['id', 'definition'], false);
+    records(value, 'interfaces', ['id', 'definition', 'function', 'signals'], ['id', 'definition'], false);
     records(value, 'routes', ['interface', 'member', 'pin'], ['interface', 'member', 'pin'], false);
     records(value, 'rails', ['id', 'millivolts'], ['id']);
     records(value, 'banks', ['id', 'supplyRail', 'type'], ['id']);
@@ -254,17 +276,10 @@ export function createPhysicalBoard(value: unknown, definitions: Record<string, 
         requireValue(iface.bus === undefined || object(iface.bus), 'Invalid bus');
         for (const [name, bus] of Object.entries(iface.bus ?? {})) {
             requireValue(id.test(name), 'Invalid bus ID');
-            requireValue(typeof bus === 'number' ? Number.isSafeInteger(bus) && bus > 0 && bus <= 4096 && iface.signals.includes(name) : Array.isArray(bus) && bus.length > 0 && bus.length <= 4096 && bus.every(m => typeof m === 'string' && id.test(m)), 'Invalid bus members');
-            if (Array.isArray(bus)) {
-                unique(bus, 'bus member');
-                requireValue(!iface.signals.includes(name), 'Bus alias shadows a signal');
-            }
+            requireValue(Number.isSafeInteger(bus) && bus > 0 && bus <= 4096 && iface.signals.includes(name), 'Invalid bus width');
         }
         const members = physicalMembers(iface);
         unique(members, 'expanded signal');
-        for (const bus of Object.values(iface.bus ?? {}))
-            if (Array.isArray(bus))
-                requireValue(bus.every(m => members.includes(m)), 'Bus references unknown signal');
         if (iface.kind === 'fixed') {
             requireValue(object(iface.function) && Object.keys(iface.function).length > 0, 'Missing fixed interface roles');
             requireValue(Object.keys(iface.function).every(role => id.test(role)), 'Invalid interface role');
@@ -288,7 +303,7 @@ export function createPhysicalBoard(value: unknown, definitions: Record<string, 
             unique(group.members, 'group member');
             requireValue(group.members.every(m => members.includes(m) || iface.signals.includes(m) || Object.prototype.hasOwnProperty.call(iface.bus ?? {}, m)), 'Unknown group member');
         }
-        defs[instance.id] = iface;
+        defs[instance.id] = physicalInterfaceSubset(iface, instance.signals);
     }
     for (const route of model.routes) {
         requireValue(defs[route.interface] && physicalMembers(defs[route.interface]).includes(route.member) && model.fpgaPins.some(pin => pin.id === route.pin), 'Unknown board route');

@@ -3,20 +3,14 @@
   "signals": [
     "clk",
     "cmd",
-    "d0",
-    "d1",
-    "d2",
-    "d3",
+    "data",
     "cd_n"
   ],
   "function": {
     "sd-host": {
       "clk": "output",
       "cmd": "inout",
-      "d0": "inout",
-      "d1": "inout",
-      "d2": "inout",
-      "d3": "inout",
+      "data": "inout",
       "cd_n": "input"
     }
   },
@@ -26,10 +20,7 @@
       "members": [
         "clk",
         "cmd",
-        "d0",
-        "d1",
-        "d2",
-        "d3"
+        "data"
       ],
       "selection": "together"
     },
@@ -41,11 +32,6 @@
     }
   ],
   "bus": {
-    "data": [
-      "d3",
-      "d2",
-      "d1",
-      "d0"
-    ]
+    "data": 4
   }
 }

@@ -1,27 +1,15 @@
 {
   "kind": "fixed",
   "signals": [
-    "d0_p",
-    "d0_n",
-    "d1_p",
-    "d1_n",
-    "d2_p",
-    "d2_n",
-    "d3_p",
-    "d3_n",
+    "data_p",
+    "data_n",
     "clk_p",
     "clk_n"
   ],
   "function": {
     "mipi-dsi-transmitter": {
-      "d0_p": "output",
-      "d0_n": "output",
-      "d1_p": "output",
-      "d1_n": "output",
-      "d2_p": "output",
-      "d2_n": "output",
-      "d3_p": "output",
-      "d3_n": "output",
+      "data_p": "output",
+      "data_n": "output",
       "clk_p": "output",
       "clk_n": "output"
     }
@@ -37,29 +25,29 @@
     {
       "id": "lane0",
       "members": [
-        "d0_p",
-        "d0_n"
+        "data_p.0",
+        "data_n.0"
       ]
     },
     {
       "id": "lane1",
       "members": [
-        "d1_p",
-        "d1_n"
+        "data_p.1",
+        "data_n.1"
       ]
     },
     {
       "id": "lane2",
       "members": [
-        "d2_p",
-        "d2_n"
+        "data_p.2",
+        "data_n.2"
       ]
     },
     {
       "id": "lane3",
       "members": [
-        "d3_p",
-        "d3_n"
+        "data_p.3",
+        "data_n.3"
       ]
     }
   ],
@@ -69,34 +57,12 @@
       "negative": "clk_n"
     },
     {
-      "positive": "d0_p",
-      "negative": "d0_n"
-    },
-    {
-      "positive": "d1_p",
-      "negative": "d1_n"
-    },
-    {
-      "positive": "d2_p",
-      "negative": "d2_n"
-    },
-    {
-      "positive": "d3_p",
-      "negative": "d3_n"
+      "positive": "data_p",
+      "negative": "data_n"
     }
   ],
   "bus": {
-    "data_p": [
-      "d3_p",
-      "d2_p",
-      "d1_p",
-      "d0_p"
-    ],
-    "data_n": [
-      "d3_n",
-      "d2_n",
-      "d1_n",
-      "d0_n"
-    ]
+    "data_p": 4,
+    "data_n": 4
   }
 }

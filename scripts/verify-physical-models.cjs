@@ -29,7 +29,7 @@ const unique = items => assert.equal(new Set(items).size, items.length, 'Duplica
 const byId = items => { unique(items.map(item => item.id)); return new Map(items.map(item => [item.id, item])); };
 const signalMembers = (def, signal) => {
     const bus = Object.hasOwn(def.bus ?? {}, signal) ? def.bus[signal] : undefined;
-    return typeof bus === 'number' ? Array.from({ length: bus }, (_, i) => `${signal}.${bus - 1 - i}`) : bus ?? [signal];
+    return bus === undefined ? [signal] : Array.from({ length: bus }, (_, i) => `${signal}.${bus - 1 - i}`);
 };
 const members = def => def.signals.flatMap(signal => signalMembers(def, signal));
 const pairs = def => (def.differentialPairs ?? []).flatMap(pair => {
@@ -58,7 +58,18 @@ function definition(owner, instance, kind) {
         const roles = Object.keys(doc.function);
         assert.ok(instance.function ? roles.includes(instance.function) : roles.length === 1, 'Unknown or ambiguous role');
     } else assert.equal(instance.function, undefined);
-    return doc;
+    if (!instance.signals) return doc;
+    unique(instance.signals);
+    assert.ok(instance.signals.length && instance.signals.every(s => doc.signals.includes(s)), 'Unknown interface signal in subset');
+    const subset = new Set(instance.signals.flatMap(s => signalMembers(doc, s)));
+    if (doc.kind === 'fixed') for (const pair of pairs(doc)) assert.equal(subset.has(pair.positive), subset.has(pair.negative), 'Select complete differential pair');
+    const groups = (doc.groups ?? []).map(group => {
+        const remaining = group.members.filter(m => signalMembers(doc, m).every(bit => subset.has(bit)));
+        assert.ok(group.selection !== 'together' || !remaining.length || remaining.length === group.members.length, 'Select complete group');
+        return { ...group, members: remaining };
+    }).filter(g => g.members.length);
+    return { ...doc, signals: doc.signals.filter(s => instance.signals.includes(s)), groups,
+        differentialPairs: (doc.differentialPairs ?? []).filter(pair => [pair.positive, pair.negative].every(s => signalMembers(doc, s).every(m => subset.has(m)))) };
 }
 function expand(def, selection) {
     const selected = new Set((selection.members ?? []).flatMap(member => signalMembers(def, member)));
@@ -86,8 +97,7 @@ for (const [file, doc] of documents) {
         unique(doc.signals);
         const expanded = members(doc); unique(expanded);
         for (const [name, bus] of Object.entries(doc.bus ?? {})) {
-            if (typeof bus === 'number') assert.ok(doc.signals.includes(name), 'Numeric bus must name a signal');
-            else { assert.ok(!doc.signals.includes(name), 'Alias cannot shadow a signal'); unique(bus); bus.forEach(member => assert.ok(expanded.includes(member))); }
+            assert.ok(doc.signals.includes(name) && Number.isSafeInteger(bus) && bus > 0 && bus <= 4096, 'Bus must specify a signal width');
         }
         byId(doc.groups ?? []);
         for (const group of doc.groups ?? []) for (const member of group.members.flatMap(member => signalMembers(doc, member))) assert.ok(expanded.includes(member));
@@ -195,13 +205,13 @@ const pin = (iface, member) => board.routes.find(route => route.interface === if
 for (const [iface, member, ball] of [
     ['SYS_CLK','clock_p','V24'], ['SYS_CLK','clock_n','W24'],
     ['UART1','tx','W16'], ['I2C4','scl','AC13'], ['I2C4','sda','AC14'],
-    ['DDR4','clk_p','K22'], ['DDR4','dqs0_p','F24'], ['DDR4','dqs1_n','C24'], ['DDR4','dq15','B25'],
-    ['HDMI_OUT','data0_p','AC18'], ['HDMI_OUT','clock_p','AD16'], ['HDMI_OUT','data1_p','AF18'], ['HDMI_OUT','data2_p','AB17'],
-    ['MIPI_DSI','d2_p','AF18'], ['MIPI_DSI','d3_p','AB17'], ['MIPI_CSI','clk_p','R22'],
+    ['DDR4','clk_p','K22'], ['DDR4','dqs_p.0','F24'], ['DDR4','dqs_n.1','C24'], ['DDR4','dq.15','B25'],
+    ['HDMI_OUT','data_p.0','AC18'], ['HDMI_OUT','clock_p','AD16'], ['HDMI_OUT','data_p.1','AF18'], ['HDMI_OUT','data_p.2','AB17'],
+    ['MIPI_DSI','data_p.2','AF18'], ['MIPI_DSI','data_p.3','AB17'], ['MIPI_CSI','clk_p','R22'],
     ['J16','5','G10'], ['J16','7','G9'], ['J16','40','J15'],
     ['FMC_LPC','LA00_CC_P','AC19'], ['FMC_LPC','CLK0_M2C_P','AD21'], ['FMC_LPC','CLK1_M2C_P','AD20'],
-    ['PCIE','rx0_p','P2'], ['PCIE','rx3_p','Y2'], ['PCIE','rx7_p','AF2'],
-    ['QSFP','rx1_p','M2'], ['QSFP','refclk_p','M7'], ['SD','clk','A12'], ['SD','cmd','A13'],
+    ['PCIE','rx_p.0','P2'], ['PCIE','rx_p.3','Y2'], ['PCIE','rx_p.7','AF2'],
+    ['QSFP','rx_p.0','M2'], ['QSFP','refclk_p','M7'], ['SD','clk','A12'], ['SD','cmd','A13'],
     ['CAN1','tx','J10'], ['RS4851','rx','K10'], ['J19','RXD','J11']
 ]) assert.equal(pin(iface, member), ball, `${iface}.${member}`);
 assert.equal(board.interfaces.length, 21); assert.equal(board.fpgaPins.length, 274); assert.equal(board.routes.length, 302);
@@ -215,10 +225,10 @@ assert.ok(header.differentialPairs.some(pair => pair.positive === '5' && pair.ne
 const fmc = documents.get(path.join(root, 'data/physical-models/interfaces/fmc-lpc.expansion.json'));
 assert.equal(fmc.signals.length, 75); assert.equal(fmc.differentialPairs.length, 36);
 assert.ok(!fmc.signals.some(signal => signal.startsWith('DP')));
-const hdmi = documents.get(path.join(root, 'data/physical-models/interfaces/hdmi-tmds.fixed.json'));
-assert.deepEqual([...expand(hdmi, {members:['data0_p']})], ['data0_p','data0_n']);
+const hdmi = definition(boardFile, board.interfaces.find(i => i.id === 'HDMI_OUT'));
+assert.deepEqual([...expand(hdmi, {members:['data_p.0']})], ['data_p.0','data_n.0']);
 assert.equal(expand(hdmi, {groups:['tmds']}).size, 8);
-assert.equal(hdmi.signals.length, 8); // No invented DDC, HPD or CEC wires.
+assert.equal(members(hdmi).length, 8); // No invented DDC, HPD or CEC wires.
 assert.equal(board.selectors, undefined);
 assert.ok(board.routes.every(route => route.when === undefined));
 assert.equal(board.routes.filter(route => route.interface === 'HDMI_OUT').length, 8);

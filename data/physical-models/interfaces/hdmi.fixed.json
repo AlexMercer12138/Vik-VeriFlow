@@ -1,12 +1,8 @@
 {
   "kind": "fixed",
   "signals": [
-    "data0_p",
-    "data0_n",
-    "data1_p",
-    "data1_n",
-    "data2_p",
-    "data2_n",
+    "data_p",
+    "data_n",
     "clock_p",
     "clock_n",
     "ddc_scl",
@@ -16,12 +12,8 @@
   ],
   "function": {
     "hdmi-source": {
-      "data0_p": "output",
-      "data0_n": "output",
-      "data1_p": "output",
-      "data1_n": "output",
-      "data2_p": "output",
-      "data2_n": "output",
+      "data_p": "output",
+      "data_n": "output",
       "clock_p": "output",
       "clock_n": "output",
       "ddc_scl": "inout",
@@ -30,12 +22,8 @@
       "cec": "inout"
     },
     "hdmi-sink": {
-      "data0_p": "input",
-      "data0_n": "input",
-      "data1_p": "input",
-      "data1_n": "input",
-      "data2_p": "input",
-      "data2_n": "input",
+      "data_p": "input",
+      "data_n": "input",
       "clock_p": "input",
       "clock_n": "input",
       "ddc_scl": "inout",
@@ -48,12 +36,8 @@
     {
       "id": "tmds",
       "members": [
-        "data0_p",
-        "data0_n",
-        "data1_p",
-        "data1_n",
-        "data2_p",
-        "data2_n",
+        "data_p",
+        "data_n",
         "clock_p",
         "clock_n"
       ]
@@ -81,16 +65,8 @@
   ],
   "differentialPairs": [
     {
-      "positive": "data0_p",
-      "negative": "data0_n"
-    },
-    {
-      "positive": "data1_p",
-      "negative": "data1_n"
-    },
-    {
-      "positive": "data2_p",
-      "negative": "data2_n"
+      "positive": "data_p",
+      "negative": "data_n"
     },
     {
       "positive": "clock_p",
@@ -98,15 +74,7 @@
     }
   ],
   "bus": {
-    "data_p": [
-      "data2_p",
-      "data1_p",
-      "data0_p"
-    ],
-    "data_n": [
-      "data2_n",
-      "data1_n",
-      "data0_n"
-    ]
+    "data_p": 3,
+    "data_n": 3
   }
 }

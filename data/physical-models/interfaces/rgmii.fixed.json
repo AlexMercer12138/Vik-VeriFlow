@@ -4,15 +4,9 @@
     "mdc",
     "rxck",
     "rxctl",
-    "rxd0",
-    "rxd1",
-    "rxd2",
-    "rxd3",
+    "rxd",
     "mdio",
-    "txd3",
-    "txd2",
-    "txd1",
-    "txd0",
+    "txd",
     "txctl",
     "txck",
     "rst"
@@ -22,15 +16,9 @@
       "mdc": "output",
       "rxck": "input",
       "rxctl": "input",
-      "rxd0": "input",
-      "rxd1": "input",
-      "rxd2": "input",
-      "rxd3": "input",
+      "rxd": "input",
       "mdio": "inout",
-      "txd3": "output",
-      "txd2": "output",
-      "txd1": "output",
-      "txd0": "output",
+      "txd": "output",
       "txctl": "output",
       "txck": "output",
       "rst": "output"
@@ -40,10 +28,7 @@
     {
       "id": "tx",
       "members": [
-        "txd3",
-        "txd2",
-        "txd1",
-        "txd0",
+        "txd",
         "txctl",
         "txck"
       ],
@@ -54,10 +39,7 @@
       "members": [
         "rxck",
         "rxctl",
-        "rxd0",
-        "rxd1",
-        "rxd2",
-        "rxd3"
+        "rxd"
       ],
       "selection": "together"
     },
@@ -71,17 +53,7 @@
     }
   ],
   "bus": {
-    "txd": [
-      "txd3",
-      "txd2",
-      "txd1",
-      "txd0"
-    ],
-    "rxd": [
-      "rxd3",
-      "rxd2",
-      "rxd1",
-      "rxd0"
-    ]
+    "txd": 4,
+    "rxd": 4
   }
 }

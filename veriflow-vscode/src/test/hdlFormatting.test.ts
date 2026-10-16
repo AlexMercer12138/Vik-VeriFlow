@@ -4,27 +4,37 @@ import Module = require('module');
 type Document = { uri: string; languageId: string; version: number; isClosed: boolean; getText(): string; positionAt(n: number): number };
 async function main(): Promise<void> {
     let provider: { provideDocumentFormattingEdits(d: Document, o: unknown, t: unknown): Promise<unknown[]> };
-    let command: () => Promise<void>;
+    class Uri {}
+    let command: (uri?: Uri) => Promise<void>;
     let resolveFormat: (text: string) => void = () => {};
     let next: () => Promise<string> = async () => 'formatted';
     let editCount = 0, warnings = 0, disposals = 0;
     const document: Document = { uri: 'file:///project-a/top.v', languageId: 'verilog', version: 1, isClosed: false,
         getText: () => 'module m; endmodule', positionAt: n => n };
+    const selectedDocument: Document = { ...document, uri: 'file:///project-a/selected.v' };
+    let expectedDocument = document, selectedEdits = 0;
+    const selectedUri = new Uri();
     let settings: Record<string, unknown> = {};
     const formatOptions: Array<Record<string, unknown>> = [];
     const disposable = () => ({ dispose() { disposals++; } });
     const stub = {
+        Uri,
         Disposable: class { constructor(private cb: () => void) {} dispose(): void { this.cb(); } },
         Range: class { constructor(public start: number, public end: number) {} },
         TextEdit: { replace: (range: unknown, newText: string) => ({ range, newText }) },
-        workspace: { getConfiguration(section: string, scope: Document) {
+        workspace: { async openTextDocument(uri: Uri) { assert.equal(uri, selectedUri); return selectedDocument; },
+            getConfiguration(section: string, scope: Document) {
             assert.equal(section, 'veriflow.formatting');
-            assert.equal(scope, document, 'document scope retains language overrides and workspace folder');
+            assert.equal(scope, expectedDocument, 'document scope retains language overrides and workspace folder');
             return { get: (key: string, fallback: unknown) => settings[key] ?? fallback };
         } },
         languages: { registerDocumentFormattingEditProvider(_selector: unknown, value: typeof provider) { provider = value; return disposable(); } },
         commands: { registerCommand(name: string, value: typeof command) { assert.equal(name, 'veriflow.formatHdl'); command = value; return disposable(); } },
         window: { activeTextEditor: { document, async edit(cb: (b: {replace(): void}) => void) { editCount++; cb({replace() {}}); return true; } },
+            async showTextDocument(opened: Document) {
+                assert.equal(opened, selectedDocument);
+                return { document: opened, async edit(cb: (b: {replace(): void}) => void) { selectedEdits++; cb({replace() {}}); return true; } };
+            },
             async showWarningMessage() { warnings++; } },
     };
     const loader = Module as typeof Module & {_load: (name: string, ...args: unknown[]) => unknown};
@@ -41,6 +51,11 @@ async function main(): Promise<void> {
         registration = registerHdlFormatting({extensionPath: '/extension'});
     } finally { loader._load = original; }
     await command!(); assert.equal(editCount, 1);
+    expectedDocument = selectedDocument;
+    await command!(selectedUri);
+    assert.equal(selectedEdits, 1, 'resource command formats the selected file');
+    assert.equal(editCount, 1, 'resource command must not format the previously active editor');
+    expectedDocument = document;
     assert.deepEqual(formatOptions.at(-1)?.alignmentColumns, [4, 12, 20, 44, 56]);
     settings = { alignment: 'columns', columns: [2, 10, 18, 36, 52] };
     await provider!.provideDocumentFormattingEdits(document, {}, {});

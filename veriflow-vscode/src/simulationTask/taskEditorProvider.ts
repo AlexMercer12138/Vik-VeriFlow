@@ -215,13 +215,8 @@ export class SimulationTaskEditorProvider implements vscode.CustomTextEditorProv
                 if (message.type !== 'simulationTaskCommand') return;
                 const data = (message.payload ?? {}) as Record<string, any>;
                 switch (message.command) {
-                    case 'addPreset': task.instances.push({ id: data.id, preset: data.preset }); await write(task); break;
-                    case 'updatePreset': {
-                        const instance = task.instances.find(item => item.id === data.id);
-                        if (!instance || !('preset' in instance) || instance.preset.kind !== data.preset.kind) throw new Error('This simulation utility no longer exists.');
-                        instance.preset = data.preset; await write(task); break;
-                    }
-                    case 'updateTaskSettings': task.settings = { ...task.settings, ...data.settings }; await write(task); break;
+                    case 'addPreset': case 'updatePreset': case 'updateTaskSettings':
+                        await write(applyTaskEdit(task, modules, { type: message.command, ...data } as Parameters<typeof applyTaskEdit>[2])); break;
                     case 'generateTestbench': await this.services.generate(document); break;
                     case 'run': void this.services.run(document).catch(reportError); break;
                     case 'cancel': this.services.cancel(document.uri); break;

@@ -52,22 +52,24 @@ veriflow wave --project project.json
 
 # Arch Design（可视化 RTL 顶层）
 
-veriflow ad new soc_top -o design/soc.ad
+veriflow arch new soc_top -o design/soc.ad
 
-veriflow ad validate design/soc.ad --project project.json
+veriflow arch validate design/soc.ad --project project.json
 
-veriflow ad export design/soc.ad --project project.json
+veriflow arch build design/soc.ad --project project.json
 
-veriflow ad export design/soc.ad --language systemverilog -o generated/soc.sv
+veriflow arch export design/soc.ad --language systemverilog -o generated/soc.sv
 
 # Simulation Task（图形化 Testbench）
+
+veriflow task new -o simulation.st
 
 veriflow task validate simulation.st
 
 veriflow task run simulation.st --project project.json
 ```
 
-每个命令都支持 `--help`。
+每个命令都支持 `--help`。新脚本统一使用 `arch` / `task`，`ad` 保留为 `arch` 的兼容别名。构建、引脚、板卡与脚本编辑说明见[架构与模型索引](docs/architecture.md)。
 
 ### VS Code
 
@@ -106,7 +108,7 @@ nvm use                      # Node 24.14.1+（.nvmrc）
 
 npm ci                       # 锁定依赖安装
 
-npm run build                # 构建 parser 与 VS Code 扩展
+npm run build                # 校验模型并构建 VS Code 扩展
 
 npm test                     # 运行全部 workspace 测试
 

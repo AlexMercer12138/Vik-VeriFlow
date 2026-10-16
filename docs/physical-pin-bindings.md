@@ -54,9 +54,18 @@ AD 编辑器点击 **Pins / XDC**。普通 `.v` / `.sv` 文件通过资源管理
 
 XDC 跟随 AD 的 RTL 输出目录和文件主名，例如 `generated/video.sv` 对应 `generated/video.xdc`。AD 属性 **XDC output path** 可覆盖路径，对应 `export.xdcOutput`。RTL 与 XDC 在 AD 树下并列显示。
 
+**Build Arch Design** 命令及 `.ad` 右键构建会从同一设计快照生成 RTL 与 XDC，CLI 对应 `veriflow arch build top.ad`。有 `physical` 时，物理配置无效会中止整个构建；`--rtl-only` 可显式只生成 RTL。原 **Export RTL** / `arch export` 保留只导出 RTL 的用途。
+
 ## RTL 快速工具
 
-RTL 配置只保留在当前面板，不修改 RTL、不生成绑定配置。确认时用 VS Code `showSaveDialog` 选择 XDC 路径和文件名，和项目已有文件保存操作一致。取消保存保留草稿。
+RTL 面板可以临时配置，也可通过 **Load / Save Pin Bindings** 显式加载、保存 `top.pins.json`。其内容直接使用上文的 `physical` 对象结构，不增加外层字段。相对板卡路径以绑定文件所在目录为基准；另存时自动重定位。加载前需保存文档，保存时检测已有文件和外部变化。AD 绑定仍直接保存到 `.ad`。
+
+确认生成时用 VS Code `showSaveDialog` 选择 XDC 路径。CLI 可复用保存的配置：
+
+```bash
+veriflow pins validate top.v --config top.pins.json
+veriflow pins export top.v --config top.pins.json -o generated/top.xdc
+```
 
 XDC 包含来源标记，只覆盖同一来源生成的文件；人工文件和其他来源的文件会报告冲突。
 

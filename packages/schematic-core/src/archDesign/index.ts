@@ -15,3 +15,5 @@ export * from './serializer';
 export * from './validation';
 export * from '../physicalPins';
 export { resolvePhysicalInteger } from './parameterWidth';
+export * from '../physicalBoardDraft';
+export * from '../physicalPorts';

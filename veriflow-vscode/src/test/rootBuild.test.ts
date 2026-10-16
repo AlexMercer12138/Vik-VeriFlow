@@ -167,7 +167,7 @@ async function run(): Promise<void> {
     );
     assert.strictEqual(
         rootManifest.scripts.build,
-        'npm run build:parser && npm run build:vscode'
+        'npm run verify:models && npm run build:vscode'
     );
     assertHostNeutralSchematicCore(root);
     assertSymlinkedTemporaryRootRemainsIsolated(root);

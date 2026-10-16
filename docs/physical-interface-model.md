@@ -21,7 +21,7 @@
 
 一份文件只定义一个模型，文件名承担定义名称。用户模型使用相对包含该引用的文件的路径，例如 `"definition": "spi.fixed.json"`、`"board": "carrier.board.json"`。接口的 `definition` 也可使用 `library:interfaces/<文件名>.json` 引用插件内置接口；不接受绝对路径、其他 URI 或库路径中的子目录。加载时规范化路径并检查被引用模型的 `kind`，不按相似文件名自动替换。若要同时维护不同硬件版本，使用不同文件路径。
 
-正式模型统一放在 `data/physical-models`：通用定义在 `interfaces`，板卡及专用定义在 `boards/<id>`，Schema 在 `schemas`，演示数据在 `examples`。VSIX 只打包通用接口目录，包含 UART、I2C、SPI、RGB、HDMI、DDR4 x16、MIPI、RGMII、SD、CAN、QSFP、PCIe x8、排针、FMC 等。AD 用 `user:<id>` 定位用户板卡，旧相对板卡路径仍可读取。通用定义按库引用复用，板卡专用和用户相对接口定义保存导入快照。子卡安装面板仍待接入。
+正式模型统一放在 `data/physical-models`：通用定义在 `interfaces`，板卡及专用定义在 `boards/<id>`，Schema 在 `packages/schematic-core/schemas`，演示数据在 `examples`。VSIX 只打包通用接口目录，包含 UART、I2C、SPI、RGB、HDMI、DDR4 x16、MIPI、RGMII、SD、CAN、QSFP、PCIe x8、排针、FMC 等。AD 用 `user:<id>` 定位用户板卡，旧相对板卡路径仍可读取。通用定义按库引用复用，板卡专用和用户相对接口定义保存导入快照。子卡安装面板仍待接入。
 
 只给实际被引用的对象保留 ID：接口实例、分组、扩展实例、子卡挂载、封装脚、Bank 和供电轨。信号直接使用字符串 ID。ID 区分大小写；对象 ID 匹配 `[A-Za-z_][A-Za-z0-9_.-]*`，信号、封装脚和 Bank ID 允许数字开头。
 
@@ -193,7 +193,7 @@ JSON Schema 只检查形状；后续解析器还需检查：
 
 ## 9. 示例
 
-[JSON Schema](../data/physical-models/schemas/physical-interface-model.schema.json) 与以下文件采用同一精简形状：
+[JSON Schema](../packages/schematic-core/schemas/physical-interface-model.schema.json) 与以下文件采用同一精简形状：
 
 | 文件 | 用途 |
 | --- | --- |

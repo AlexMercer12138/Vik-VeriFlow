@@ -1,5 +1,5 @@
 import { defaultSimulationPreset, projectSimulationTaskInspector, TransitionValidationError, type AuthoringInspectorModel } from './authoring/taskInspector';
-import type { SimulationTaskViewState } from '../../../veriflow-vscode/src/schematic/protocol';
+import type { SimulationTaskViewState } from './shared/protocol';
 import {
     Graph,
     MiniMap,
@@ -63,9 +63,9 @@ import type {
     ArchDesignPortDirection,
     ArchDesignWidth,
 } from '@veriflow/schematic-core/arch-design';
-import { isSafeDefaultExpression } from '../../schematic-core/src/archDesign/defaults';
-import type { SchematicLayout } from '../../../veriflow-vscode/src/schematic/layoutStore';
-import type { HostEvent, WebviewCommand } from '../../../veriflow-vscode/src/schematic/protocol';
+import { isSafeDefaultExpression } from '@veriflow/schematic-core/arch-design/defaults';
+import type { SchematicLayout } from './shared/layoutStore';
+import type { HostEvent, WebviewCommand } from './shared/protocol';
 import {
     archDesignEndpointForPin,
     canConnectScalarPins,
@@ -80,7 +80,7 @@ import {
     summarizeSchematicSelection,
     type ArchDesignInspectorModel,
     type SchematicInspectorModel,
-} from '../../../veriflow-vscode/src/schematic/webviewSupport';
+} from './shared/webviewSupport';
 
 type PersistedWebviewState = { layouts?: Record<string, SchematicLayout> };
 type VsCodeApi = {
@@ -874,7 +874,7 @@ let simulationTaskDocument = false;
 let currentTaskState: SimulationTaskViewState | undefined;
 let pendingAddedNodeId: string | undefined;
 let simulationNameAutomatic = true;
-let capabilities: import('../../../veriflow-vscode/src/schematic/protocol').SchematicCapabilities = {};
+let capabilities: import('./shared/protocol').SchematicCapabilities = {};
 let archDesignDocument = false;
 let archDesignEditable = false;
 let authoringPending = false;
@@ -891,7 +891,7 @@ let queuedArchDesignLayoutSave: Readonly<{
 type QueuedArchDesignCommand =
     | Readonly<{ type: 'edit'; edit: ArchDesignEdit }>
     | Readonly<{ type: 'export' }>
-    | Readonly<{ type: 'task'; command: import('../../../veriflow-vscode/src/schematic/protocol').SimulationTaskAction; payload?: unknown }>;
+    | Readonly<{ type: 'task'; command: import('./shared/protocol').SimulationTaskAction; payload?: unknown }>;
 let queuedArchDesignCommand: QueuedArchDesignCommand | undefined;
 let archDesignSemanticEditInFlight = false;
 let unloadLayoutForwarded = false;
@@ -1140,7 +1140,7 @@ function post(message: WebviewCommand): void {
         ? { ...message, type: 'editSchematic' } : message);
 }
 
-function sendTaskCommand(command: import('../../../veriflow-vscode/src/schematic/protocol').SimulationTaskAction, payload?: unknown): void {
+function sendTaskCommand(command: import('./shared/protocol').SimulationTaskAction, payload?: unknown): void {
     if (!simulationTaskDocument || !currentRevision) return;
     if (command === 'cancel') { post({ type: 'simulationTaskCommand', revision: currentRevision, command, payload }); return; }
     if (authoringPending || queuedArchDesignCommand) return;

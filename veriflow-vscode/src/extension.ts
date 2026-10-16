@@ -1,3 +1,4 @@
+import { registerQuickTestbenchCommand } from './testbench/quickTestbenchCommand';
 import { prepareSimulationTaskWorkspace } from '@veriflow/hdl-runtime/simulationTaskWorkspace';
 import { createArchDesignDefinitionCatalog } from '@veriflow/hdl-runtime/archDesignDefinitionReference';
 import { SimulationRunCoordinator } from './workbench/simulationRunCoordinator';
@@ -34,8 +35,7 @@ import { registerHdlFormatting } from './hdlFormatting';
 import { registerHdlTemplateCommands } from './testbench/templateCommands';
 import { WaveformEditorProvider } from './waveformEditorProvider';
 import { ArchDesignEditorProvider } from './archDesign/archDesignEditorProvider';
-import { createArchDesignCommandHandlers } from './archDesign/archDesignCommands';
-import { createArchDesign } from './archDesign/archDesignCreation';
+import { registerArchDesignCommands } from './archDesign/commands';
 import {
     WorkspaceInterfaceProtocolLoader,
 } from './archDesign/interfaceProtocolLoader';
@@ -626,19 +626,6 @@ export function activate(context: vscode.ExtensionContext): void {
         const resource = (value as { resourceUri?: unknown } | undefined)?.resourceUri;
         return resource instanceof vscode.Uri ? resource : undefined;
     };
-    const openArchDesign = async (uri: vscode.Uri): Promise<void> => {
-        await vscode.commands.executeCommand(
-            'vscode.openWith',
-            uri,
-            ArchDesignEditorProvider.viewType
-        );
-    };
-    const archDesignCommands = createArchDesignCommandHandlers<vscode.Uri>({
-        isResource: (value): value is vscode.Uri => value instanceof vscode.Uri,
-        openEditor: openArchDesign,
-        validate: uri => archDesignEditorProvider.validate(uri),
-        exportRtl: uri => archDesignEditorProvider.exportRtl(uri),
-    });
     const cmds: Array<[string, (...args: unknown[]) => unknown]> = [
         ['veriflow.selectTop', () => {
             workflowController?.assertIdle();
@@ -664,58 +651,16 @@ export function activate(context: vscode.ExtensionContext): void {
             commandUri(uri)
         )],
         ['veriflow.scanModules', () => cmdScanModules(context)],
-        ['veriflow.instantiateModule', () => cmdInstantiateModule(context)],
+        ['veriflow.instantiateModule', (uri?: unknown) => cmdInstantiateModule(context, commandUri(uri))],
         ['veriflow.showOutput', () => { if (!hdlStopping) { output.show(); } }],
-        ['veriflow.createArchDesign', async () => {
-            const created = await createArchDesign<vscode.Uri>({
-                filename: target => path.basename(target.fsPath),
-                requestTarget: () => vscode.window.showSaveDialog({
-                    title: 'Create Arch Design',
-                    saveLabel: 'Create',
-                    defaultUri: vscode.workspace.workspaceFolders?.[0]
-                        ? vscode.Uri.joinPath(
-                            vscode.workspace.workspaceFolders[0].uri,
-                            'design.ad'
-                        )
-                        : undefined,
-                    filters: { 'Arch Design': ['ad'] },
-                }),
-                writeFile: async (target, text) => {
-                    if (!target.path.toLowerCase().endsWith('.ad')) throw new Error('Use a .ad filename.');
-                    const edit = new vscode.WorkspaceEdit();
-                    edit.createFile(target, { overwrite: false });
-                    edit.insert(target, new vscode.Position(0, 0), text);
-                    if (!await vscode.workspace.applyEdit(edit)) throw new Error('The file already exists or cannot be created.');
-                    if (!await (await vscode.workspace.openTextDocument(target)).save()) throw new Error('Save the new AD before continuing.');
-                },
-                openEditor: openArchDesign,
-                reportError: async message => {
-                    await vscode.window.showErrorMessage(
-                        `Unable to create Arch Design: ${message}`
-                    );
-                },
-            });
-            if (created) adView.refresh();
-            return created;
-        }],
-        ['veriflow.refreshArchDesigns', () => adView.refresh()],
-        ['veriflow.openArchDesign', (uri?: unknown) =>
-            archDesignCommands.open(uri)],
-        ['veriflow.validateArchDesign', (uri?: unknown) =>
-            archDesignCommands.validate(uri)],
-        ['veriflow.exportArchDesign', (uri?: unknown) =>
-            archDesignCommands.exportRtl(uri)],
-        ['veriflow.bindArchDesignPins', (uri?: unknown) => pinBindings.open(commandUri(uri) ?? getActiveCanvas()?.uri)
-            .catch(error => vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)))],
-        ['veriflow.generatePinConstraints', (uri?: unknown) => pinBindings.open(commandUri(uri))
-            .catch(error => vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)))],
-        ['veriflow.manageBoards', () => pinBindings.manageBoards()
-            .catch(error => vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)))],
     ];
     for (const [name, fn] of cmds) {
         context.subscriptions.push(vscode.commands.registerCommand(name, fn));
     }
-    context.subscriptions.push(registerHdlFormatting(context), registerHdlTemplateCommands());
+    context.subscriptions.push(registerArchDesignCommands({ provider: archDesignEditorProvider, pins: pinBindings, refresh: () => adView.refresh() }));
+    context.subscriptions.push(registerHdlFormatting(context), registerHdlTemplateCommands(), registerQuickTestbenchCommand({
+        getIndex: (uri, owner) => _getSchematicIndex(context, uri, owner), release: owner => _releaseSchematicIndex(owner),
+    }));
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(async (e) => {
@@ -2860,7 +2805,7 @@ async function cmdScanModules(context: vscode.ExtensionContext): Promise<ModuleS
         : null;
 }
 
-async function cmdInstantiateModule(context: vscode.ExtensionContext): Promise<void> {
+async function cmdInstantiateModule(context: vscode.ExtensionContext, source?: vscode.Uri): Promise<void> {
     const intentVersion = ++hdlInstantiationIntentVersion;
     if (hdlStopping) { return; }
     const lifecycleGeneration = hdlLifecycleGeneration;
@@ -2907,7 +2852,8 @@ async function cmdInstantiateModule(context: vscode.ExtensionContext): Promise<v
     await showModuleInstantiationPicker(
         () => isCurrent() ? index : undefined,
         isCurrent,
-        root
+        root,
+        source
     );
 }
 

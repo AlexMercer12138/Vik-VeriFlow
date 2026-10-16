@@ -97,7 +97,33 @@
       "types": "./dist/simulationTask/index.d.ts",
       "require": "./dist/simulationTask/index.js",
       "default": "./dist/simulationTask/index.js"
-    }
+    },
+    "./archDesign": {
+      "types": "./dist/archDesign/index.d.ts",
+      "require": "./dist/archDesign/index.js",
+      "default": "./dist/archDesign/index.js"
+    },
+    "./physical": {
+      "types": "./dist/physical/index.d.ts",
+      "require": "./dist/physical/index.js",
+      "default": "./dist/physical/index.js"
+    },
+    "./interfaces": {
+      "types": "./dist/interfaces/index.d.ts",
+      "require": "./dist/interfaces/index.js",
+      "default": "./dist/interfaces/index.js"
+    },
+    "./archDesign/definitions": {
+      "types": "./dist/archDesign/definitions.d.ts",
+      "require": "./dist/archDesign/definitions.js",
+      "default": "./dist/archDesign/definitions.js"
+    },
+    "./hdl": {
+      "types": "./dist/hdl/index.d.ts",
+      "require": "./dist/hdl/index.js",
+      "default": "./dist/hdl/index.js"
+    },
+    "./schemas/*": "./schemas/*"
   },
   "typesVersions": {
     "*": {
@@ -142,14 +168,31 @@
       ],
       "simulationTask": [
         "dist/simulationTask/index.d.ts"
+      ],
+      "archDesign": [
+        "dist/archDesign/index.d.ts"
+      ],
+      "physical": [
+        "dist/physical/index.d.ts"
+      ],
+      "interfaces": [
+        "dist/interfaces/index.d.ts"
+      ],
+      "archDesign/definitions": [
+        "dist/archDesign/definitions.d.ts"
+      ],
+      "hdl": [
+        "dist/hdl/index.d.ts"
       ]
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "resources",
+    "schemas"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/build-model-resources.mjs",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"

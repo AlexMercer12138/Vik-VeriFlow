@@ -165,7 +165,9 @@ try {
             packRoot,
             '--json',
         ]);
-        const packed = JSON.parse(output)[0];
+        const packResult = JSON.parse(output);
+        const packed = Array.isArray(packResult) ? packResult[0] : packResult[entry.name];
+        assert.ok(packed, `${entry.name} is missing from npm pack output`);
         const files = new Set(packed.files.map(file => file.path));
         for (const required of entry.requiredFiles) {
             assert.equal(files.has(required), true, `${entry.name} missing ${required}`);
@@ -278,22 +280,18 @@ try {
         ),
         installedInterfaces.BUILTIN_INTERFACE_PROTOCOL_IDS
     );
-    const installedProtocolLoader = readFileSync(path.join(
+    const installedProtocolLoader = await import(pathToFileURL(path.join(
         installedPackage,
         'dist',
         'runtime',
         'interfaceProtocolLoader.js'
-    ), 'utf8');
-    for (const marker of [
-        'parseInterfaceProtocolText',
-        'createInterfaceProtocolCatalog',
-        'IF_PROTOCOL_FILE_NOT_FOUND',
-    ]) {
-        assert.ok(
-            installedProtocolLoader.includes(marker),
-            `installed CLI protocol loader is missing ${marker}`
-        );
-    }
+    )).href);
+    const protocols = await installedProtocolLoader.loadInterfaceProtocolCatalog([
+        path.join(installRoot, 'missing-protocol.json'),
+    ]);
+    assert.deepEqual(protocols.catalog.entries.map(entry => entry.protocol.id),
+        installedInterfaces.BUILTIN_INTERFACE_PROTOCOL_IDS);
+    assert.equal(protocols.diagnostics[0]?.code, 'IF_PROTOCOL_FILE_NOT_FOUND');
     const cliEntry = path.join(installedPackage, 'dist', 'main.js');
     const help = invokeCli(cliEntry, ['--help'], installRoot, environment);
     assert.equal(help.status, 0, help.stderr);

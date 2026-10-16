@@ -1,0 +1,2278 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VeriFlow Simulation Task",
+  "description": "One graphical testbench. Runtime validation additionally checks timing precision, increasing stimulus times, identifiers, widths and connectivity.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "veriflow-simulation-task"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "timeUnit": {
+          "$ref": "#/definitions/timeScale"
+        },
+        "timePrecision": {
+          "$ref": "#/definitions/timeScale"
+        },
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "waveform": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "filename": {
+              "type": "string",
+              "pattern": "^[^\\\\/:*?\"<>|\\r\\n\\u0000]+\\.vcd$"
+            }
+          },
+          "required": [
+            "enabled",
+            "filename"
+          ],
+          "additionalProperties": false
+        },
+        "exportPath": {
+          "$ref": "#/definitions/relativePath"
+        }
+      },
+      "required": [
+        "timeUnit",
+        "timePrecision",
+        "duration",
+        "waveform"
+      ],
+      "additionalProperties": false
+    },
+    "instances": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/instance"
+      }
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/connection"
+      }
+    },
+    "logic": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/logic"
+      }
+    },
+    "defaults": {
+      "$ref": "#/definitions/defaults"
+    },
+    "interfaceConnections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/interfaceConnection"
+      }
+    },
+    "interfaceOverrides": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/interfaceOverride"
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/placement"
+          }
+        },
+        "collapsedInterfaces": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "format",
+    "schemaVersion",
+    "settings",
+    "instances",
+    "connections",
+    "logic",
+    "defaults",
+    "interfaceConnections",
+    "interfaceOverrides",
+    "presentation"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)(?![\\\\/])[^\\r\\n\\u0000]*\\S[^\\r\\n\\u0000]*$"
+    },
+    "timeScale": {
+      "type": "string",
+      "pattern": "^(1|10|100)(s|ms|us|ns|ps|fs)$"
+    },
+    "literal": {
+      "type": "string",
+      "pattern": "^[0-9]+'[bBoOdDhH][0-9a-fA-F_xXzZ?]+$",
+      "description": "Sized Verilog literal. Runtime validation checks digits, width and value range."
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "width": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "object",
+          "properties": {
+            "expression": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "expression"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "preset": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "clock"
+            },
+            "frequencyMHz": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "initial": {
+              "enum": [
+                0,
+                1
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "frequencyMHz",
+            "initial"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "reset"
+            },
+            "active": {
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "duration": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "active",
+            "duration"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "stimulus"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "initial": {
+              "$ref": "#/definitions/literal"
+            },
+            "transitions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "at": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "value": {
+                    "$ref": "#/definitions/literal"
+                  }
+                },
+                "required": [
+                  "at",
+                  "value"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "width",
+            "initial",
+            "transitions"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/definitions/protocolPreset"
+        }
+      ]
+    },
+    "source": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "hdl"
+            },
+            "path": {
+              "$ref": "#/definitions/relativePath"
+            },
+            "module": {
+              "$ref": "#/definitions/identifier"
+            }
+          },
+          "required": [
+            "kind",
+            "path",
+            "module"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "ad"
+            },
+            "path": {
+              "$ref": "#/definitions/relativePath"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "instance": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/identifier"
+            },
+            "source": {
+              "$ref": "#/definitions/source"
+            },
+            "parameters": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "id",
+            "source",
+            "parameters"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/identifier"
+            },
+            "preset": {
+              "$ref": "#/definitions/preset"
+            }
+          },
+          "required": [
+            "id",
+            "preset"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "endpoint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "instance"
+            },
+            "instance": {
+              "$ref": "#/definitions/identifier"
+            },
+            "port": {
+              "$ref": "#/definitions/identifier"
+            }
+          },
+          "required": [
+            "kind",
+            "instance",
+            "port"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "logic"
+            },
+            "logic": {
+              "$ref": "#/definitions/identifier"
+            },
+            "port": {
+              "$ref": "#/definitions/identifier"
+            }
+          },
+          "required": [
+            "kind",
+            "logic",
+            "port"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "connection": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/identifier"
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/endpoint"
+          }
+        },
+        "defaults": {
+          "$ref": "#/definitions/defaults"
+        }
+      },
+      "required": [
+        "name",
+        "endpoints"
+      ],
+      "additionalProperties": false
+    },
+    "interfaceEndpoint": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "instance"
+        },
+        "instance": {
+          "$ref": "#/definitions/identifier"
+        },
+        "interface": {
+          "$ref": "#/definitions/identifier"
+        }
+      },
+      "required": [
+        "kind",
+        "instance",
+        "interface"
+      ],
+      "additionalProperties": false
+    },
+    "interfaceConnection": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/identifier"
+        },
+        "master": {
+          "$ref": "#/definitions/interfaceEndpoint"
+        },
+        "slave": {
+          "$ref": "#/definitions/interfaceEndpoint"
+        },
+        "defaults": {
+          "$ref": "#/definitions/defaults"
+        }
+      },
+      "required": [
+        "name",
+        "master",
+        "slave"
+      ],
+      "additionalProperties": false
+    },
+    "interfaceOverride": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "enum": [
+            "master",
+            "slave"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "placement": {
+      "type": "object",
+      "properties": {
+        "column": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "offset": {
+          "type": "number"
+        },
+        "userPositioned": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "column",
+        "order"
+      ],
+      "additionalProperties": false
+    },
+    "logic": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/definitions/identifier"
+            },
+            "operation": {
+              "enum": [
+                "constant"
+              ]
+            },
+            "width": {
+              "$ref": "#/definitions/width"
+            },
+            "expression": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name",
+            "operation",
+            "width",
+            "expression"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/definitions/identifier"
+            },
+            "operation": {
+              "enum": [
+                "not",
+                "mux"
+              ]
+            },
+            "width": {
+              "$ref": "#/definitions/width"
+            }
+          },
+          "required": [
+            "name",
+            "operation",
+            "width"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/definitions/identifier"
+            },
+            "operation": {
+              "enum": [
+                "and",
+                "or",
+                "xor",
+                "nand",
+                "nor",
+                "xnor"
+              ]
+            },
+            "width": {
+              "$ref": "#/definitions/width"
+            },
+            "inputCount": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 8
+            }
+          },
+          "required": [
+            "name",
+            "operation",
+            "width",
+            "inputCount"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/definitions/identifier"
+            },
+            "operation": {
+              "enum": [
+                "concat"
+              ]
+            },
+            "inputWidths": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/width"
+              },
+              "minItems": 2,
+              "maxItems": 8
+            }
+          },
+          "required": [
+            "name",
+            "operation",
+            "inputWidths"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/definitions/identifier"
+            },
+            "operation": {
+              "enum": [
+                "slice"
+              ]
+            },
+            "inputWidth": {
+              "$ref": "#/definitions/width"
+            },
+            "msb": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "lsb": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "name",
+            "operation",
+            "inputWidth",
+            "msb",
+            "lsb"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/definitions/identifier"
+            },
+            "operation": {
+              "enum": [
+                "replicate"
+              ]
+            },
+            "inputWidth": {
+              "$ref": "#/definitions/width"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "name",
+            "operation",
+            "inputWidth",
+            "count"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/definitions/identifier"
+            },
+            "operation": {
+              "enum": [
+                "zero-extend",
+                "sign-extend"
+              ]
+            },
+            "inputWidth": {
+              "$ref": "#/definitions/width"
+            },
+            "outputWidth": {
+              "$ref": "#/definitions/width"
+            }
+          },
+          "required": [
+            "name",
+            "operation",
+            "inputWidth",
+            "outputWidth"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/definitions/identifier"
+            },
+            "operation": {
+              "enum": [
+                "reduce-and",
+                "reduce-or",
+                "reduce-xor"
+              ]
+            },
+            "inputWidth": {
+              "$ref": "#/definitions/width"
+            }
+          },
+          "required": [
+            "name",
+            "operation",
+            "inputWidth"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "protocolPreset": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "uart"
+            },
+            "role": {
+              "const": "tx"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "minimum": 5,
+                  "maximum": 9
+                },
+                "period": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 1000000
+                },
+                "parity": {
+                  "enum": [
+                    "none",
+                    "even",
+                    "odd"
+                  ]
+                },
+                "stopBits": {
+                  "enum": [
+                    1,
+                    2
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "uart"
+            },
+            "role": {
+              "const": "rx"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "minimum": 5,
+                  "maximum": 9
+                },
+                "period": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 1000000
+                },
+                "parity": {
+                  "enum": [
+                    "none",
+                    "even",
+                    "odd"
+                  ]
+                },
+                "stopBits": {
+                  "enum": [
+                    1,
+                    2
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "spi"
+            },
+            "role": {
+              "const": "controller"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                },
+                "period": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 1000000
+                },
+                "cpol": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "cpha": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "spi"
+            },
+            "role": {
+              "const": "peripheral"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                },
+                "period": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 1000000
+                },
+                "cpol": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "cpha": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "i2c"
+            },
+            "role": {
+              "const": "controller"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "period": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 1000000
+                },
+                "address": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "write": {
+                  "type": "boolean"
+                },
+                "repeatedStart": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "i2c"
+            },
+            "role": {
+              "const": "target"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "period": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 1000000
+                },
+                "address": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "write": {
+                  "type": "boolean"
+                },
+                "repeatedStart": {
+                  "type": "boolean"
+                },
+                "stretchCycles": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                },
+                "targetAck": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "apb"
+            },
+            "role": {
+              "const": "initiator"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "transactions": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "$ref": "#/definitions/protocolTransaction"
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "write": {
+                  "type": "boolean"
+                },
+                "includeError": {
+                  "type": "boolean"
+                },
+                "addressWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "dataWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "apb"
+            },
+            "role": {
+              "const": "responder"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "transactions": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "$ref": "#/definitions/protocolTransaction"
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "write": {
+                  "type": "boolean"
+                },
+                "waitCycles": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                },
+                "includeError": {
+                  "type": "boolean"
+                },
+                "addressWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "dataWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "axis"
+            },
+            "role": {
+              "const": "source"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "includeLast": {
+                  "type": "boolean"
+                },
+                "dataWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "axis"
+            },
+            "role": {
+              "const": "sink"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "waitCycles": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                },
+                "includeLast": {
+                  "type": "boolean"
+                },
+                "dataWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "axis"
+            },
+            "role": {
+              "const": "monitor"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "includeLast": {
+                  "type": "boolean"
+                },
+                "dataWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "axi4lite"
+            },
+            "role": {
+              "const": "initiator"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "transactions": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "$ref": "#/definitions/protocolTransaction"
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "write": {
+                  "type": "boolean"
+                },
+                "response": {
+                  "enum": [
+                    "okay",
+                    "slverr",
+                    "decerr"
+                  ]
+                },
+                "strobe": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "addressWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "dataWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "axi4lite"
+            },
+            "role": {
+              "const": "responder"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "transactions": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "$ref": "#/definitions/protocolTransaction"
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "write": {
+                  "type": "boolean"
+                },
+                "response": {
+                  "enum": [
+                    "okay",
+                    "slverr",
+                    "decerr"
+                  ]
+                },
+                "strobe": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "waitCycles": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                },
+                "addressWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "dataWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "axi4"
+            },
+            "role": {
+              "const": "initiator"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "transactions": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "$ref": "#/definitions/protocolTransaction"
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "write": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "burst": {
+                  "enum": [
+                    "fixed",
+                    "incr",
+                    "wrap"
+                  ]
+                },
+                "response": {
+                  "enum": [
+                    "okay",
+                    "exokay",
+                    "slverr",
+                    "decerr"
+                  ]
+                },
+                "strobe": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "addressWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "dataWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                },
+                "idWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "axi4"
+            },
+            "role": {
+              "const": "responder"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "transactions": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "$ref": "#/definitions/protocolTransaction"
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "write": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "burst": {
+                  "enum": [
+                    "fixed",
+                    "incr",
+                    "wrap"
+                  ]
+                },
+                "response": {
+                  "enum": [
+                    "okay",
+                    "exokay",
+                    "slverr",
+                    "decerr"
+                  ]
+                },
+                "strobe": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "waitCycles": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                },
+                "addressWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "dataWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                },
+                "idWidth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "rgb888"
+            },
+            "role": {
+              "const": "source"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "hTotal": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32768
+                },
+                "hActive": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "hSyncStart": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 32768
+                },
+                "hSyncEnd": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32768
+                },
+                "vTotal": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32768
+                },
+                "vActive": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "vSyncStart": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 32768
+                },
+                "vSyncEnd": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32768
+                },
+                "hsyncPolarity": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "vsyncPolarity": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "frames": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "pattern": {
+                  "enum": [
+                    "colorBars",
+                    "pixels"
+                  ]
+                },
+                "hFrontPorch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8192
+                },
+                "hSync": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "hBackPorch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8192
+                },
+                "vFrontPorch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8192
+                },
+                "vSync": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "vBackPorch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8192
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "protocol"
+            },
+            "protocol": {
+              "const": "rgb888"
+            },
+            "role": {
+              "const": "monitor"
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "data": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expected": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "hTotal": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32768
+                },
+                "hActive": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "hSyncStart": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 32768
+                },
+                "hSyncEnd": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32768
+                },
+                "vTotal": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32768
+                },
+                "vActive": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "vSyncStart": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 32768
+                },
+                "vSyncEnd": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32768
+                },
+                "hsyncPolarity": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "vsyncPolarity": {
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "frames": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "pattern": {
+                  "enum": [
+                    "colorBars",
+                    "pixels"
+                  ]
+                },
+                "hFrontPorch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8192
+                },
+                "hSync": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "hBackPorch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8192
+                },
+                "vFrontPorch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8192
+                },
+                "vSync": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8192
+                },
+                "vBackPorch": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8192
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "protocol",
+            "role",
+            "start",
+            "timeout",
+            "data",
+            "options"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "protocolTransaction": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "enum": [
+            "write",
+            "read"
+          ]
+        },
+        "address": {
+          "type": "string"
+        },
+        "data": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "expected": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "operation",
+        "address",
+        "data"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

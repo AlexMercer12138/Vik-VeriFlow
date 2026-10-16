@@ -91,13 +91,15 @@ test('shows Arch Design parent help', async () => {
         const result = await invoke(['ad', '--help'], cwd);
 
         assert.equal(result.exitCode, 0);
-        assert.equal(result.stdout, `usage: veriflow ad [-h] ACTION ...
+        assert.equal(result.stdout, `usage: veriflow arch [-h] ACTION ...
 
 positional arguments:
   ACTION
     new       create an Arch Design
     validate  validate an Arch Design
     export    export an Arch Design to RTL
+    apply     apply a versioned edit batch
+    build     generate RTL and optional XDC together
 
 options:
   -h, --help  show this help message and exit
@@ -111,7 +113,7 @@ test('shows Arch Design creation options in leaf help', async () => {
         const result = await invoke(['ad', 'new', '--help'], cwd);
 
         assert.equal(result.exitCode, 0);
-        assert.equal(result.stdout, `usage: veriflow ad new [-h] [-o OUTPUT] MODULE
+        assert.equal(result.stdout, `usage: veriflow arch new [-h] [-o OUTPUT] MODULE
 
 positional arguments:
   MODULE                generated top module name
@@ -130,8 +132,8 @@ test('requires a module for Arch Design creation', async () => {
 
         assert.equal(result.exitCode, 2);
         assert.equal(result.stdout, '');
-        assert.equal(result.stderr, `usage: veriflow ad new [-h] [-o OUTPUT] MODULE
-veriflow ad new: error: the following arguments are required: MODULE
+        assert.equal(result.stderr, `usage: veriflow arch new [-h] [-o OUTPUT] MODULE
+veriflow arch new: error: the following arguments are required: MODULE
 `);
     });
 });
@@ -156,8 +158,8 @@ test('requires a design for Arch Design validation', async () => {
 
         assert.equal(result.exitCode, 2);
         assert.equal(result.stdout, '');
-        assert.equal(result.stderr, `usage: veriflow ad validate [-h] [-p PROJECT] [-L LIB] DESIGN
-veriflow ad validate: error: the following arguments are required: DESIGN
+        assert.equal(result.stderr, `usage: veriflow arch validate [-h] [-p PROJECT] [-L LIB] DESIGN
+veriflow arch validate: error: the following arguments are required: DESIGN
 `);
     });
 });
@@ -171,9 +173,9 @@ test('rejects an unsupported Arch Design export language', async () => {
 
         assert.equal(result.exitCode, 2);
         assert.equal(result.stdout, '');
-        assert.equal(result.stderr, `usage: veriflow ad export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
+        assert.equal(result.stderr, `usage: veriflow arch export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
                           [--language {verilog,systemverilog}] DESIGN
-veriflow ad export: error: argument --language: invalid choice: 'vhdl' (choose from verilog, systemverilog)
+veriflow arch export: error: argument --language: invalid choice: 'vhdl' (choose from verilog, systemverilog)
 `);
     });
 });
@@ -184,9 +186,9 @@ test('requires a design for Arch Design export after parsing options', async () 
 
         assert.equal(result.exitCode, 2);
         assert.equal(result.stdout, '');
-        assert.equal(result.stderr, `usage: veriflow ad export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
+        assert.equal(result.stderr, `usage: veriflow arch export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
                           [--language {verilog,systemverilog}] DESIGN
-veriflow ad export: error: the following arguments are required: DESIGN
+veriflow arch export: error: the following arguments are required: DESIGN
 `);
     });
 });
@@ -196,7 +198,7 @@ test('shows only Arch Design validation options in leaf help', async () => {
         const result = await invoke(['ad', 'validate', '--help'], cwd);
 
         assert.equal(result.exitCode, 0);
-        assert.equal(result.stdout, `usage: veriflow ad validate [-h] [-p PROJECT] [-L LIB] DESIGN
+        assert.equal(result.stdout, `usage: veriflow arch validate [-h] [-p PROJECT] [-L LIB] DESIGN
 
 positional arguments:
   DESIGN                Arch Design file
@@ -216,7 +218,7 @@ test('shows only Arch Design export options in leaf help', async () => {
         const result = await invoke(['ad', 'export', '--help'], cwd);
 
         assert.equal(result.exitCode, 0);
-        assert.equal(result.stdout, `usage: veriflow ad export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
+        assert.equal(result.stdout, `usage: veriflow arch export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
                           [--language {verilog,systemverilog}] DESIGN
 
 positional arguments:
@@ -290,9 +292,9 @@ test('rejects an ambiguous Arch Design export long option', async () => {
 
         assert.equal(result.exitCode, 2);
         assert.equal(result.stdout, '');
-        assert.equal(result.stderr, `usage: veriflow ad export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
+        assert.equal(result.stderr, `usage: veriflow arch export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
                           [--language {verilog,systemverilog}] DESIGN
-veriflow ad export: error: ambiguous option: --l could match --lib, --language
+veriflow arch export: error: ambiguous option: --l could match --lib, --language
 `);
     });
 });
@@ -303,9 +305,9 @@ test('rejects an extra Arch Design export positional', async () => {
 
         assert.equal(result.exitCode, 2);
         assert.equal(result.stdout, '');
-        assert.equal(result.stderr, `usage: veriflow ad export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
+        assert.equal(result.stderr, `usage: veriflow arch export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
                           [--language {verilog,systemverilog}] DESIGN
-veriflow ad export: error: unrecognized arguments: extra.ad
+veriflow arch export: error: unrecognized arguments: extra.ad
 `);
     });
 });
@@ -319,8 +321,8 @@ test('rejects an export-only option during Arch Design validation', async () => 
 
         assert.equal(result.exitCode, 2);
         assert.equal(result.stdout, '');
-        assert.equal(result.stderr, `usage: veriflow ad validate [-h] [-p PROJECT] [-L LIB] DESIGN
-veriflow ad validate: error: unrecognized arguments: --output
+        assert.equal(result.stderr, `usage: veriflow arch validate [-h] [-p PROJECT] [-L LIB] DESIGN
+veriflow arch validate: error: unrecognized arguments: --output
 `);
     });
 });

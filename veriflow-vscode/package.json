@@ -41,7 +41,11 @@
       {
         "viewType": "veriflow.boardLibrary",
         "displayName": "VeriFlow Board Library Editor",
-        "selector": [{ "filenamePattern": "*.vfboard" }],
+        "selector": [
+          {
+            "filenamePattern": "*.vfboard"
+          }
+        ],
         "priority": "default"
       },
       {
@@ -187,8 +191,7 @@
       {
         "command": "veriflow.formatHdl",
         "title": "Format Verilog/SystemVerilog",
-        "category": "VeriFlow",
-        "enablement": "editorLangId == verilog || editorLangId == systemverilog"
+        "category": "VeriFlow"
       },
       {
         "command": "veriflow.openSchematic",
@@ -372,13 +375,28 @@
         "title": "Manage Boards",
         "category": "VeriFlow",
         "icon": "$(circuit-board)"
+      },
+      {
+        "command": "veriflow.buildArchDesign",
+        "title": "Build Architecture Design (RTL + Constraints)",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.validateSimulationTask",
+        "title": "Validate Simulation Task",
+        "category": "VeriFlow"
+      },
+      {
+        "command": "veriflow.generateQuickTestbench",
+        "title": "Generate HDL Testbench",
+        "category": "VeriFlow"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "submenu": "veriflow.hdl",
-          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .ad",
+          "when": "resourceExtname == .v || resourceExtname == .sv || resourceExtname == .ad || resourceExtname == .st",
           "group": "navigation@90"
         }
       ],
@@ -395,7 +413,7 @@
         },
         {
           "submenu": "veriflow.hdl",
-          "when": "resourceExtname == .v || resourceExtname == .sv || resourceExtname == .ad",
+          "when": "resourceExtname == .v || resourceExtname == .sv || resourceExtname == .ad || resourceExtname == .st",
           "group": "veriflow@8"
         }
       ],
@@ -448,6 +466,11 @@
           "command": "veriflow.bindArchDesignPins",
           "when": "view == veriflow.design && viewItem == archDesignFile",
           "group": "navigation@4"
+        },
+        {
+          "command": "veriflow.buildArchDesign",
+          "when": "view == veriflow.design && viewItem == archDesignFile",
+          "group": "navigation@5"
         }
       ],
       "webview/context": [
@@ -470,22 +493,22 @@
       "veriflow.hdl": [
         {
           "command": "veriflow.insertHdlTemplate",
-          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv",
+          "when": "resourceExtname == .v || resourceExtname == .sv",
           "group": "1_edit@1"
         },
         {
           "command": "veriflow.instantiateModule",
-          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv",
+          "when": "resourceExtname == .v || resourceExtname == .sv",
           "group": "1_edit@2"
         },
         {
           "command": "veriflow.formatHdl",
-          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv",
+          "when": "resourceExtname == .v || resourceExtname == .sv",
           "group": "1_edit@3"
         },
         {
           "command": "veriflow.runTraditionalTestbench",
-          "when": "editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv",
+          "when": "resourceExtname == .v || resourceExtname == .sv",
           "group": "2_simulation@1"
         },
         {
@@ -497,6 +520,51 @@
           "command": "veriflow.bindArchDesignPins",
           "when": "resourceExtname == .ad",
           "group": "3_physical@2"
+        },
+        {
+          "command": "veriflow.generateQuickTestbench",
+          "when": "resourceExtname == .v || resourceExtname == .sv",
+          "group": "2_simulation@0"
+        },
+        {
+          "command": "veriflow.validateArchDesign",
+          "when": "resourceExtname == .ad",
+          "group": "4_arch@1"
+        },
+        {
+          "command": "veriflow.previewArchDesignRtl",
+          "when": "resourceExtname == .ad",
+          "group": "4_arch@2"
+        },
+        {
+          "command": "veriflow.exportArchDesign",
+          "when": "resourceExtname == .ad",
+          "group": "4_arch@3"
+        },
+        {
+          "command": "veriflow.buildArchDesign",
+          "when": "resourceExtname == .ad",
+          "group": "4_arch@4"
+        },
+        {
+          "command": "veriflow.validateSimulationTask",
+          "when": "resourceExtname == .st",
+          "group": "5_task@1"
+        },
+        {
+          "command": "veriflow.exportSimulationTestbench",
+          "when": "resourceExtname == .st",
+          "group": "5_task@2"
+        },
+        {
+          "command": "veriflow.runSimulationTask",
+          "when": "resourceExtname == .st",
+          "group": "5_task@3"
+        },
+        {
+          "command": "veriflow.openSimulationTaskWave",
+          "when": "resourceExtname == .st",
+          "group": "5_task@4"
         }
       ],
       "commandPalette": [
@@ -566,11 +634,11 @@
         },
         {
           "command": "veriflow.validateArchDesign",
-          "when": "false"
+          "when": "resourceExtname == .ad || activeCustomEditorId == veriflow.archDesignEditor"
         },
         {
           "command": "veriflow.exportArchDesign",
-          "when": "false"
+          "when": "resourceExtname == .ad || activeCustomEditorId == veriflow.archDesignEditor"
         },
         {
           "command": "veriflow.newSimulationTask",
@@ -626,7 +694,7 @@
         },
         {
           "command": "veriflow.previewArchDesignRtl",
-          "when": "false"
+          "when": "resourceExtname == .ad || activeCustomEditorId == veriflow.archDesignEditor"
         },
         {
           "command": "veriflow.openModuleBrowserModule",
@@ -651,6 +719,18 @@
         {
           "command": "veriflow.openSimulationTaskWave",
           "when": "activeCustomEditorId == veriflow.simulationTask"
+        },
+        {
+          "command": "veriflow.buildArchDesign",
+          "when": "resourceExtname == .ad || activeCustomEditorId == veriflow.archDesignEditor"
+        },
+        {
+          "command": "veriflow.validateSimulationTask",
+          "when": "resourceExtname == .st || activeCustomEditorId == veriflow.simulationTask"
+        },
+        {
+          "command": "veriflow.generateQuickTestbench",
+          "when": "resourceExtname == .v || resourceExtname == .sv"
         }
       ]
     },
@@ -850,7 +930,8 @@
     "@veriflow/simulator-iverilog-wasm": "1.5.3",
     "@veriflow/waveform-runtime": "1.5.3",
     "lucide": "1.28.0",
-    "web-tree-sitter": "0.26.11"
+    "web-tree-sitter": "0.26.11",
+    "@veriflow/schematic-webview": "1.5.3"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

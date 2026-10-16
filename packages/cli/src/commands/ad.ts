@@ -1,3 +1,4 @@
+import { checkArtifactPlan, snapshotIndexedInputs, prepareArchDesignBuild, publishArtifactPlan } from '@veriflow/hdl-runtime/archDesign';
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -36,6 +37,7 @@ type LoadedArchDesign = {
     filepath: string;
     displayPath: string;
     design: ArchDesign;
+    source: string;
 };
 
 function normalizePathSeparators(filepath: string): string {
@@ -118,7 +120,7 @@ function printInterfaceProtocolDiagnostics(
     }
 }
 
-function openProject(
+export function openProject(
     options: CommandOptions,
     environment: CommandEnvironment
 ): Project | undefined {
@@ -130,7 +132,7 @@ function openProject(
     return new ProjectStore().open(projectPath);
 }
 
-async function loadArchDesign(
+export async function loadArchDesign(
     options: CommandOptions,
     environment: CommandEnvironment
 ): Promise<LoadedArchDesign | undefined> {
@@ -159,7 +161,7 @@ async function loadArchDesign(
         }]);
         return undefined;
     }
-    return { filepath, displayPath: shownPath, design: parsed.design };
+    return { filepath, displayPath: shownPath, design: parsed.design, source };
 }
 
 function isDirectory(filepath: string): boolean {
@@ -233,7 +235,8 @@ async function scanModuleDefinitions(roots: string[]) {
         } finally {
             process.off('SIGINT', interrupt);
         }
-        return host.index.getAllDefinitions('module');
+        const definitions = host.index.getAllDefinitions('module');
+        return { definitions, inputs: await snapshotIndexedInputs(host.index, definitions.map(item => item.uri)) };
     } finally {
         await host.dispose();
     }
@@ -257,24 +260,24 @@ function archDesignCatalogRoot(
     }
 }
 
-async function scanArchDesignModuleDefinitions(
+export async function scanArchDesignModuleDefinitions(
     loaded: LoadedArchDesign,
     options: CommandOptions,
     environment: CommandEnvironment,
     project: Project | undefined
-): Promise<ArchDesignDefinitionCatalog> {
-    const definitions = await scanModuleDefinitions(
+): Promise<ArchDesignDefinitionCatalog & { inputs: { path: string; text: string }[] }> {
+    const scanned = await scanModuleDefinitions(
         moduleCatalogRoots(loaded, options, environment, project)
     );
-    return createArchDesignDefinitionCatalog(
-        definitions,
+    return { ...createArchDesignDefinitionCatalog(
+        scanned.definitions,
         pathToFileURL(archDesignCatalogRoot(
             loaded,
             options,
             environment,
             project
         )).toString()
-    );
+    ), inputs: scanned.inputs };
 }
 
 function resolveArchDesignDefinitionKeys(
@@ -404,21 +407,29 @@ export async function adExport(
             (_definition, index) => physicalDefinitionUris[index] !== physicalOutputUri
         );
     }
-    const generated = exportArchDesignRtl(
-        resolveArchDesignDefinitionKeys(loaded.design, definitionCatalog),
-        exportDefinitions,
-        {
-            language,
-            sourcePath: portableSourcePath(loaded.filepath, outputPath),
-            interfaceCatalog: protocols.catalog,
+    if (options.build) {
+        const plan = await prepareArchDesignBuild(loaded.filepath, resolveArchDesignDefinitionKeys(loaded.design, definitionCatalog), exportDefinitions, { language, output: outputPath,
+            xdcOutput: options.xdcOutput ? path.resolve(environment.cwd, options.xdcOutput) : undefined, rtlOnly: !!options.rtlOnly, interfaceCatalog: protocols.catalog, configPath: path.join(environment.homeDir, '.veriflow_config.json'), sourceText: loaded.source });
+        const includedUris = new Set(exportDefinitions.map(item => item.uri));
+        const excluded = new Set(definitions.filter(item => !includedUris.has(item.uri)).map(item => canonicalFileUri(fileURLToPath(item.uri))));
+        plan.inputs.push(...definitionCatalog.inputs.filter(item => !excluded.has(canonicalFileUri(item.path))), ...protocols.inputs);
+        if (plan.diagnostics.length) {
+            if (options.json) environment.stdout(JSON.stringify({ format: 'veriflow-result', schemaVersion: 1, diagnostics: plan.diagnostics, artifacts: [] }) + '\n');
+            else printDiagnostics(environment, loaded.displayPath, plan.diagnostics);
+            return 1;
         }
-    );
-    if (generated.status === 'invalid') {
-        printDiagnostics(environment, loaded.displayPath, generated.diagnostics);
-        return 1;
+        if (options.dryRun) await checkArtifactPlan(plan);
+        else await publishArtifactPlan(plan);
+        if (options.json) environment.stdout(JSON.stringify({ format: 'veriflow-result', schemaVersion: 1, diagnostics: [], artifacts: plan.artifacts.map(({ owns, ...artifact }) => artifact) }) + '\n');
+        if (!options.json) environment.stdout(plan.artifacts.map(a => `${a.kind}: ${displayPath(a.path, environment.cwd)}`).join('\n') + '\n');
+        return 0;
     }
-
+    const generated = exportArchDesignRtl(
+        resolveArchDesignDefinitionKeys(loaded.design, definitionCatalog), exportDefinitions, { language, sourcePath: portableSourcePath(loaded.filepath, outputPath), interfaceCatalog: protocols.catalog });
+    if (generated.status === 'invalid') { printDiagnostics(environment, loaded.displayPath, generated.diagnostics); return 1; }
     await publishGeneratedFileAtomic(outputPath, generated.text);
     environment.stdout(`RTL exported: ${displayPath(outputPath, environment.cwd)}\n`);
     return 0;
 }
+
+export const archBuild = (options: CommandOptions, environment: CommandEnvironment) => adExport({ ...options, build: 'true' }, environment);

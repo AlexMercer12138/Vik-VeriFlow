@@ -1,3 +1,4 @@
+import { resolvePhysicalBoard } from '@veriflow/hdl-runtime/physical';
 import * as path from 'path';
 import { readFile } from 'fs/promises';
 import * as vscode from 'vscode';
@@ -12,7 +13,6 @@ export type PhysicalPinsPanelServices = {
     ports(document: vscode.TextDocument): Promise<readonly PhysicalPort[]>;
     library?: UserPhysicalBoardLibrary;
 };
-const relativeModelPath = /^(?![A-Za-z][A-Za-z0-9+.-]*:)(?![/\\])(?!.*[\r\n\0]).+$/;
 export class PhysicalPinsPanel {
     private readonly panels = new Map<string, vscode.WebviewPanel>();
     private userLibrary?: UserPhysicalBoardLibrary;
@@ -30,16 +30,9 @@ export class PhysicalPinsPanel {
     registerBoardEditor(): void { void this.editor; }
     dispose(): void { this.boardEditor?.dispose(); for (const panel of [...this.panels.values()]) panel.dispose(); }
     async loadBoard(owner: vscode.Uri, reference: string, references?: (sources: vscode.Uri[]) => void): Promise<PhysicalBoard> {
-        if (/^user:[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(reference)) {
-            references?.([vscode.Uri.file(this.library.configPath)]);
-            return this.library.load(reference.slice(5));
-        }
-        if (!relativeModelPath.test(reference)) throw new Error('Choose a saved user board or use a relative workspace board path');
-        const file = path.resolve(path.dirname(owner.fsPath), reference);
-        references?.([vscode.Uri.file(file)]);
-        const data = await readPhysicalBoardFile(file, this.interfaceRoot, files => references?.(files.map(f => vscode.Uri.file(f))));
-        return createPhysicalBoard(data.model, data.definitions);
+        return resolvePhysicalBoard(owner.fsPath, reference, { interfaceRoot: this.interfaceRoot, library: this.library }, files => references?.(files.map(file => vscode.Uri.file(file))));
     }
+
     async open(uri?: vscode.Uri): Promise<void> {
         uri ??= vscode.window.activeTextEditor?.document.uri;
         if (!uri || !/\.(ad|v|sv)$/i.test(uri.path)) throw new Error('Choose an .ad, .v or .sv file');
@@ -55,6 +48,7 @@ export class PhysicalPinsPanel {
         if (isAd) getDesign();
         const panel = vscode.window.createWebviewPanel('veriflow.physicalPins', 'Pin Constraints · ' + path.basename(owner.fsPath), vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
         this.panels.set(owner.toString(), panel);
+        let configurationOwner = owner, bindingSnapshot: string | undefined;
         let disposed = false, board: PhysicalBoard | undefined, configuration: PhysicalConfiguration = { board: '', bindings: [] };
         let choices: BoardChoice[] = [], ports: readonly PhysicalPort[] = [], sources: vscode.Uri[] = [];
         let revision = 0, tail = Promise.resolve(), loadedVersion = document.version, ownEditText: string | undefined;
@@ -71,7 +65,7 @@ export class PhysicalPinsPanel {
             catch (error) { libraryError = error instanceof Error ? error.message : String(error); }
             board = undefined; boardError = undefined; sources = [];
             if (configuration.board) {
-                try { board = await this.loadBoard(owner, configuration.board, value => { sources = value; }); }
+                try { board = await this.loadBoard(configurationOwner, configuration.board, value => { sources = value; }); }
                 catch (error) { boardError = error instanceof Error ? error.message : String(error); }
                 if (!choices.some(c => c.reference === configuration.board)) choices.push({ label: configuration.board, reference: configuration.board });
             }
@@ -162,12 +156,47 @@ export class PhysicalPinsPanel {
                 notice = '';
                 if (message.type === 'board') {
                     if (!choices.some(c => c.reference === message.reference)) throw new Error('Unknown board');
-                    const loaded = await this.loadBoard(owner, message.reference, value => { sources = value; });
+                    const loaded = await this.loadBoard(configurationOwner, message.reference, value => { sources = value; });
                     configuration = { board: message.reference, selections: [], bindings: [] }; board = loaded; boardError = undefined;
                 } else if (message.type === 'import') {
                     await this.editor.importBoard();
                 } else if (message.type === 'library') {
                     await this.editor.open(configuration.board.startsWith('user:') ? configuration.board.slice(5) : undefined);
+                } else if (message.type === 'loadBindings') {
+                    if (isAd) throw new Error('AD bindings belong to the AD document');
+                    const selected = await vscode.window.showOpenDialog({ title: 'Load Pin Bindings', canSelectMany: false, filters: { 'Pin Bindings': ['json'] } });
+                    if (!selected?.[0]) return;
+                    const bindingDocument = await vscode.workspace.openTextDocument(selected[0]);
+                    if (bindingDocument.isDirty) throw new Error('Save the pin bindings before loading them');
+                    const text = bindingDocument.getText(), parsed = parsePhysicalConfiguration(JSON.parse(text));
+                    await this.loadBoard(selected[0], parsed.board);
+                    if (bindingDocument.isDirty || bindingDocument.getText() !== text) throw new Error('Pin bindings changed; load them again');
+                    configuration = parsed; configurationOwner = selected[0]; bindingSnapshot = text;
+                    await load(); notice = 'Pin bindings loaded.';
+                } else if (message.type === 'saveBindings') {
+                    if (isAd) throw new Error('AD bindings belong to the AD document');
+                    const target = await vscode.window.showSaveDialog({ title: 'Save Pin Bindings', defaultUri: configurationOwner === owner ? vscode.Uri.file(owner.fsPath.replace(/\.(v|sv)$/i, '.pins.json')) : configurationOwner, filters: { 'Pin Bindings': ['json'] } });
+                    if (!target) return;
+                    if (target.scheme !== 'file' || !target.path.endsWith('.pins.json')) throw new Error('Use a local .pins.json file');
+                    let boardReference = configuration.board;
+                    if (boardReference && !boardReference.startsWith('user:')) {
+                        boardReference = path.relative(path.dirname(target.fsPath), path.resolve(path.dirname(configurationOwner.fsPath), boardReference)).replace(/\\/g, '/');
+                        if (path.isAbsolute(boardReference)) throw new Error('Binding file and board must be on the same volume');
+                    }
+                    const persisted = parsePhysicalConfiguration({ ...configuration, board: boardReference });
+                    const text = JSON.stringify(persisted, null, 2) + '\n';
+                    const same = target.toString() === configurationOwner.toString();
+                    const existing = await readFile(target.fsPath, 'utf8').catch(error => { if (error.code === 'ENOENT') return undefined; throw error; });
+                    if (existing !== undefined && (!same || existing !== bindingSnapshot)) throw new Error('Binding file exists or changed; load it before saving');
+                    const edit = new vscode.WorkspaceEdit();
+                    if (existing === undefined) { edit.createFile(target, { overwrite: false }); edit.insert(target, new vscode.Position(0, 0), text); }
+                    else {
+                        const destination = await vscode.workspace.openTextDocument(target);
+                        if (destination.isDirty || destination.getText() !== existing) throw new Error('Binding document changed; save or reload it first');
+                        edit.replace(target, new vscode.Range(destination.positionAt(0), destination.positionAt(existing.length)), text);
+                    }
+                    if (!await vscode.workspace.applyEdit(edit) || !await (await vscode.workspace.openTextDocument(target)).save()) throw new Error('Unable to save pin bindings');
+                    configuration = persisted; configurationOwner = target; bindingSnapshot = text; notice = 'Pin bindings saved: ' + path.basename(target.fsPath);
                 } else if (message.type === 'settings') {
                     configuration = parsePhysicalConfiguration({ ...configuration, railVoltages: message.railVoltages });
                 } else if (message.type === 'standard') {
@@ -224,7 +253,7 @@ export class PhysicalPinsPanel {
                     const exportVersion = document.version;
                     await publishGeneratedFile(target.fsPath, marker + '# Board: ' + configuration.board + '\n' + result.text, {}, text => text.startsWith(marker));
                     if (document.version !== exportVersion) throw new Error('Document changed during export; confirm again to update XDC');
-                    notice = isAd ? 'XDC generated. Pin bindings saved in AD.' : 'XDC saved. No bindings stored in RTL.';
+                    notice = isAd ? 'XDC generated. Pin bindings saved in AD.' : 'XDC saved. Use Save bindings to keep the RTL pin configuration.';
                     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(target), { preview: true });
                 } else return;
                 await publish();

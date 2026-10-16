@@ -5,7 +5,7 @@ import { createSimulationRequest, ProjectStore } from '@veriflow/flow-core';
 import { parseSimulationTask, type SimulationTaskDocument } from '@veriflow/hdl-runtime/simulationTask';
 import type { CliEnvironment } from '../main';
 import { loadInterfaceProtocolCatalog } from '../runtime/interfaceProtocolLoader';
-import { prepareSimulationTaskWorkspace } from '@veriflow/hdl-runtime/simulationTaskWorkspace';
+import { prepareSimulationTaskWorkspace, prepareSimulationTaskSources, type TaskWorkspaceOptions } from '@veriflow/hdl-runtime/simulationTaskWorkspace';
 import { createCliSimulationBackends } from '../runtime/simulationBackends';
 import type { CommandOptions } from './project';
 
@@ -18,8 +18,8 @@ async function readTask(filepath: string): Promise<SimulationTaskDocument> {
     }
 }
 
-async function prepare(taskPath: string, options: CommandOptions, environment: CliEnvironment, signal?: AbortSignal) {
-    const task = await readTask(taskPath), store = new ProjectStore();
+async function workspaceContext(taskPath: string, options: CommandOptions, environment: CliEnvironment) {
+    const store = new ProjectStore();
     const project = options.project ? store.open(path.resolve(environment.cwd, options.project))
         : store.create(path.basename(taskPath, '.st'), path.dirname(taskPath));
     if (!options.project) project.simulator = 'builtin';
@@ -29,12 +29,23 @@ async function prepare(taskPath: string, options: CommandOptions, environment: C
     }
     const protocols = await loadInterfaceProtocolCatalog(project.interfaceProtocolFiles);
     if (protocols.diagnostics.length) throw new Error(protocols.diagnostics.map(item => `${item.source}:${item.path} [${item.code}] ${item.message}`).join('\n'));
-    const prepared = await prepareSimulationTaskWorkspace(task, taskPath, signal, {
+    const workspaceOptions: TaskWorkspaceOptions = {
         workspaceRoot: project.rootDir,
         interfaceCatalog: protocols.catalog,
         includeDirs: project.libDirs.map(directory => path.resolve(project.rootDir, directory)),
         defines: Object.fromEntries(Object.entries(project.defines).filter(([, value]) => value !== false).map(([key, value]) => [key, value === true ? true : String(value)])),
-    });
+    };
+    return { workspaceOptions, protocols, project };
+}
+export async function prepareSources(task: SimulationTaskDocument, taskPath: string, options: CommandOptions, environment: CliEnvironment) {
+    const { workspaceOptions } = await workspaceContext(taskPath, options, environment);
+    return prepareSimulationTaskSources(task, taskPath, undefined, workspaceOptions);
+}
+export async function prepare(taskPath: string, options: CommandOptions, environment: CliEnvironment, signal?: AbortSignal, override?: SimulationTaskDocument) {
+    const task = override ?? await readTask(taskPath);
+    const { workspaceOptions, protocols, project } = await workspaceContext(taskPath, options, environment);
+    const prepared = await prepareSimulationTaskWorkspace(task, taskPath, signal, workspaceOptions);
+    prepared.inputs = [...prepared.inputs ?? [], ...protocols.inputs];
     return { prepared, project };
 }
 

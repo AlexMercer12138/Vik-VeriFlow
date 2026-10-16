@@ -46,17 +46,18 @@ veriflow sim --project project.json
 veriflow wave --project project.json
 
 # Arch Design (visual RTL top-level design)
-veriflow ad new soc_top -o design/soc.ad
-veriflow ad validate design/soc.ad --project project.json
-veriflow ad export design/soc.ad --project project.json
-veriflow ad export design/soc.ad --language systemverilog -o generated/soc.sv
+veriflow arch new soc_top -o design/soc.ad
+veriflow arch validate design/soc.ad --project project.json
+veriflow arch build design/soc.ad --project project.json
+veriflow arch export design/soc.ad --language systemverilog -o generated/soc.sv
 
 # Simulation Task (graphical Testbench)
+veriflow task new -o simulation.st
 veriflow task validate simulation.st
 veriflow task run simulation.st --project project.json
 ```
 
-Every command supports `--help`.
+Every command supports `--help`. Use `arch` / `task` in new scripts; `ad` remains an alias of `arch`. See [architecture, models and CLI authoring](docs/architecture.md) for build, pins, board and edit-batch commands.
 
 ### VS Code
 
@@ -89,7 +90,7 @@ Placeholders: `{files}` `{output}` `{top_module}` `{wave_file}` — extension se
 ```bash
 nvm use                      # Node 24.14.1+ (.nvmrc)
 npm ci                       # Install locked dependencies
-npm run build                # Build the parser and VS Code extension
+npm run build                # Validate models and build the VS Code extension
 npm test                     # Run all workspace tests
 npm run watch:vscode         # Incremental build for extension development
 npm run build:cli            # Build the CLI and waveform desktop application

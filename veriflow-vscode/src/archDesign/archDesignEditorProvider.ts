@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+import { prepareArchDesignBuild, publishArtifactPlan, snapshotIndexedInputs, excludeOutputDefinitions } from '@veriflow/hdl-runtime/archDesign';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -74,6 +76,7 @@ type EditableSnapshot = Readonly<{
     sourceDefinitions: readonly HdlDefinitionSummary[];
     interfaceCatalog: InterfaceProtocolCatalog;
     interfaceProtocolGeneration: number;
+    protocolInputs?: readonly { path: string; text: string }[];
     validation: ArchDesignValidationResult;
     graph: SchematicGraph;
     index?: WorkspaceHdlIndex;
@@ -165,6 +168,13 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
         await this.saveAndExport(session);
     }
 
+    async build(uri?: vscode.Uri): Promise<void> {
+        const session = this.sessionFor(uri);
+        if (!session) { await vscode.window.showErrorMessage('No editable Arch Design is active'); return; }
+        await session.initialRefresh;
+        await this.saveAndExport(session, true);
+    }
+
     private sessionFor(uri?: vscode.Uri): EditorSession | undefined {
         if (uri) return this.sessions.get(uri.toString());
         return this.sessions.size === 1 ? this.sessions.values().next().value : undefined;
@@ -174,9 +184,9 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
         return this.sessionFor(uri)?.state.snapshot;
     }
 
-    private saveAndExport(session: EditorSession): Promise<void> {
+    private saveAndExport(session: EditorSession, build = false): Promise<void> {
         if (session.exportInFlight) return session.exportInFlight;
-        const operation = this.performSaveAndExport(session);
+        const operation = this.performSaveAndExport(session, build);
         const tracked = operation.finally(() => {
             if (session.exportInFlight === tracked) session.exportInFlight = undefined;
         });
@@ -184,7 +194,7 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
         return tracked;
     }
 
-    private async performSaveAndExport(session: EditorSession): Promise<void> {
+    private async performSaveAndExport(session: EditorSession, build = false): Promise<void> {
         try {
             while (true) {
                 if (this.sessions.get(session.uri.toString()) !== session) return;
@@ -211,7 +221,23 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                     );
                     return;
                 }
-                await this.exportSnapshot(session.uri, snapshot);
+                if (build) {
+                    const design = snapshot.design, language = design.export.language ?? 'verilog';
+                    const output = design.export.output ? path.resolve(path.dirname(session.uri.fsPath), design.export.output)
+                        : session.uri.fsPath.replace(/\.ad$/i, language === 'verilog' ? '.v' : '.sv');
+                    const definitions = await excludeOutputDefinitions(snapshot.sourceDefinitions, output);
+                    const plan = await prepareArchDesignBuild(session.uri.fsPath, design, toArchDesignModuleDefinitions(definitions), {
+                        sourceText: session.document.getText(),
+                        inputs: [...(snapshot.index ? await snapshotIndexedInputs(snapshot.index, definitions.map(item => item.uri)) : []),
+                            ...(snapshot.protocolInputs ?? []).map(item => ({ ...item, path: fileURLToPath(item.path) }))],
+                        interfaceCatalog: snapshot.interfaceCatalog,
+                        interfaceRoot: path.join(this.context.extensionUri.fsPath, 'resources', 'physical-models', 'interfaces'),
+                    });
+                    if (session.document.isDirty || session.document.version !== savedVersion) throw new Error('AD changed while preparing the build; build again');
+                    if (vscode.workspace.textDocuments?.some(doc => doc.isDirty && plan.artifacts.some(artifact => path.resolve(artifact.path).toLowerCase() === path.resolve(doc.uri.fsPath).toLowerCase()))) throw new Error('Save generated output editors before building');
+                    const artifacts = await publishArtifactPlan(plan);
+                    await vscode.window.showInformationMessage(`Arch Design built: ${artifacts.join(', ')}`);
+                } else await this.exportSnapshot(session.uri, snapshot);
                 return;
             }
         } catch (error) {
@@ -484,6 +510,7 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                 sourceDefinitions,
                 interfaceCatalog: interfaceProtocols.catalog,
                 interfaceProtocolGeneration: interfaceProtocols.generation,
+                protocolInputs: 'inputs' in interfaceProtocols ? interfaceProtocols.inputs : undefined,
                 validation,
                 graph: projection.graph,
                 ...(index === undefined ? {} : { index }),
@@ -707,10 +734,11 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                         });
                         return;
                     }
+                    case 'buildArchDesign':
                     case 'exportArchDesign': {
                         const snapshot = state.snapshot;
                         if (!snapshot || command.revision !== snapshot.revision) return;
-                        await this.saveAndExport(session);
+                        await this.saveAndExport(session, command.type === 'buildArchDesign');
                         return;
                     }
                     case 'openPhysicalPins': {

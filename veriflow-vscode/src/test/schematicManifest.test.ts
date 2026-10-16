@@ -7,7 +7,7 @@ const manifest = JSON.parse(
     fs.readFileSync(path.join(extensionRoot, 'package.json'), 'utf8')
 );
 const extensionSource = fs.readFileSync(
-    path.join(extensionRoot, 'src', 'extension.ts'),
+    path.join(extensionRoot, 'src', 'archDesign', 'commands.ts'),
     'utf8'
 );
 const editor = manifest.contributes.customEditors.find(
@@ -59,6 +59,9 @@ assert.deepStrictEqual(workflowViews.map((item: any) => item.contextualTitle), [
 assert.deepStrictEqual(manifest.contributes.menus['veriflow.hdl'].map((item: any) => item.command), [
     'veriflow.insertHdlTemplate', 'veriflow.instantiateModule', 'veriflow.formatHdl', 'veriflow.runTraditionalTestbench',
     'veriflow.generatePinConstraints', 'veriflow.bindArchDesignPins',
+    'veriflow.generateQuickTestbench', 'veriflow.validateArchDesign', 'veriflow.previewArchDesignRtl',
+    'veriflow.exportArchDesign', 'veriflow.buildArchDesign', 'veriflow.validateSimulationTask',
+    'veriflow.exportSimulationTestbench', 'veriflow.runSimulationTask', 'veriflow.openSimulationTaskWave',
 ]);
 for (const setting of ['veriflow.simulator', 'veriflow.waveViewer']) {
     assert.deepStrictEqual(manifest.contributes.configuration.properties[setting].enum, ['builtin', 'custom']);
@@ -118,19 +121,19 @@ for (const id of ['veriflow.validateArchDesign', 'veriflow.exportArchDesign']) {
 }
 assert.match(
     extensionSource,
-    /validate:\s*uri\s*=>\s*archDesignEditorProvider\.validate\(uri\)/
+    /validate:\s*uri\s*=>\s*services\.provider\.validate\(uri\)/
 );
 assert.match(
     extensionSource,
-    /exportRtl:\s*uri\s*=>\s*archDesignEditorProvider\.exportRtl\(uri\)/
+    /exportRtl:\s*uri\s*=>\s*services\.provider\.exportRtl\(uri\)/
 );
 assert.match(
     extensionSource,
-    /\['veriflow\.validateArchDesign',[\s\S]*?archDesignCommands\.validate\(uri\)/
+    /\['veriflow\.validateArchDesign',[\s\S]*?handlers\.validate\(value\)/
 );
 assert.match(
     extensionSource,
-    /\['veriflow\.exportArchDesign',[\s\S]*?archDesignCommands\.exportRtl\(uri\)/
+    /\['veriflow\.exportArchDesign',[\s\S]*?handlers\.exportRtl\(value\)/
 );
 for (const id of ['veriflow.openSchematic', 'veriflow.openSchematicFromExplorer']) {
     assert.ok(

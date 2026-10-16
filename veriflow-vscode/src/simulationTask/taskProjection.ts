@@ -1,20 +1,10 @@
+import { taskDesign, taskModuleKey } from '@veriflow/hdl-runtime/simulationTask';
+export { taskDesign, taskModuleKey } from '@veriflow/hdl-runtime/simulationTask';
 import { createEmptyArchDesign, projectArchDesignGraph, reconcileArchDesignInstanceParameters, type ArchDesign, type ArchDesignModuleDefinition } from '@veriflow/schematic-core/arch-design';
 import { createInterfaceProtocolCatalog, type InterfaceProtocolCatalog } from '@veriflow/schematic-core/interfaces';
 import { describePreset, deriveTaskModuleName, resolveProtocolPresetPorts, type SimulationTaskDocument, type TaskModuleDefinition } from '@veriflow/hdl-runtime/simulationTask';
 import { archDesignLayout, projectArchDesignInspectorData } from '../archDesign/editorSupport';
 import type { SchematicEditorProjection } from '../schematic/protocol';
-export const taskModuleKey = (source: string, module: string): string => JSON.stringify([source, module]);
-export function taskDesign(task: SimulationTaskDocument, modules: readonly TaskModuleDefinition[], filename: string): ArchDesign {
-    task = resolveProtocolPresetPorts(task);
-    return { ...createEmptyArchDesign(deriveTaskModuleName(filename)),
-        instances: task.instances.map(instance => {
-            if ('preset' in instance) return { name: instance.id, module: describePreset(instance.preset).module, definitionKey: `preset:${instance.id}` };
-            const source = instance.source;
-            const module = source.kind === 'hdl' ? source.module : modules.find(item => item.source === source.path)?.module ?? instance.id;
-            return { name: instance.id, module, definitionKey: taskModuleKey(source.path, module), parameters: instance.parameters };
-        }), connections: task.connections, logic: task.logic, defaults: task.defaults,
-        interfaceConnections: task.interfaceConnections, interfaceOverrides: task.interfaceOverrides, presentation: task.presentation };
-}
 export function projectSimulationTask(task: SimulationTaskDocument, modules: readonly TaskModuleDefinition[], uri: string,
     interfaceCatalog: InterfaceProtocolCatalog = createInterfaceProtocolCatalog()) {
     const definitions = [...modules.map(module => ({ ...module, key: taskModuleKey(module.source, module.module) })),

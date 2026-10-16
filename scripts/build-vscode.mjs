@@ -1,5 +1,6 @@
+import { copyPhysicalInterfaces } from './lib/model-resources.mjs';
 import { execFileSync } from 'node:child_process';
-import { copyFile, readFile, readdir } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildWeb } from './build-web.mjs';
@@ -31,15 +32,11 @@ export async function syncVscodeWebAssets(repositoryRoot = root) {
     await recreate(physicalModels);
     const interfaces = path.join(physicalModels, 'interfaces');
     await recreate(interfaces);
-    const source = path.join(repositoryRoot, 'data', 'physical-models', 'interfaces');
-    for (const name of await readdir(source)) {
-        if (!/\.(fixed|expansion)\.json$/.test(name)) continue;
-        const file = path.join(source, name);
-        const model = JSON.parse(await readFile(file, 'utf8'));
-        if (!['fixed', 'expansion'].includes(model.kind))
-            throw new Error(`Expected reusable physical interface: ${file}`);
-        await copyFile(file, path.join(interfaces, name));
-    }
+    await copyPhysicalInterfaces(repositoryRoot, interfaces);
+    const schemas = path.join(targetExtensionRoot, 'schemas');
+    await mkdir(schemas, { recursive: true });
+    await copyFile(path.join(repositoryRoot, 'packages/hdl-runtime/schemas/simulation-task.schema.json'), path.join(schemas, 'simulation-task.schema.json'));
+    await copyFile(path.join(repositoryRoot, 'packages/schematic-core/schemas/physical-interface-model.schema.json'), path.join(schemas, 'physical-interface-model.schema.json'));
 }
 
 export async function buildVscode() {

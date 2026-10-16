@@ -114,6 +114,13 @@ async function run(): Promise<void> {
         fs.mkdirSync(path.dirname(schematicCoreSource), { recursive: true });
         fs.mkdirSync(path.join(fixtureRoot, 'docs', 'boards'), { recursive: true });
         fs.mkdirSync(path.join(fixtureRoot, 'data', 'physical-models', 'interfaces'), { recursive: true });
+        for (const packageName of ['hdl-runtime', 'schematic-core']) {
+            fs.cpSync(
+                path.join(repositoryRoot, 'packages', packageName, 'schemas'),
+                path.join(fixtureRoot, 'packages', packageName, 'schemas'),
+                { recursive: true }
+            );
+        }
         fs.writeFileSync(waveformSource, 'initial-waveform\n');
         fs.writeFileSync(schematicSource, 'initial-schematic\n');
         fs.writeFileSync(schematicCoreSource, 'initial-schematic-core\n');
@@ -196,6 +203,18 @@ async function run(): Promise<void> {
                 && fs.existsSync(schematicMedia)
                 && fs.readFileSync(schematicMedia, 'utf8').includes('updated-schematic-core');
         }, 'schematic core source change propagation', 5_000);
+
+        const schemaName = 'simulation-task.schema.json';
+        const schemaSource = path.join(fixtureRoot, 'packages', 'hdl-runtime', 'schemas', schemaName);
+        const schemaTarget = path.join(fixtureRoot, 'veriflow-vscode', 'schemas', schemaName);
+        const countBeforeSchemaChange = buildCount;
+        const updatedSchema = `${fs.readFileSync(schemaSource, 'utf8')}\n`;
+        fs.writeFileSync(schemaSource, updatedSchema);
+        await waitUntil(() => {
+            if (watchError) throw watchError;
+            return buildCount > countBeforeSchemaChange
+                && fs.readFileSync(schemaTarget, 'utf8') === updatedSchema;
+        }, 'shared schema change propagation', 5_000);
 
         process.emit('SIGINT');
         await running;

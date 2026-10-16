@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist-test",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["test/schematicWebview.test.ts"]
+}

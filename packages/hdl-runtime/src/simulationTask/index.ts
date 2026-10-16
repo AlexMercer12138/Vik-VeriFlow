@@ -3,3 +3,5 @@ export * from './protocolPresets';
 export * from './validation';
 export * from './presets';
 export * from './testbench';
+export * from './projection';
+export * from './authoring';

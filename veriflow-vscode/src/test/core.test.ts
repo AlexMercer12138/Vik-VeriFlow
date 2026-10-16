@@ -2527,7 +2527,7 @@ function testModuleInstantiationManifestContribution(): void {
     });
     assert.deepStrictEqual(editorMenu, {
         command: 'veriflow.instantiateModule',
-        when: 'editorLangId == verilog || editorLangId == systemverilog || resourceExtname == .v || resourceExtname == .sv',
+        when: 'resourceExtname == .v || resourceExtname == .sv',
         group: '1_edit@2',
     });
 }
@@ -2549,7 +2549,7 @@ function testModuleInstantiationUsesWorkspaceIndex(): void {
     assert.match(extensionSource, /const index = presentation\.index;/);
     assert.match(
         extensionSource,
-        /showModuleInstantiationPicker\(\s*\(\) => isCurrent\(\) \? index : undefined,\s*isCurrent,\s*root\s*\)/
+        /showModuleInstantiationPicker\(\s*\(\) => isCurrent\(\) \? index : undefined,\s*isCurrent,\s*root,\s*source\s*\)/
     );
 }
 

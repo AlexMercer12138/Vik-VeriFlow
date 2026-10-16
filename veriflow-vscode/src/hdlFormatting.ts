@@ -42,8 +42,8 @@ export function registerHdlFormatting(context: vscode.ExtensionContext): vscode.
         [{ language: 'verilog' }, { language: 'systemverilog' }],
         { provideDocumentFormattingEdits: (document, _options, token) => edits(document, token) }
     );
-    const command = vscode.commands.registerCommand('veriflow.formatHdl', async () => {
-        const editor = vscode.window.activeTextEditor;
+    const command = vscode.commands.registerCommand('veriflow.formatHdl', async (uri?: vscode.Uri) => {
+        const editor = uri instanceof vscode.Uri ? await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri)) : vscode.window.activeTextEditor;
         if (!editor || !isHdl(editor.document)) return;
         const version = editor.document.version;
         const changes = await edits(editor.document);

@@ -4,7 +4,12 @@ import os from 'node:os';
 
 import type { CommandExecutor } from '@veriflow/flow-core/simulation';
 
-import { adExport, adNew, adValidate } from './commands/ad';
+import { adExport, adNew, adValidate, archBuild } from './commands/ad';
+import { archApply, taskNew, taskApply, taskTb } from './commands/authoring';
+import { boardCommand } from './commands/board';
+import { pinsCommand } from './commands/pins';
+import { hdlCommand } from './commands/hdl';
+import { result } from './commands/artifacts';
 import { analyze } from './commands/analyze';
 import { libAdd, libList, libRemove } from './commands/lib';
 import {
@@ -69,8 +74,11 @@ positional arguments:
     analyze      analyze dependencies
     sim          compile and simulate
     wave         open waveform viewer
-    ad           create, validate, and export Arch Designs
-    task         validate and run Simulation Tasks
+    arch         create, edit, validate, and build Arch Designs (alias: ad)
+    board        manage physical board models
+    pins         validate and export pin constraints
+    hdl          single-file HDL quick actions
+    task         create, edit, validate, and run Simulation Tasks
 
 options:
   -h, --help     show this help message and exit
@@ -112,13 +120,15 @@ options:
   -h, --help  show this help message and exit
 `;
 
-const AD_HELP = `usage: veriflow ad [-h] ACTION ...
+const AD_HELP = `usage: veriflow arch [-h] ACTION ...
 
 positional arguments:
   ACTION
     new       create an Arch Design
     validate  validate an Arch Design
     export    export an Arch Design to RTL
+    apply     apply a versioned edit batch
+    build     generate RTL and optional XDC together
 
 options:
   -h, --help  show this help message and exit
@@ -128,6 +138,9 @@ const TASK_HELP = `usage: veriflow task [-h] ACTION ...
 
 positional arguments:
   ACTION
+    new       create a Simulation Task
+    apply     apply a versioned edit batch
+    tb        generate a testbench
     validate  validate a Simulation Task and its HDL dependencies
     run       run one generated testbench
 
@@ -240,7 +253,7 @@ options:
                         project JSON file
 `;
 
-const AD_NEW_HELP = `usage: veriflow ad new [-h] [-o OUTPUT] MODULE
+const AD_NEW_HELP = `usage: veriflow arch new [-h] [-o OUTPUT] MODULE
 
 positional arguments:
   MODULE                generated top module name
@@ -250,7 +263,7 @@ options:
   -o, --output OUTPUT   output Arch Design file
 `;
 
-const AD_VALIDATE_HELP = `usage: veriflow ad validate [-h] [-p PROJECT] [-L LIB] DESIGN
+const AD_VALIDATE_HELP = `usage: veriflow arch validate [-h] [-p PROJECT] [-L LIB] DESIGN
 
 positional arguments:
   DESIGN                Arch Design file
@@ -262,7 +275,7 @@ options:
   -L, --lib LIB         additional library directory
 `;
 
-const AD_EXPORT_HELP = `usage: veriflow ad export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
+const AD_EXPORT_HELP = `usage: veriflow arch export [-h] [-p PROJECT] [-L LIB] [-o OUTPUT]
                           [--language {verilog,systemverilog}] DESIGN
 
 positional arguments:
@@ -364,7 +377,7 @@ const LEAF_COMMANDS: Record<string, LeafCommand> = {
         ],
         handler: topGet,
     },
-    'ad new': {
+    'arch new': {
         help: AD_NEW_HELP,
         positionals: [{ key: 'module', requiredName: 'MODULE' }],
         options: [
@@ -372,7 +385,7 @@ const LEAF_COMMANDS: Record<string, LeafCommand> = {
         ],
         handler: adNew,
     },
-    'ad validate': {
+    'arch validate': {
         help: AD_VALIDATE_HELP,
         positionals: [{ key: 'design', requiredName: 'DESIGN' }],
         options: [
@@ -381,7 +394,7 @@ const LEAF_COMMANDS: Record<string, LeafCommand> = {
         ],
         handler: adValidate,
     },
-    'ad export': {
+    'arch export': {
         help: AD_EXPORT_HELP,
         positionals: [{ key: 'design', requiredName: 'DESIGN' }],
         options: [
@@ -410,11 +423,54 @@ const LEAF_COMMANDS: Record<string, LeafCommand> = {
     },
 };
 
+const outputOptions: OptionDefinition[] = [
+    { key: 'output', aliases: ['--output', '-o'] },
+    { key: 'json', aliases: ['--json'], takesValue: false },
+    { key: 'dryRun', aliases: ['--dry-run'], takesValue: false },
+];
+const documentOptions: OptionDefinition[] = [
+    ...outputOptions, { key: 'ops', aliases: ['--ops'], requiredName: '--ops' },
+    { key: 'inPlace', aliases: ['--in-place'], takesValue: false },
+    { key: 'project', aliases: ['--project', '-p'] },
+];
+function newCommand(name: string, handler: CommandHandler, options: OptionDefinition[], positional?: string): LeafCommand {
+    return { handler, options, positionals: positional ? [{ key: positional, requiredName: positional.toUpperCase() }] : [],
+        help: `usage: veriflow ${name} [-h] ${positional?.toUpperCase() ?? ''} [options]\n\noptions:\n  -h, --help\n${options.map(o => `  ${o.aliases.join(', ')}${o.takesValue === false ? '' : ' VALUE'}`).join('\n')}\n` };
+}
+Object.assign(LEAF_COMMANDS, {
+    'arch apply': newCommand('arch apply', archApply, documentOptions, 'design'),
+    'arch build': newCommand('arch build', archBuild, [...outputOptions,
+        { key: 'project', aliases: ['--project', '-p'] }, { key: 'lib', aliases: ['--lib', '-L'] },
+        { key: 'language', aliases: ['--language'], choices: ['verilog', 'systemverilog'] },
+        { key: 'xdcOutput', aliases: ['--xdc-output'] }, { key: 'rtlOnly', aliases: ['--rtl-only'], takesValue: false }], 'design'),
+    'task new': newCommand('task new', taskNew, outputOptions),
+    'task apply': newCommand('task apply', taskApply, documentOptions, 'task'),
+    'task tb': newCommand('task tb', taskTb, [...outputOptions, { key: 'project', aliases: ['--project', '-p'] }], 'task'),
+});
+for (const action of ['list', 'validate', 'import', 'export']) {
+    LEAF_COMMANDS[`board ${action}`] = newCommand(`board ${action}`, (o, e) => boardCommand(action, o, e),
+        [...outputOptions, ...(action === 'import' ? [{ key: 'id', aliases: ['--id'] }, { key: 'name', aliases: ['--name'] }] : [])], action === 'list' ? undefined : 'board');
+}
+for (const action of ['validate', 'export']) {
+    LEAF_COMMANDS[`pins ${action}`] = newCommand(`pins ${action}`, (o, e) => pinsCommand(action, o, e),
+        [...outputOptions, { key: 'config', aliases: ['--config'] }, { key: 'module', aliases: ['--module'] }, { key: 'project', aliases: ['--project', '-p'] }, { key: 'lib', aliases: ['--lib', '-L'] }], 'file');
+}
+for (const action of ['format', 'template', 'instantiate', 'tb', 'run']) {
+    const extras: Record<string, OptionDefinition[]> = {
+        format: [{ key: 'alignment', aliases: ['--alignment'], choices: ['columns', 'adaptive'] }, { key: 'check', aliases: ['--check'], takesValue: false }, { key: 'inPlace', aliases: ['--in-place'], takesValue: false }],
+        template: [{ key: 'template', aliases: ['--template'] }, { key: 'list', aliases: ['--list'], takesValue: false }],
+        instantiate: [{ key: 'module', aliases: ['--module'] }, { key: 'instance', aliases: ['--instance'] }],
+        tb: [{ key: 'module', aliases: ['--module'] }, { key: 'name', aliases: ['--name'] }, { key: 'config', aliases: ['--config'] }],
+        run: [{ key: 'waveOutput', aliases: ['--wave-output'] }, { key: 'module', aliases: ['--module'] }, { key: 'project', aliases: ['--project', '-p'] }, { key: 'lib', aliases: ['--lib', '-L'] }, { key: 'sim', aliases: ['--sim'] }],
+    };
+    LEAF_COMMANDS[`hdl ${action}`] = newCommand(`hdl ${action}`, (o, e) => hdlCommand(action, o, e), [...(action === 'run' ? outputOptions.filter(option => option.key !== 'output') : outputOptions), ...extras[action]], action === 'template' ? undefined : 'file');
+}
+
 const PARENT_HELP: Record<string, string> = {
     project: PROJECT_HELP,
     lib: LIB_HELP,
     top: TOP_HELP,
-    ad: AD_HELP,
+    arch: AD_HELP,
     task: TASK_HELP,
 };
 
@@ -422,9 +478,15 @@ const PARENT_ACTIONS: Record<string, string[]> = {
     project: ['new', 'open', 'show'],
     lib: ['add', 'remove', 'list'],
     top: ['set', 'get'],
-    ad: ['new', 'validate', 'export'],
-    task: ['validate', 'run'],
+    arch: ['new', 'apply', 'validate', 'export', 'build'],
+    task: ['new', 'apply', 'tb', 'validate', 'run'],
 };
+
+for (const parent of ['board', 'pins', 'hdl']) {
+    const actions = Object.keys(LEAF_COMMANDS).filter(name => name.startsWith(parent + ' ')).map(name => name.split(' ')[1]);
+    PARENT_ACTIONS[parent] = actions;
+    PARENT_HELP[parent] = `usage: veriflow ${parent} [-h] ACTION ...\n\nactions: ${actions.join(', ')}\n`;
+}
 
 const TOP_LEVEL_COMMANDS: Record<string, LeafCommand> = {
     analyze: {
@@ -621,6 +683,7 @@ export async function runCli(argv: string[], environment: CliEnvironment): Promi
         return 0;
     }
 
+    if (argv[0] === 'ad') argv = ['arch', ...argv.slice(1)];
     const topLevelCommand = TOP_LEVEL_COMMANDS[argv[0]];
     if (topLevelCommand) {
         const parsed = parseOptions(argv[0], argv.slice(1), topLevelCommand, environment);
@@ -638,7 +701,7 @@ export async function runCli(argv: string[], environment: CliEnvironment): Promi
     if (!(parent in PARENT_HELP)) {
         environment.stderr(
             `${usage(ROOT_HELP)}veriflow: error: argument COMMAND: invalid choice: '${parent}' `
-            + `(choose from project, lib, top, analyze, sim, wave, ad, task)\n`
+            + `(choose from project, lib, top, analyze, sim, wave, arch, task, board, pins, hdl)\n`
         );
         return 2;
     }
@@ -670,7 +733,8 @@ export async function runCli(argv: string[], environment: CliEnvironment): Promi
         return await definition.handler(parsed, environment);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        environment.stderr(`Error: ${message}\n`);
+        if (parsed.json) result(parsed, environment, { diagnostics: [{ code: 'COMMAND_FAILED', message }], artifacts: [] });
+        else environment.stderr(`Error: ${message}\n`);
         return 1;
     }
 }

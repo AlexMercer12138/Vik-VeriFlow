@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node test/run-tests.cjs"
+    "test": "node test/run-tests.cjs",
+    "build": "tsc -p tsconfig.shared.json",
+    "test:browser": "tsc -p tsconfig.browser-test.json && node --test dist-test/test/schematicWebview.test.js"
   },
   "dependencies": {
     "@veriflow/hdl-runtime": "1.5.3",
@@ -12,5 +14,47 @@
     "@veriflow/schematic-core": "1.5.3",
     "lucide": "1.28.0",
     "tslib": "2.8.1"
+  },
+  "exports": {
+    "./shared/protocol": {
+      "types": "./dist/shared/protocol.d.ts",
+      "require": "./dist/shared/protocol.js",
+      "default": "./dist/shared/protocol.js"
+    },
+    "./shared/webviewSupport": {
+      "types": "./dist/shared/webviewSupport.d.ts",
+      "require": "./dist/shared/webviewSupport.js",
+      "default": "./dist/shared/webviewSupport.js"
+    },
+    "./shared/layoutStore": {
+      "types": "./dist/shared/layoutStore.d.ts",
+      "require": "./dist/shared/layoutStore.js",
+      "default": "./dist/shared/layoutStore.js"
+    },
+    "./shared/editorSupport": {
+      "types": "./dist/shared/editorSupport.d.ts",
+      "require": "./dist/shared/editorSupport.js",
+      "default": "./dist/shared/editorSupport.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "shared/protocol": [
+        "dist/shared/protocol.d.ts"
+      ],
+      "shared/webviewSupport": [
+        "dist/shared/webviewSupport.d.ts"
+      ],
+      "shared/layoutStore": [
+        "dist/shared/layoutStore.d.ts"
+      ],
+      "shared/editorSupport": [
+        "dist/shared/editorSupport.d.ts"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "43.3.0",
+    "playwright": "1.62.1"
   }
 }

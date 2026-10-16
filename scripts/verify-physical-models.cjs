@@ -7,7 +7,7 @@ const { createRequire } = require('node:module');
 const root = path.resolve(__dirname, '..');
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 const Ajv = createRequire(path.join(root, 'veriflow-vscode/package.json'))('ajv');
-const schema = read(path.join(root, 'data/physical-models/schemas/physical-interface-model.schema.json'));
+const schema = read(path.join(root, 'packages/schematic-core/schemas/physical-interface-model.schema.json'));
 const ajv = new Ajv({ strict: false, allErrors: true });
 const shape = ajv.compile(schema);
 const documents = new Map();

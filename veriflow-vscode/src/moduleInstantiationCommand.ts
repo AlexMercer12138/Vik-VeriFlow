@@ -83,13 +83,14 @@ function getSelectedDefinition(
 export async function showModuleInstantiationPicker(
     getCurrentIndex: () => ModuleInstantiationIndex | undefined,
     isCurrent: () => boolean = () => true,
-    workspaceRoot: string = process.cwd()
+    workspaceRoot: string = process.cwd(),
+    source?: vscode.Uri
 ): Promise<void> {
     const initialIndex = getCurrentIndex();
     if (!isCurrent() || !initialIndex) { return; }
     const invocationEditor = vscode.window.activeTextEditor;
     const choices = buildModuleInstantiationChoices(
-        initialIndex.getAllDefinitions('module'),
+        initialIndex.getAllDefinitions('module').filter(item => !source || item.uri === source.toString()),
         workspaceRoot
     ) as ModuleQuickPickItem[];
     if (choices.length === 0) {

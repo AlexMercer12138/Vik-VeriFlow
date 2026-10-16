@@ -1,3 +1,4 @@
+import { loadInterfaceProtocolCatalog } from '@veriflow/hdl-runtime/interfaces';
 import {
     createInterfaceProtocolCatalog,
     parseInterfaceProtocolText,
@@ -16,6 +17,7 @@ export type InterfaceProtocolCatalogSnapshot = Readonly<{
     catalog: InterfaceProtocolCatalog;
     diagnostics: readonly InterfaceProtocolFileDiagnostic[];
     generation: number;
+    inputs?: readonly { path: string; text: string }[];
 }>;
 
 export type InterfaceProtocolLoaderHost = Readonly<{
@@ -114,55 +116,25 @@ export class WorkspaceInterfaceProtocolLoader {
             });
         }
         const diagnostics: InterfaceProtocolFileDiagnostic[] = [];
-        const inputs: InterfaceProtocolCatalogInput[] = [];
+        const snapshots: { path: string; text: string }[] = [];
         const projectUri = this.host.resolve(workspace, 'project.json');
         this.watch(projectUri);
         let paths: readonly string[] = [];
         try {
-            paths = projectProtocolPaths(
-                projectUri,
-                await this.host.readFile(projectUri),
-                diagnostics
-            );
+            const projectText = await this.host.readFile(projectUri);
+            snapshots.push({ path: projectUri, text: projectText });
+            paths = projectProtocolPaths(projectUri, projectText, diagnostics);
         } catch (error) {
             if (!isMissingFile(error)) throw error;
         }
-        for (const configuredPath of paths) {
-            const source = this.host.resolve(workspace, configuredPath);
-            this.watch(source);
-            let text: string;
-            try {
-                text = await this.host.readFile(source);
-            } catch (error) {
-                if (!isMissingFile(error)) throw error;
-                diagnostics.push({
-                    source,
-                    path: '$',
-                    code: 'IF_PROTOCOL_FILE_NOT_FOUND',
-                    message: 'Interface protocol file not found',
-                });
-                continue;
-            }
-            const parsed = parseInterfaceProtocolText(text);
-            if (parsed.status === 'invalid') {
-                diagnostics.push(...parsed.diagnostics.map(item => ({ source, ...item })));
-                continue;
-            }
-            if (parsed.status === 'unsupported') {
-                diagnostics.push({
-                    source,
-                    path: '$.schemaVersion',
-                    code: 'IF_PROTOCOL_SCHEMA_UNSUPPORTED',
-                    message: `Interface protocol schema version ${parsed.schemaVersion} is not supported`,
-                });
-                continue;
-            }
-            inputs.push({ source, value: JSON.parse(text) as unknown });
-        }
-        const catalog = createInterfaceProtocolCatalog(inputs);
-        diagnostics.push(...catalog.diagnostics);
+        const files = paths.map(configured => this.host.resolve(workspace, configured));
+        for (const source of files) this.watch(source);
+        const loaded = await loadInterfaceProtocolCatalog(files, source => this.host.readFile(source));
+        diagnostics.push(...loaded.diagnostics);
+        const catalog = loaded.catalog;
         return Object.freeze({
             catalog,
+            inputs: Object.freeze([...snapshots, ...loaded.inputs]),
             diagnostics: Object.freeze(diagnostics.map(item => Object.freeze({ ...item }))),
             generation: this.generation,
         });

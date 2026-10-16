@@ -7027,6 +7027,187 @@
     }
   });
 
+  // packages/schematic-core/dist/archDesign/defaults.js
+  var require_defaults = __commonJS({
+    "packages/schematic-core/dist/archDesign/defaults.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.isSafeDefaultExpression = isSafeDefaultExpression2;
+      var MAX_DEFAULT_EXPRESSION_LENGTH = 4096;
+      var SAFE_SYSTEM_FUNCTIONS = /* @__PURE__ */ new Set([
+        "$bits",
+        "$clog2",
+        "$dimensions",
+        "$high",
+        "$increment",
+        "$left",
+        "$low",
+        "$right",
+        "$signed",
+        "$size",
+        "$unpacked_dimensions",
+        "$unsigned"
+      ]);
+      var SAFE_OPERATORS = [
+        "===",
+        "!==",
+        "==?",
+        "!=?",
+        "<<<",
+        ">>>",
+        "<<",
+        ">>",
+        "<=",
+        ">=",
+        "==",
+        "!=",
+        "&&",
+        "||",
+        "**",
+        "~&",
+        "~|",
+        "~^",
+        "^~",
+        "+",
+        "-",
+        "*",
+        "/",
+        "%",
+        "&",
+        "|",
+        "^",
+        "~",
+        "!",
+        "<",
+        ">",
+        "?",
+        ":",
+        ",",
+        "."
+      ];
+      var UNSAFE_OPERATORS = ["->>", "->", "++", "--"];
+      function isIdentifierStart(character) {
+        return /[A-Za-z_]/.test(character);
+      }
+      function isIdentifierPart(character) {
+        return /[A-Za-z0-9_$]/.test(character);
+      }
+      function basedLiteralEnd(source, quoteIndex) {
+        let index2 = quoteIndex + 1;
+        if (source[index2] === "s" || source[index2] === "S")
+          index2 += 1;
+        const base = source[index2]?.toLowerCase();
+        if (!base || !"bodh".includes(base))
+          return void 0;
+        index2 += 1;
+        const digitsStart = index2;
+        const digitPattern = base === "b" ? /[01_xXzZ?]/ : base === "o" ? /[0-7_xXzZ?]/ : base === "d" ? /[0-9_xXzZ?]/ : /[0-9A-Fa-f_xXzZ?]/;
+        while (digitPattern.test(source[index2] ?? ""))
+          index2 += 1;
+        return index2 === digitsStart || isIdentifierPart(source[index2] ?? "") ? void 0 : index2;
+      }
+      function isSafeDefaultExpression2(expression) {
+        if (typeof expression !== "string" || expression.length === 0 || expression.length > MAX_DEFAULT_EXPRESSION_LENGTH || expression.trim().length === 0 || expression.includes("`") || expression.includes(";") || expression.includes("//") || expression.includes("/*") || expression.includes('"')) {
+          return false;
+        }
+        for (let index3 = 0; index3 < expression.length; index3 += 1) {
+          const code = expression.charCodeAt(index3);
+          if (code < 32 && code !== 9 || code === 127)
+            return false;
+        }
+        const closing = /* @__PURE__ */ new Map([[")", "("], ["]", "["], ["}", "{"]]);
+        const stack = [];
+        let index2 = 0;
+        let previousToken;
+        while (index2 < expression.length) {
+          const character = expression[index2];
+          if (character === " " || character === "	") {
+            index2 += 1;
+            continue;
+          }
+          if (character === "$") {
+            const start = index2;
+            index2 += 1;
+            if (!isIdentifierStart(expression[index2] ?? ""))
+              return false;
+            while (isIdentifierPart(expression[index2] ?? ""))
+              index2 += 1;
+            if (!SAFE_SYSTEM_FUNCTIONS.has(expression.slice(start, index2)))
+              return false;
+            previousToken = "system-function";
+            continue;
+          }
+          if (isIdentifierStart(character)) {
+            index2 += 1;
+            while (isIdentifierPart(expression[index2] ?? ""))
+              index2 += 1;
+            previousToken = "identifier";
+            continue;
+          }
+          if (/[0-9]/.test(character)) {
+            index2 += 1;
+            while (/[0-9_]/.test(expression[index2] ?? ""))
+              index2 += 1;
+            if (expression[index2] === "'") {
+              const end = basedLiteralEnd(expression, index2);
+              if (end === void 0)
+                return false;
+              index2 = end;
+            }
+            previousToken = "value";
+            continue;
+          }
+          if (character === "'") {
+            if (index2 > 0 && isIdentifierPart(expression[index2 - 1]))
+              return false;
+            const unbased = expression[index2 + 1];
+            if (/[01xXzZ]/.test(unbased ?? "")) {
+              if (isIdentifierPart(expression[index2 + 2] ?? ""))
+                return false;
+              index2 += 2;
+              previousToken = "value";
+              continue;
+            }
+            const end = basedLiteralEnd(expression, index2);
+            if (end === void 0)
+              return false;
+            index2 = end;
+            previousToken = "value";
+            continue;
+          }
+          if (character === "(" || character === "[" || character === "{") {
+            if (character === "(" && previousToken !== void 0 && previousToken !== "system-function" && previousToken !== "opening" && previousToken !== "operator") {
+              return false;
+            }
+            stack.push(character);
+            index2 += 1;
+            previousToken = "opening";
+            continue;
+          }
+          const expectedOpening = closing.get(character);
+          if (expectedOpening !== void 0) {
+            if (stack.pop() !== expectedOpening)
+              return false;
+            index2 += 1;
+            previousToken = "closing";
+            continue;
+          }
+          if (UNSAFE_OPERATORS.some((candidate) => expression.startsWith(candidate, index2))) {
+            return false;
+          }
+          const operator = SAFE_OPERATORS.find((candidate) => expression.startsWith(candidate, index2));
+          if (operator !== void 0) {
+            index2 += operator.length;
+            previousToken = "operator";
+            continue;
+          }
+          return false;
+        }
+        return stack.length === 0;
+      }
+    }
+  });
+
   // packages/schematic-webview/src/authoring/taskInspector.ts
   var import_timing = __toESM(require_timing());
   var import_protocolPresets = __toESM(require_protocolPresets());
@@ -46883,170 +47064,9 @@
 
   // packages/schematic-webview/src/index.ts
   var import_schematic_core = __toESM(require_dist());
+  var import_defaults2 = __toESM(require_defaults());
 
-  // packages/schematic-core/src/archDesign/defaults.ts
-  var MAX_DEFAULT_EXPRESSION_LENGTH = 4096;
-  var SAFE_SYSTEM_FUNCTIONS = /* @__PURE__ */ new Set([
-    "$bits",
-    "$clog2",
-    "$dimensions",
-    "$high",
-    "$increment",
-    "$left",
-    "$low",
-    "$right",
-    "$signed",
-    "$size",
-    "$unpacked_dimensions",
-    "$unsigned"
-  ]);
-  var SAFE_OPERATORS = [
-    "===",
-    "!==",
-    "==?",
-    "!=?",
-    "<<<",
-    ">>>",
-    "<<",
-    ">>",
-    "<=",
-    ">=",
-    "==",
-    "!=",
-    "&&",
-    "||",
-    "**",
-    "~&",
-    "~|",
-    "~^",
-    "^~",
-    "+",
-    "-",
-    "*",
-    "/",
-    "%",
-    "&",
-    "|",
-    "^",
-    "~",
-    "!",
-    "<",
-    ">",
-    "?",
-    ":",
-    ",",
-    "."
-  ];
-  var UNSAFE_OPERATORS = ["->>", "->", "++", "--"];
-  function isIdentifierStart(character) {
-    return /[A-Za-z_]/.test(character);
-  }
-  function isIdentifierPart(character) {
-    return /[A-Za-z0-9_$]/.test(character);
-  }
-  function basedLiteralEnd(source, quoteIndex) {
-    let index2 = quoteIndex + 1;
-    if (source[index2] === "s" || source[index2] === "S") index2 += 1;
-    const base = source[index2]?.toLowerCase();
-    if (!base || !"bodh".includes(base)) return void 0;
-    index2 += 1;
-    const digitsStart = index2;
-    const digitPattern = base === "b" ? /[01_xXzZ?]/ : base === "o" ? /[0-7_xXzZ?]/ : base === "d" ? /[0-9_xXzZ?]/ : /[0-9A-Fa-f_xXzZ?]/;
-    while (digitPattern.test(source[index2] ?? "")) index2 += 1;
-    return index2 === digitsStart || isIdentifierPart(source[index2] ?? "") ? void 0 : index2;
-  }
-  function isSafeDefaultExpression(expression) {
-    if (typeof expression !== "string" || expression.length === 0 || expression.length > MAX_DEFAULT_EXPRESSION_LENGTH || expression.trim().length === 0 || expression.includes("`") || expression.includes(";") || expression.includes("//") || expression.includes("/*") || expression.includes('"')) {
-      return false;
-    }
-    for (let index3 = 0; index3 < expression.length; index3 += 1) {
-      const code = expression.charCodeAt(index3);
-      if (code < 32 && code !== 9 || code === 127) return false;
-    }
-    const closing = /* @__PURE__ */ new Map([[")", "("], ["]", "["], ["}", "{"]]);
-    const stack = [];
-    let index2 = 0;
-    let previousToken;
-    while (index2 < expression.length) {
-      const character = expression[index2];
-      if (character === " " || character === "	") {
-        index2 += 1;
-        continue;
-      }
-      if (character === "$") {
-        const start = index2;
-        index2 += 1;
-        if (!isIdentifierStart(expression[index2] ?? "")) return false;
-        while (isIdentifierPart(expression[index2] ?? "")) index2 += 1;
-        if (!SAFE_SYSTEM_FUNCTIONS.has(expression.slice(start, index2))) return false;
-        previousToken = "system-function";
-        continue;
-      }
-      if (isIdentifierStart(character)) {
-        index2 += 1;
-        while (isIdentifierPart(expression[index2] ?? "")) index2 += 1;
-        previousToken = "identifier";
-        continue;
-      }
-      if (/[0-9]/.test(character)) {
-        index2 += 1;
-        while (/[0-9_]/.test(expression[index2] ?? "")) index2 += 1;
-        if (expression[index2] === "'") {
-          const end = basedLiteralEnd(expression, index2);
-          if (end === void 0) return false;
-          index2 = end;
-        }
-        previousToken = "value";
-        continue;
-      }
-      if (character === "'") {
-        if (index2 > 0 && isIdentifierPart(expression[index2 - 1])) return false;
-        const unbased = expression[index2 + 1];
-        if (/[01xXzZ]/.test(unbased ?? "")) {
-          if (isIdentifierPart(expression[index2 + 2] ?? "")) return false;
-          index2 += 2;
-          previousToken = "value";
-          continue;
-        }
-        const end = basedLiteralEnd(expression, index2);
-        if (end === void 0) return false;
-        index2 = end;
-        previousToken = "value";
-        continue;
-      }
-      if (character === "(" || character === "[" || character === "{") {
-        if (character === "(" && previousToken !== void 0 && previousToken !== "system-function" && previousToken !== "opening" && previousToken !== "operator") {
-          return false;
-        }
-        stack.push(character);
-        index2 += 1;
-        previousToken = "opening";
-        continue;
-      }
-      const expectedOpening = closing.get(character);
-      if (expectedOpening !== void 0) {
-        if (stack.pop() !== expectedOpening) return false;
-        index2 += 1;
-        previousToken = "closing";
-        continue;
-      }
-      if (UNSAFE_OPERATORS.some((candidate) => expression.startsWith(candidate, index2))) {
-        return false;
-      }
-      const operator = SAFE_OPERATORS.find(
-        (candidate) => expression.startsWith(candidate, index2)
-      );
-      if (operator !== void 0) {
-        index2 += operator.length;
-        previousToken = "operator";
-        continue;
-      }
-      return false;
-    }
-    return stack.length === 0;
-  }
-
-  // veriflow-vscode/src/schematic/webviewSupport.ts
+  // packages/schematic-webview/src/shared/webviewSupport.ts
   function canConnectScalarPins(graph2, first, second) {
     if (first.id === second.id) return false;
     const drivers = /* @__PURE__ */ new Set();
@@ -50932,8 +50952,8 @@ ${choice.description}`
     const inputWidth = requiredLogicWidth(dom.logicInputWidthInput.value);
     if (operation === "constant") {
       const expression = dom.logicExpressionInput.value.trim();
-      if (!width2 || !isSafeDefaultExpression(expression)) {
-        if (!isSafeDefaultExpression(expression)) {
+      if (!width2 || !(0, import_defaults2.isSafeDefaultExpression)(expression)) {
+        if (!(0, import_defaults2.isSafeDefaultExpression)(expression)) {
           dom.logicExpressionInput.setCustomValidity("Enter a constant expression");
           dom.logicExpressionInput.reportValidity();
         }

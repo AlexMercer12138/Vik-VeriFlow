@@ -6,6 +6,7 @@ import { canonicalizeSourceUri } from '@veriflow/hdl-core/preprocessor';
 import { exportArchDesignRtl, parseArchDesignText, type ArchDesign } from '@veriflow/schematic-core/arch-design';
 import type { InterfaceProtocolCatalog } from '@veriflow/schematic-core/interfaces';
 import { createArchDesignDefinitionCatalog, selectArchDesignDefinitionKey } from './archDesignDefinitionReference';
+import { snapshotIndexedInputs } from './artifacts/plan';
 import { DependencyAnalyzer } from './dependencyAnalyzer';
 import { NodeWorkspaceHost, type ParserRuntimePaths } from './nodeWorkspaceHost';
 import type { HdlDefinitionSummary } from './workspaceIndexTypes';
@@ -29,6 +30,7 @@ export interface PreparedSimulationTask {
     includeDirs: string[];
     defines: Record<string, string | true>;
     generatedTestbench: GeneratedTestbench;
+    inputs?: { path: string; text: string }[];
 }
 
 function normalizedPath(filepath: string): string {
@@ -171,10 +173,10 @@ function moduleDefinition(root: string, definition: HdlDefinitionSummary): TaskM
 }
 
 /** Resolve exact source identities and use the same generator for export and execution. */
-export async function prepareSimulationTaskWorkspace(
+export async function prepareSimulationTaskSources(
     inputTask: SimulationTaskDocument, inputTaskPath: string,
     signal?: AbortSignal, options: TaskWorkspaceOptions = {},
-): Promise<PreparedSimulationTask> {
+): Promise<Omit<PreparedSimulationTask, 'generatedTestbench'>> {
     signal?.throwIfAborted();
     const task = validateSimulationTaskValue(inputTask);
     const taskPath = path.resolve(inputTaskPath), root = path.dirname(taskPath);
@@ -188,6 +190,7 @@ export async function prepareSimulationTaskWorkspace(
         await host.scan(signal);
         const initialDefinitions = host.index.getAllDefinitions('module');
         const catalog = createArchDesignDefinitionCatalog(initialDefinitions, canonicalizeSourceUri(pathToFileURL(path.resolve(options.workspaceRoot ?? root)).toString()));
+        const inputs: { path: string; text: string }[] = [];
         const wrappers = new Map<string, { actual: string; module: string; text: string }>();
         const bindings: Record<string, string> = {};
         const bind = (name: string, key: string) => {
@@ -198,7 +201,9 @@ export async function prepareSimulationTaskWorkspace(
             signal?.throwIfAborted();
             if (!('source' in instance) || instance.source.kind !== 'ad' || wrappers.has(instance.source.path)) continue;
             const designPath = path.resolve(root, instance.source.path);
-            const parsed = parseArchDesignText(await readFile(designPath, 'utf8'));
+            const designText = await readFile(designPath, 'utf8');
+            inputs.push({ path: designPath, text: designText });
+            const parsed = parseArchDesignText(designText);
             if (parsed.status !== 'editable') throw new Error(`Fix the Architecture Design before simulation: ${instance.source.path}`);
             const design = resolvedDesign(parsed.design, catalog);
             for (const child of design.instances) {
@@ -255,12 +260,23 @@ export async function prepareSimulationTaskWorkspace(
         const includeClosure = await resolveIncludeClosure(additionalSources, includes, root, includeDirs, signal);
         const runtime = await stageRuntimeInputs(uniquePaths([...additionalSources, ...includeClosure]), root, temporaryDirectory, signal);
         const inputFiles = uniquePaths([taskPath, ...sources, ...additionalSources, ...includeClosure, ...runtime.originals]);
-        const generatedTestbench = generateTestbench(task, deriveTaskModuleName(taskPath), modules, options.interfaceCatalog);
+        inputs.push(...await snapshotIndexedInputs(host.index, [...dependencyFiles].filter(file => !generatedKeys.has(normalizedPath(file))).map(file => pathToFileURL(file).toString())));
         signal?.throwIfAborted();
         succeeded = true;
-        return { task, modules, additionalSources, inputFiles, runtimeFiles: runtime.staged, includeDirs, defines: options.defines ?? {}, generatedTestbench, temporaryDirectory: runtime.cwd, dispose };
+        return { task, modules, additionalSources, inputFiles, runtimeFiles: runtime.staged, includeDirs, defines: options.defines ?? {}, inputs, temporaryDirectory: runtime.cwd, dispose };
     } finally {
         await host.dispose();
         if (!succeeded) await dispose();
     }
+}
+
+/** Resolve sources separately so an edit batch may contain temporarily incomplete connections. */
+export async function prepareSimulationTaskWorkspace(
+    task: SimulationTaskDocument, taskPath: string, signal?: AbortSignal, options: TaskWorkspaceOptions = {},
+): Promise<PreparedSimulationTask> {
+    const sources = await prepareSimulationTaskSources(task, taskPath, signal, options);
+    try {
+        const generatedTestbench = generateTestbench(sources.task, deriveTaskModuleName(taskPath), sources.modules, options.interfaceCatalog);
+        return { ...sources, generatedTestbench };
+    } catch (error) { await sources.dispose(); throw error; }
 }

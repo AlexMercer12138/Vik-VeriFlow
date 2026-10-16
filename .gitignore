@@ -43,3 +43,7 @@ superpowers/
 .veriflow/cache/
 # Built-in interface library is copied from data/physical-models during extension build.
 veriflow-vscode/resources/physical-models/
+
+# Generated model resources and editor schemas (sources live in shared packages).
+packages/hdl-runtime/resources/
+veriflow-vscode/schemas/

@@ -1091,7 +1091,7 @@ async function testSchematicAssets(): Promise<void> {
         /pin\.name} · \$\{pin\.interface\.protocolName}/
     );
     const webviewSupportSource = fs.readFileSync(
-        path.join(extensionRoot, 'src', 'schematic', 'webviewSupport.ts'),
+        path.join(schematicSourceRoot, 'shared', 'webviewSupport.ts'),
         'utf8'
     );
     for (const marker of [
@@ -1144,11 +1144,7 @@ async function testSchematicAssets(): Promise<void> {
     ).filter(filePath => fs.readFileSync(filePath, 'utf8').includes(
         '../../../veriflow-vscode/src/'
     )).map(filePath => path.relative(repositoryRoot, filePath).replace(/\\/g, '/'));
-    assert.deepStrictEqual(temporaryImportOwners, [
-        'packages/schematic-webview/src/authoring/taskInspector.ts',
-        'packages/schematic-webview/src/index.ts',
-        'packages/schematic-webview/test/taskProtocol.test.ts',
-    ]);
+    assert.deepStrictEqual(temporaryImportOwners, []);
     assert.match(
         webviewSource,
         /import\s*{[^}]*\blayoutSchematic\b[^}]*}\s*from '@veriflow\/schematic-core';/s

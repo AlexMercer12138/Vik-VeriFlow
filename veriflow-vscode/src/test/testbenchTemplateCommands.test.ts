@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import Module = require('module');
 
 function harness() {
-    const handlers = new Map<string, () => Promise<void>>();
+    const handlers = new Map<string, (uri?: unknown) => Promise<void>>();
     const configurations = new Map<unknown, unknown>();
     const position = { line: 3, character: 7 };
     const selection = { active: position, isEqual(other: unknown) { return other === this; } };
@@ -28,15 +28,33 @@ function harness() {
         appendPlaceholder(value: string, index: number) { this.value += '$' + '{' + index + ':' + value.replace(/[$}\\]/g, '\\$&') + '}'; return this; }
         appendTabstop(index: number) { this.value += '$' + index; return this; }
     }
+    class Uri {
+        scheme = 'file';
+        constructor(readonly path: string) {}
+    }
+    const selectedEditor: any = {
+        ...editor,
+        document: { ...editor.document, uri: new Uri('/selected/other.v') },
+    };
     const fake = {
+        Uri,
         window: {
             activeTextEditor: editor,
+            showTextDocument: async (document: unknown) => {
+                assert.equal(document, selectedEditor.document);
+                fake.window.activeTextEditor = selectedEditor;
+                return selectedEditor;
+            },
             showQuickPick: (items: any[]) => state.picker(items),
             showInformationMessage: async (message: string) => { state.information.push(message); },
             showWarningMessage: async (message: string, ...actions: string[]) => { state.warnings.push({ message, actions }); return state.warningAction; },
             showErrorMessage: async () => {},
         },
         workspace: {
+            openTextDocument: async (uri: unknown) => {
+                assert.equal(uri, selectedEditor.document.uri);
+                return selectedEditor.document;
+            },
             fs: { isWritableFileSystem: () => state.writable },
             getConfiguration: (section: string, uri: unknown) => {
                 state.configurationRequests.push([section, uri]);
@@ -58,10 +76,20 @@ function harness() {
         require('../testbench/templateCommands').registerHdlTemplateCommands();
     } finally { loader._load = original; }
     return {
-        state, editor, fake, position, selection, configurations,
-        run: (id?: string) => handlers.get('veriflow.insertHdlTemplate' + (id ? '.' + id : ''))!(),
+        state, editor, selectedEditor, fake, position, selection, configurations,
+        run: (id?: string, uri?: unknown) => handlers.get('veriflow.insertHdlTemplate' + (id ? '.' + id : ''))!(uri),
     };
 }
+
+test('resource menu inserts into the selected file using its template configuration', async () => {
+    const { state, editor, selectedEditor, fake, configurations, run } = harness();
+    configurations.set(editor.document.uri, { clock: { body: 'active;' } });
+    configurations.set(selectedEditor.document.uri, { clock: { body: 'selected;' } });
+    await run('clock', selectedEditor.document.uri);
+    assert.equal(fake.window.activeTextEditor, selectedEditor);
+    assert.equal(state.inserted[0][0].value, 'selected;');
+    assert.deepEqual(state.configurationRequests, [['veriflow', selectedEditor.document.uri]]);
+});
 
 test('native insertion retains cursor, EOL, literal tasks, undo and invocation guards', async () => {
     const { state, editor, fake, position, selection, run } = harness();

@@ -3,7 +3,7 @@ import { clockTiming } from '@veriflow/hdl-runtime/simulationTask/timing';
 import { PROTOCOL_PRESET_TEMPLATES, createProtocolPreset, protocolPresetPayloadFields, validateProtocolPreset,
     normalizeProtocolPreset, protocolPresetTransactions, type ProtocolPresetTransaction,
     type ProtocolPreset, type ProtocolPresetName } from '@veriflow/hdl-runtime/simulationTask/protocolPresets';
-import type { ArchDesignInspectorField, ArchDesignInspectorModel } from '../../../../veriflow-vscode/src/schematic/webviewSupport';
+import type { ArchDesignInspectorField, ArchDesignInspectorModel } from '../../src/shared/webviewSupport';
 
 export type TaskInspectorCommand = Readonly<{
     type: 'task';

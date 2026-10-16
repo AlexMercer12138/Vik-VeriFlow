@@ -1269,6 +1269,8 @@ export function applyArchDesignEdit(
         case 'setPresentation':
             mutable.presentation = JSON.parse(JSON.stringify(edit.presentation));
             break;
+        default:
+            throw new Error(`Unsupported edit type: ${(edit as { type?: unknown }).type}`);
     }
     return finish(mutable);
 }

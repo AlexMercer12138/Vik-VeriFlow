@@ -63,10 +63,11 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
         const commands: Array<[string, (...args: any[]) => unknown]> = [
             ['veriflow.newSimulationTask', () => this.create()],
             ['veriflow.openSimulationTask', (uri?: vscode.Uri) => this.open(uri)],
-            ['veriflow.runSimulationTask', () => this.withActive(document => this.run(document))],
+            ['veriflow.runSimulationTask', (uri?: vscode.Uri) => this.withTarget(uri, document => this.run(document))],
             ['veriflow.cancelSimulationTask', () => { const active = getActiveCanvas(); if (active?.kind === 'st') this.cancel(active.uri); }],
-            ['veriflow.openSimulationTaskWave', () => this.withActive(document => this.openWave(document.uri))],
-            ['veriflow.exportSimulationTestbench', () => this.withActive(document => this.generate(document))],
+            ['veriflow.openSimulationTaskWave', (uri?: vscode.Uri) => this.withTarget(uri, document => this.openWave(document.uri))],
+            ['veriflow.exportSimulationTestbench', (uri?: vscode.Uri) => this.withTarget(uri, document => this.generate(document))],
+            ['veriflow.validateSimulationTask', (uri?: vscode.Uri) => this.withTarget(uri, async document => { const prepared = await this.services.prepare(parseSimulationTask(document.getText()), document.uri); try { await vscode.window.showInformationMessage('Simulation Task validated'); } finally { await prepared.dispose(); } })],
         ];
         for (const [command, handler] of commands) this.subscriptions.push(vscode.commands.registerCommand(command, async (...args: any[]) => {
             try { return await handler(...args); } catch (error) { void vscode.window.showErrorMessage(`VeriFlow: ${error instanceof Error ? error.message : String(error)}`); }
@@ -90,6 +91,12 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
         edit.insert(uri, new vscode.Position(0, 0), `${JSON.stringify(createSimulationTask(path.basename(uri.fsPath)), null, 2)}\n`);
         if (!await vscode.workspace.applyEdit(edit)) throw new Error('Could not create the simulation task.');
         const document = await vscode.workspace.openTextDocument(uri); await document.save(); await this.open(uri); return uri;
+    }
+    private async withTarget(value: vscode.Uri | undefined, action: (document: vscode.TextDocument) => Promise<void>): Promise<void> {
+        const uri = value instanceof vscode.Uri ? value : (value as { resourceUri?: vscode.Uri } | undefined)?.resourceUri;
+        if (!uri) return this.withActive(action);
+        if (!/\.st$/i.test(uri.path)) throw new Error('Choose a .st Simulation Task');
+        await action(await vscode.workspace.openTextDocument(uri));
     }
     private async withActive(action: (document: vscode.TextDocument) => Promise<void>): Promise<void> {
         const active = getActiveCanvas();

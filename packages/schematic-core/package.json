@@ -38,16 +38,25 @@
       "require": "./dist/archDesign/index.js",
       "default": "./dist/archDesign/index.js"
     },
+    "./arch-design/defaults": {
+      "types": "./dist/archDesign/defaults.d.ts",
+      "require": "./dist/archDesign/defaults.js",
+      "default": "./dist/archDesign/defaults.js"
+    },
     "./interfaces": {
       "types": "./dist/interfaces/index.d.ts",
       "require": "./dist/interfaces/index.js",
       "default": "./dist/interfaces/index.js"
-    }
+    },
+    "./schemas/*": "./schemas/*"
   },
   "typesVersions": {
     "*": {
       "arch-design": [
         "dist/archDesign/index.d.ts"
+      ],
+      "arch-design/defaults": [
+        "dist/archDesign/defaults.d.ts"
       ],
       "interfaces": [
         "dist/interfaces/index.d.ts"
@@ -58,7 +67,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "schemas"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

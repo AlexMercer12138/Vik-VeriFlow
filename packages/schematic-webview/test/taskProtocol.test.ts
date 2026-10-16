@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { parseWebviewCommand } from '../../../veriflow-vscode/src/schematic/protocol';
+import { parseWebviewCommand } from '../src/shared/protocol';
 import { createProtocolPreset } from '../../hdl-runtime/src/simulationTask/protocolPresets';
 
 const preset = { kind: 'clock', frequencyMHz: 100, initial: 0 };

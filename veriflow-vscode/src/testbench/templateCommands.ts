@@ -3,8 +3,8 @@ import { getActiveCanvas } from '../workbench/moduleTargets';
 import { resolveHdlTemplates } from './templateConfiguration';
 
 export function registerHdlTemplateCommands(): vscode.Disposable {
-    async function insert(id?: string): Promise<void> {
-        const editor = vscode.window.activeTextEditor;
+    async function insert(id?: string, uri?: vscode.Uri): Promise<void> {
+        const editor = uri instanceof vscode.Uri ? await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri)) : vscode.window.activeTextEditor;
         if (!editor || !['verilog', 'systemverilog'].includes(editor.document.languageId)) return;
         if (editor.selections.length !== 1) {
             await vscode.window.showInformationMessage('Insert HDL Template requires one cursor.'); return;
@@ -58,13 +58,13 @@ export function registerHdlTemplateCommands(): vscode.Disposable {
         else await vscode.commands.executeCommand('veriflow.newSimulationTask');
     }
     const commands: vscode.Disposable[] = [
-        vscode.commands.registerCommand('veriflow.insertHdlTemplate', () => insert()),
+        vscode.commands.registerCommand('veriflow.insertHdlTemplate', (uri?: vscode.Uri) => insert(undefined, uri)),
         vscode.commands.registerCommand('veriflow.generateTestbench', async () => {
             try { await generate(); } catch (error) { await vscode.window.showErrorMessage(`Generate Testbench: ${error instanceof Error ? error.message : String(error)}`); }
         }),
     ];
     for (const id of ['clock', 'reset', 'timeout', 'waveform']) {
-        commands.push(vscode.commands.registerCommand(`veriflow.insertHdlTemplate.${id}`, () => insert(id)));
+        commands.push(vscode.commands.registerCommand(`veriflow.insertHdlTemplate.${id}`, (uri?: vscode.Uri) => insert(id, uri)));
     }
     return vscode.Disposable.from(...commands);
 }

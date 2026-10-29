@@ -141,7 +141,7 @@ export type ArchDesignInterfaceConnection = Readonly<{
 export type ArchDesignExportOptions = Readonly<{
     language?: ArchDesignLanguage;
     output?: string;
-    xdcOutput?: string;
+    constraintsOutput?: string;
 }>;
 
 export type ArchDesignNodePlacement = Readonly<{

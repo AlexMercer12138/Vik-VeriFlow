@@ -47350,21 +47350,21 @@
             type: "setExport",
             language: value,
             ...output.length === 0 ? {} : { output },
-            ...design.export.xdcOutput ? { xdcOutput: design.export.xdcOutput } : {}
+            ...design.export.constraintsOutput ? { constraintsOutput: design.export.constraintsOutput } : {}
           } : void 0
         },
         textField("export-output", "Output path", output, (value) => ({
           type: "setExport",
           language,
           ...value.trim().length === 0 ? {} : { output: value.trim() },
-          ...design.export.xdcOutput ? { xdcOutput: design.export.xdcOutput } : {}
+          ...design.export.constraintsOutput ? { constraintsOutput: design.export.constraintsOutput } : {}
         }), "Sibling .v or .sv"),
-        textField("export-xdc-output", "XDC output path", design.export.xdcOutput ?? "", (value) => ({
+        textField("export-constraints-output", "Constraint output path", design.export.constraintsOutput ?? "", (value) => ({
           type: "setExport",
           language,
           ...output ? { output } : {},
-          ...value.trim() ? { xdcOutput: value.trim() } : {}
-        }), "Same path and basename as RTL, with .xdc")
+          ...value.trim() ? { constraintsOutput: value.trim() } : {}
+        }), "Same basename as RTL, with the board constraint extension")
       ]
     };
   }

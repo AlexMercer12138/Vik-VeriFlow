@@ -118,7 +118,7 @@ export type ArchDesignEdit =
         type: 'setExport';
         language?: ArchDesignLanguage;
         output?: string;
-        xdcOutput?: string;
+        constraintsOutput?: string;
     }>
     | Readonly<{ type: 'setPhysical'; physical?: PhysicalConfiguration }>
     | Readonly<{
@@ -1260,7 +1260,7 @@ export function applyArchDesignEdit(
             mutable.export = {
                 ...(edit.language === undefined ? {} : { language: edit.language }),
                 ...(edit.output === undefined ? {} : { output: edit.output }),
-                ...(edit.xdcOutput === undefined ? {} : { xdcOutput: edit.xdcOutput }),
+                ...(edit.constraintsOutput === undefined ? {} : { constraintsOutput: edit.constraintsOutput }),
             };
             break;
         case 'setPhysical':

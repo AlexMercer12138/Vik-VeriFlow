@@ -29,7 +29,7 @@
     "test": "npm run test --workspaces --if-present",
     "verify:generated": "node scripts/verify-generated.mjs",
     "verify:models": "node scripts/verify-physical-models.cjs",
-    "test:maintenance": "node --test scripts/lib/npm-command.test.mjs scripts/lib/python-retirement.test.mjs scripts/lib/release.test.mjs scripts/lib/model-resources.test.mjs"
+    "test:maintenance": "node --test scripts/lib/npm-command.test.mjs scripts/lib/python-retirement.test.mjs scripts/lib/release.test.mjs"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

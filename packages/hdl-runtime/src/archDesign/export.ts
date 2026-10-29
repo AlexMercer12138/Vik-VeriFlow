@@ -61,15 +61,11 @@ function outputPathFor(designPath: string, design: ArchDesign): {
     return { language, outputPath };
 }
 
-export function archDesignXdcOutputPath(designPath: string, design: ArchDesign): string {
+export function archDesignConstraintsOutputPath(designPath: string, design: ArchDesign, extension = '.xdc'): string {
     const rtl = outputPathFor(designPath, design).outputPath;
-    const output = design.export.xdcOutput === undefined
-        ? rtl.slice(0, -path.extname(rtl).length) + '.xdc'
-        : path.resolve(path.dirname(designPath), design.export.xdcOutput);
-    if (path.extname(output).toLowerCase() !== '.xdc') throw new Error('Constraint output must use .xdc');
-    return output;
+    const configured = design.export.constraintsOutput;
+    return configured === undefined ? rtl.slice(0, -path.extname(rtl).length) + extension : path.resolve(path.dirname(designPath), configured);
 }
-
 function portableSourcePath(designPath: string, outputPath: string): string {
     const relative = path.relative(path.dirname(outputPath), designPath);
     return (path.isAbsolute(relative) ? designPath : relative).replace(/\\/g, '/');

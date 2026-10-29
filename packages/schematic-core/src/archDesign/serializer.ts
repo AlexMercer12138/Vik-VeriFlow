@@ -227,7 +227,7 @@ function serializableArchDesign(design: ArchDesign): unknown {
         export: {
             ...(design.export.language ? { language: design.export.language } : {}),
             ...(design.export.output ? { output: design.export.output } : {}),
-            ...(design.export.xdcOutput ? { xdcOutput: design.export.xdcOutput } : {}),
+            ...(design.export.constraintsOutput ? { constraintsOutput: design.export.constraintsOutput } : {}),
         },
         presentation: presentationValue(design.presentation),
         ...(design.physical === undefined ? {} : { physical: design.physical }),

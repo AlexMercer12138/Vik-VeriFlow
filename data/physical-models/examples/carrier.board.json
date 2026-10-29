@@ -1,167 +1,45 @@
 {
   "kind": "board",
-  "vendor": "example",
-  "device": "example-fpga-example-package",
-  "rails": [
-    {
-      "id": "v3v3",
-      "millivolts": 3300
-    }
-  ],
-  "banks": [
-    {
-      "id": "13",
-      "supplyRail": "v3v3"
-    }
-  ],
-  "fpgaPins": [
-    {
-      "id": "A1",
-      "bank": "13"
-    },
-    {
-      "id": "A2",
-      "bank": "13"
-    },
-    {
-      "id": "A3",
-      "bank": "13"
-    },
-    {
-      "id": "A4",
-      "bank": "13"
-    },
-    {
-      "id": "A5",
-      "bank": "13"
-    },
-    {
-      "id": "A6",
-      "bank": "13"
-    },
-    {
-      "id": "A7",
-      "bank": "13"
-    },
-    {
-      "id": "A8",
-      "bank": "13"
-    },
-    {
-      "id": "A9",
-      "bank": "13"
-    },
-    {
-      "id": "A10",
-      "bank": "13"
-    },
-    {
-      "id": "A11",
-      "bank": "13"
-    },
-    {
-      "id": "A12",
-      "bank": "13"
-    }
-  ],
-  "differentialPairs": [
-    {
-      "positive": "A1",
-      "negative": "A2"
-    },
-    {
-      "positive": "A3",
-      "negative": "A4"
-    },
-    {
-      "positive": "A5",
-      "negative": "A6"
-    },
-    {
-      "positive": "A7",
-      "negative": "A8"
-    }
-  ],
+  "extension": ".xdc",
+  "constraints": "# Demo carrier; illustrative pins only\nset_property PACKAGE_PIN A1 [get_ports tx]\nset_property PACKAGE_PIN A2 [get_ports rx]\nset_property IOSTANDARD LVCMOS33 [get_ports {tx rx}]\nset_property PACKAGE_PIN A3 [get_ports gpio0]\nset_property PACKAGE_PIN A4 [get_ports gpio1]\n",
   "interfaces": [
     {
       "id": "UART0",
-      "definition": "library:interfaces/uart.fixed.json"
+      "signals": [
+        {
+          "id": "tx",
+          "direction": "output",
+          "pins": [
+            "A1"
+          ]
+        },
+        {
+          "id": "rx",
+          "direction": "input",
+          "pins": [
+            "A2"
+          ]
+        }
+      ]
     },
     {
       "id": "J1",
-      "definition": "header40.expansion.json"
-    }
-  ],
-  "routes": [
-    {
-      "interface": "UART0",
-      "member": "tx",
-      "pin": "A9"
-    },
-    {
-      "interface": "UART0",
-      "member": "rx",
-      "pin": "A10"
-    },
-    {
-      "interface": "J1",
-      "member": "dp0_p",
-      "pin": "A1"
-    },
-    {
-      "interface": "J1",
-      "member": "dp0_n",
-      "pin": "A2"
-    },
-    {
-      "interface": "J1",
-      "member": "dp1_p",
-      "pin": "A3"
-    },
-    {
-      "interface": "J1",
-      "member": "dp1_n",
-      "pin": "A4"
-    },
-    {
-      "interface": "J1",
-      "member": "dp2_p",
-      "pin": "A5"
-    },
-    {
-      "interface": "J1",
-      "member": "dp2_n",
-      "pin": "A6"
-    },
-    {
-      "interface": "J1",
-      "member": "dp3_p",
-      "pin": "A7"
-    },
-    {
-      "interface": "J1",
-      "member": "dp3_n",
-      "pin": "A8"
-    },
-    {
-      "interface": "J1",
-      "member": "io0",
-      "pin": "A9"
-    },
-    {
-      "interface": "J1",
-      "member": "io1",
-      "pin": "A10"
-    },
-    {
-      "interface": "J1",
-      "member": "io2",
-      "pin": "A11"
-    },
-    {
-      "interface": "J1",
-      "member": "io3",
-      "pin": "A12"
+      "signals": [
+        {
+          "id": "io0",
+          "direction": "inout",
+          "pins": [
+            "A3"
+          ]
+        },
+        {
+          "id": "io1",
+          "direction": "inout",
+          "pins": [
+            "A4"
+          ]
+        }
+      ]
     }
   ]
 }

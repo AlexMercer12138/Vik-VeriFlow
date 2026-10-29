@@ -366,7 +366,7 @@
       },
       {
         "command": "veriflow.generatePinConstraints",
-        "title": "Generate Pin Constraints (XDC)",
+        "title": "Generate Pin Constraints",
         "category": "VeriFlow",
         "icon": "$(circuit-board)"
       },

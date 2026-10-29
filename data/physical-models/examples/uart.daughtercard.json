@@ -1,0 +1,26 @@
+{
+  "kind": "daughtercard",
+  "extension": ".xdc",
+  "constraints": "set_property PACKAGE_PIN P1 [get_ports tx]\nset_property PACKAGE_PIN P2 [get_ports rx]\nset_property IOSTANDARD LVCMOS33 [get_ports {tx rx}]\n",
+  "interfaces": [
+    {
+      "id": "UART",
+      "signals": [
+        {
+          "id": "tx",
+          "direction": "output",
+          "pins": [
+            "P1"
+          ]
+        },
+        {
+          "id": "rx",
+          "direction": "input",
+          "pins": [
+            "P2"
+          ]
+        }
+      ]
+    }
+  ]
+}

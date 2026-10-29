@@ -13,7 +13,6 @@ const sourceDirectories = [
     'packages/schematic-core/src',
     'packages/schematic-core/schemas',
     'packages/hdl-runtime/schemas',
-    'data/physical-models/interfaces',
 ];
 
 function createSignalStop() {

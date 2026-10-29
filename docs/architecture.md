@@ -18,10 +18,10 @@ flowchart TD
 | 位置 | 维护内容 |
 | --- | --- |
 | `packages/schematic-core/src/archDesign` | AD 解析、编辑、解析后的图和 RTL 生成 |
-| `packages/schematic-core/src/physical*.ts` | 板卡模型、绑定、端口和 XDC 纯算法 |
-| `packages/hdl-runtime/src/archDesign` | HDL 定义身份、脚本编辑批次、RTL/XDC 构建计划 |
+| `packages/schematic-core/src/physical*.ts` | 板卡/子卡原文约束、本板接口、绑定与渲染纯算法 |
+| `packages/hdl-runtime/src/archDesign` | HDL 定义身份、脚本编辑批次、RTL/约束构建计划 |
 | `packages/hdl-runtime/src/artifacts` | 输入快照、输出冲突、生成归属、文件发布 |
-| `packages/hdl-runtime/src/physical` | 板卡文件、用户库、资源和 RTL 端口解析 |
+| `packages/hdl-runtime/src/physical` | 板卡文件、用户库、装配、输出归属和 RTL 端口解析 |
 | `packages/hdl-runtime/src/interfaces` | 工程逻辑协议文件加载与诊断 |
 | `packages/hdl-runtime/src/simulationTask*` | ST 模型、编辑、预设、TB 和工作区来源解析 |
 | `packages/hdl-runtime/src/hdl` | 例化、快捷 TB 的纯文本生成 |
@@ -38,17 +38,16 @@ flowchart TD
 | AD 文档 v2 | 用户工程的 `.ad`；解析器在 `schematic-core/src/archDesign` | 画布与 `arch`；`physical` 是该设计引脚配置的持久化来源 |
 | ST 文档 v1 | 用户工程的 `.st`；模型在 `hdl-runtime/src/simulationTask` | 画布与 `task`；引用 HDL/AD，保存预设、连线与运行设置 |
 | AXI4、AXIS、APB、AHB-Lite 逻辑协议 | `packages/schematic-core/src/interfaces/builtins/*.json` | 随共享包编译发布；工程可通过 `project.json` 的 `interfaceProtocolFiles` 扩充 |
-| 通用物理接口 | `data/physical-models/interfaces` | 同一复制函数交付到运行时 npm 包和扩展资源目录 |
-| 板卡与板卡专用接口 | `data/physical-models/boards/<id>` | 用户导入或文档相对引用；相对接口导入后保存快照 |
-| 用户板卡与自定义接口 | `~/.veriflow_config.json` | 两入口共用；保存保留其他设置，检测配置变化 |
+| 板卡与子卡 | 用户原始约束及 JSON profile | 完整原文、后缀、板卡内接口；不维护独立接口模型 |
+| 用户板卡/子卡库 | `~/.veriflow_config.json` 的 `boards` | 两入口共用；保存保留其他设置，检测配置变化 |
 | RTL 引脚绑定 | 用户工程的 `*.pins.json` | 复用 `PhysicalConfiguration`；扩展显式加载/保存，CLI `pins --config` |
 | 物理模型 Schema | `packages/schematic-core/schemas/physical-interface-model.schema.json` | 校验脚本和扩展构建消费副本 |
 | ST Schema | `packages/hdl-runtime/schemas/simulation-task.schema.json` | npm 导出和扩展 JSON 编辑器消费副本 |
-| 子卡和装配示例 | `data/physical-models/examples` | 模型与校验夹具；尚未提供装配操作面板 |
+| 子卡和装配示例 | `data/physical-models/examples` | V1 模型与 AD 安装示例；引脚面板配置子卡物理引脚映射 |
 
 `data/physical-models` 只承担硬件资源。AD/ST 是工程文档，逻辑协议定义信号关系；它们的所有权按领域划分。
 
-构建副本不手工维护：`packages/hdl-runtime/resources/physical-models/interfaces`、`veriflow-vscode/resources/physical-models/interfaces` 和 `veriflow-vscode/schemas`。运行时按安装位置定位接口资源，不依赖启动目录。保留 `user:<id>`、`library:interfaces/<file>.json`、相对路径与用户快照语义。当前约束生成支持 AMD XDC。
+构建时只复制编辑器 Schema 到 `veriflow-vscode/schemas`，不打包板卡或独立物理接口资源。板卡/子卡使用 `user:<id>` 或相对 JSON 路径；XDC 静态解析端口和引脚，其他格式用显式锚点保留原文与扩展名，不推导厂商电气规则。
 
 ## 构建与检查
 
@@ -72,7 +71,7 @@ Linux 的 Electron 测试需要显示服务，可用 `xvfb-run -a`。`build:pars
 ```bash
 veriflow arch new top -o top.ad
 veriflow arch apply top.ad --ops arch-edits.json --in-place
-veriflow arch build top.ad -o generated/top.v --xdc-output generated/top.xdc
+veriflow arch build top.ad -o generated/top.v --constraints-output generated/top.xdc
 
 veriflow task new -o sim.st
 veriflow task apply sim.st --ops task-edits.json --in-place
@@ -80,7 +79,7 @@ veriflow task tb sim.st -o generated/sim_tb.v
 veriflow task validate sim.st
 veriflow task run sim.st
 
-veriflow board import data/physical-models/boards/atk-au15p/board.json --id demo
+veriflow board import data/physical-models/examples/carrier.board.json --id demo
 veriflow board list --json
 veriflow board validate user:demo
 veriflow board export user:demo -o demo-board.json
@@ -96,7 +95,7 @@ veriflow hdl tb top.v -o top_tb.v
 veriflow hdl run top_tb.v --wave-output results/top.vcd
 ```
 
-`arch build` 无 `physical` 时只生成 RTL，有 `physical` 时校验板卡并生成 RTL/XDC。`--rtl-only` 显式跳过物理构建。`arch export` 保留只导出 RTL 的语义。RTL 路径优先级为 CLI 参数、`export.output`、同名 RTL；XDC 为 CLI 参数、`export.xdcOutput`、实际 RTL 的同名 XDC。
+`arch build` 无 `physical` 时只生成 RTL，有 `physical` 时校验板卡/子卡绑定并生成 RTL 与原文约束。`--rtl-only` 跳过物理构建。`arch export` 只导出 RTL。约束路径优先级为 CLI `--constraints-output`、`export.constraintsOutput`、实际 RTL 的同名文件加板卡保存的扩展名。`.veriflow.json` 记录约束文件归属与摘要，人工修改会阻止覆盖。`board ui` 启动共享板卡编辑器。
 
 ### AD 操作文件
 
@@ -140,4 +139,4 @@ ST 另支持 AD 来源 `{ "kind": "ad", "path": "top.ad" }`、reset/stimulus/pro
 
 新增的构建、编辑、板卡、引脚和 HDL 命令提供 `--dry-run` / `--json`；JSON 信封为 `veriflow-result` v1。文本生成默认 stdout 输出正文，指定 `-o` 时写文件。退出码：0 成功、1 校验或执行失败、2 参数错误。仿真完成仅表示后端正常执行。
 
-引脚面板操作见 [引脚绑定与 XDC](physical-pin-bindings.md)，硬件字段见 [物理模型](physical-interface-model.md)。
+引脚面板操作见 [引脚绑定与约束](physical-pin-bindings.md)，硬件字段见 [物理模型](physical-interface-model.md)。

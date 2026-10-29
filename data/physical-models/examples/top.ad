@@ -4,43 +4,6 @@
   "module": "demo_top",
   "ports": [
     {
-      "name": "hdmi_data_p",
-      "direction": "output",
-      "width": 3
-    },
-    {
-      "name": "hdmi_data_n",
-      "direction": "output",
-      "width": 3
-    },
-    {
-      "name": "hdmi_clock_p",
-      "direction": "output"
-    },
-    {
-      "name": "hdmi_clock_n",
-      "direction": "output"
-    },
-    {
-      "name": "ddc_scl",
-      "direction": "inout",
-      "inoutMode": "direct"
-    },
-    {
-      "name": "ddc_sda",
-      "direction": "inout",
-      "inoutMode": "direct"
-    },
-    {
-      "name": "hpd",
-      "direction": "input"
-    },
-    {
-      "name": "cec",
-      "direction": "inout",
-      "inoutMode": "direct"
-    },
-    {
       "name": "uart_tx",
       "direction": "output"
     },
@@ -55,7 +18,50 @@
   "interfacePorts": [],
   "interfaceOverrides": {},
   "interfaceConnections": [],
-  "defaults": {},
+  "defaults": {
+    "uart_tx.value": "1'b0"
+  },
   "export": {},
-  "presentation": {}
+  "presentation": {},
+  "physical": {
+    "board": "carrier.board.json",
+    "cards": [
+      {
+        "id": "serial0",
+        "board": "uart.daughtercard.json",
+        "connections": [
+          {
+            "cardPin": "P1",
+            "boardPin": "A3"
+          },
+          {
+            "cardPin": "P2",
+            "boardPin": "A4"
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "source": {
+          "card": "serial0",
+          "interface": "UART",
+          "member": "tx"
+        },
+        "port": {
+          "name": "uart_tx"
+        }
+      },
+      {
+        "source": {
+          "card": "serial0",
+          "interface": "UART",
+          "member": "rx"
+        },
+        "port": {
+          "name": "uart_rx"
+        }
+      }
+    ]
+  }
 }

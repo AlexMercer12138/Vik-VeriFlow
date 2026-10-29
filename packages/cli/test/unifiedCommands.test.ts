@@ -5,6 +5,20 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { runCli } from '../src/main';
 
+test('board ui opens the shared editor and rejects the unpublished XDC-only option', async () => {
+    const homeDir = path.join(os.tmpdir(), 'veriflow-board-ui-home');
+    let openedConfig = '', stderr = '';
+    const environment: any = {
+        cwd: process.cwd(), homeDir, stdout: () => undefined, stderr: (text: string) => { stderr += text; },
+        boardEditorLauncher: { open: async (configPath: string) => { openedConfig = configPath; } },
+    };
+    assert.equal(await runCli(['board', 'ui'], environment), 0, stderr);
+    assert.equal(openedConfig, path.join(homeDir, '.veriflow_config.json'));
+    stderr = '';
+    assert.equal(await runCli(['arch', 'build', 'top.ad', '--xdc-output', 'old.xdc'], environment), 2);
+    assert.match(stderr, /unrecognized arguments: --xdc-output/);
+});
+
 test('canonical arch/task authoring builds documents and failed batches preserve the source', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'veriflow-commands-'));
     let stdout = '', stderr = '';
@@ -67,21 +81,14 @@ test('AD build integrates XDC, pins exports agree, and board dry-run preserves o
     try {
         const config = path.join(dir, '.veriflow_config.json');
         await writeFile(config, JSON.stringify({ libDirs: [], customSetting: { preserve: true } }));
-        await writeFile(path.join(dir, 'board.json'), JSON.stringify({
-            model: { kind: 'board', vendor: 'amd', device: 'xcau15p-ffvb676-2-i',
-                rails: [{ id: 'v', millivolts: 1800 }], banks: [{ id: '64', supplyRail: 'v' }],
-                fpgaPins: [{ id: 'A1', bank: '64' }], interfaces: [{ id: 'GPIO', definition: 'gpio.json' }],
-                routes: [{ interface: 'GPIO', member: 'led', pin: 'A1' }] },
-            definitions: { 'gpio.json': { kind: 'expansion', signals: ['led'] } },
-        }));
+        await writeFile(path.join(dir, 'board.json'), JSON.stringify({ model: { kind: 'board', extension: '.xdc', constraints: 'set_property PACKAGE_PIN A1 [get_ports led]\n', interfaces: [{ id: 'GPIO', signals: [{ id: 'led', direction: 'output', pins: ['A1'] }] }] } }));
         const original = await readFile(config, 'utf8');
         assert.equal(await run(['board', 'import', 'board.json', '--id', 'demo', '--dry-run']), 0, stderr);
         assert.equal(await readFile(config, 'utf8'), original);
         assert.equal(await run(['board', 'import', 'board.json', '--id', 'demo']), 0, stderr);
         assert.equal(JSON.parse(await readFile(config, 'utf8')).customSetting.preserve, true);
         assert.equal(await run(['arch', 'new', 'top']), 0, stderr);
-        const physical = { board: 'user:demo', bindings: [{ source: { interface: 'GPIO', member: 'led' }, port: { name: 'led' } }],
-            ioStandards: [{ interface: 'GPIO', member: 'led', standard: 'LVCMOS18' }] };
+        const physical = { board: 'user:demo', bindings: [{ source: { interface: 'GPIO', member: 'led' }, port: { name: 'led' } }] };
         await writeFile(path.join(dir, 'ops.json'), JSON.stringify({ format: 'veriflow-arch-edits', schemaVersion: 1, operations: [
             { type: 'addPort', port: { name: 'led', direction: 'output' } },
             { type: 'setDefault', endpoint: 'led.value', expression: "1'b0" },
@@ -92,14 +99,14 @@ test('AD build integrates XDC, pins exports agree, and board dry-run preserves o
         assert.equal(await run(['arch', 'build', 'top.ad', '--dry-run']), 1);
         await assert.rejects(readFile(path.join(dir, 'top.v')), { code: 'ENOENT' });
         await rm(path.join(dir, 'top.xdc'));
-        assert.equal(await run(['arch', 'build', 'top.ad']), 0, stderr);
-        const constraints = await readFile(path.join(dir, 'top.xdc'), 'utf8');
+        assert.equal(await run(['arch', 'build', 'top.ad', '--constraints-output', 'generated/top.xdc']), 0, stderr);
+        const constraints = await readFile(path.join(dir, 'generated', 'top.xdc'), 'utf8');
         assert.match(constraints, /PACKAGE_PIN A1/);
         assert.equal(await run(['pins', 'export', 'top.ad', '-o', 'pins.xdc']), 0, stderr);
         assert.equal(await readFile(path.join(dir, 'pins.xdc'), 'utf8'), constraints);
         await writeFile(path.join(dir, 'top.pins.json'), JSON.stringify(physical));
         assert.equal(await run(['pins', 'export', 'top.v', '--config', 'top.pins.json', '-o', 'rtl.xdc']), 0, stderr);
-        assert.equal((await readFile(path.join(dir, 'rtl.xdc'), 'utf8')).split('\n').slice(1).join('\n'), constraints.split('\n').slice(1).join('\n'));
+        assert.equal(await readFile(path.join(dir, 'rtl.xdc'), 'utf8'), constraints);
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

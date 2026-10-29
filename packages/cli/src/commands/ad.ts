@@ -409,7 +409,7 @@ export async function adExport(
     }
     if (options.build) {
         const plan = await prepareArchDesignBuild(loaded.filepath, resolveArchDesignDefinitionKeys(loaded.design, definitionCatalog), exportDefinitions, { language, output: outputPath,
-            xdcOutput: options.xdcOutput ? path.resolve(environment.cwd, options.xdcOutput) : undefined, rtlOnly: !!options.rtlOnly, interfaceCatalog: protocols.catalog, configPath: path.join(environment.homeDir, '.veriflow_config.json'), sourceText: loaded.source });
+            constraintsOutput: options.constraintsOutput ? path.resolve(environment.cwd, options.constraintsOutput) : undefined, rtlOnly: !!options.rtlOnly, interfaceCatalog: protocols.catalog, configPath: path.join(environment.homeDir, '.veriflow_config.json'), sourceText: loaded.source });
         const includedUris = new Set(exportDefinitions.map(item => item.uri));
         const excluded = new Set(definitions.filter(item => !includedUris.has(item.uri)).map(item => canonicalFileUri(fileURLToPath(item.uri))));
         plan.inputs.push(...definitionCatalog.inputs.filter(item => !excluded.has(canonicalFileUri(item.path))), ...protocols.inputs);

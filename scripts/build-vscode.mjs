@@ -1,4 +1,3 @@
-import { copyPhysicalInterfaces } from './lib/model-resources.mjs';
 import { execFileSync } from 'node:child_process';
 import { copyFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -30,9 +29,6 @@ export async function syncVscodeWebAssets(repositoryRoot = root) {
     }
     const physicalModels = path.join(targetExtensionRoot, 'resources', 'physical-models');
     await recreate(physicalModels);
-    const interfaces = path.join(physicalModels, 'interfaces');
-    await recreate(interfaces);
-    await copyPhysicalInterfaces(repositoryRoot, interfaces);
     const schemas = path.join(targetExtensionRoot, 'schemas');
     await mkdir(schemas, { recursive: true });
     await copyFile(path.join(repositoryRoot, 'packages/hdl-runtime/schemas/simulation-task.schema.json'), path.join(schemas, 'simulation-task.schema.json'));

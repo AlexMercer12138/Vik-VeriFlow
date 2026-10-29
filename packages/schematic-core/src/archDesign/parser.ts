@@ -846,9 +846,9 @@ function normalizeExport(
     const output = outputValue === undefined
         ? undefined
         : nonEmptyString(outputValue, '$.export.output', diagnostics);
-    const xdcValue = ownValue(record, 'xdcOutput');
-    const xdcOutput = xdcValue === undefined ? undefined : nonEmptyString(xdcValue, '$.export.xdcOutput', diagnostics);
-    return { ...(language ? { language } : {}), ...(output ? { output } : {}), ...(xdcOutput ? { xdcOutput } : {}) };
+    const constraintsValue = ownValue(record, 'constraintsOutput');
+    const constraintsOutput = constraintsValue === undefined ? undefined : nonEmptyString(constraintsValue, '$.export.constraintsOutput', diagnostics);
+    return { ...(language ? { language } : {}), ...(output ? { output } : {}), ...(constraintsOutput ? { constraintsOutput } : {}) };
 }
 
 function normalizePlacement(

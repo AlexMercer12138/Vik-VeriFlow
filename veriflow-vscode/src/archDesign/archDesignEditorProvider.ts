@@ -231,7 +231,6 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                         inputs: [...(snapshot.index ? await snapshotIndexedInputs(snapshot.index, definitions.map(item => item.uri)) : []),
                             ...(snapshot.protocolInputs ?? []).map(item => ({ ...item, path: fileURLToPath(item.path) }))],
                         interfaceCatalog: snapshot.interfaceCatalog,
-                        interfaceRoot: path.join(this.context.extensionUri.fsPath, 'resources', 'physical-models', 'interfaces'),
                     });
                     if (session.document.isDirty || session.document.version !== savedVersion) throw new Error('AD changed while preparing the build; build again');
                     if (vscode.workspace.textDocuments?.some(doc => doc.isDirty && plan.artifacts.some(artifact => path.resolve(artifact.path).toLowerCase() === path.resolve(doc.uri.fsPath).toLowerCase()))) throw new Error('Save generated output editors before building');

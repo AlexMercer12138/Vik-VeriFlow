@@ -13,6 +13,7 @@ import {
     WaveformRouter,
     type WaveformRouterTransport,
 } from './router';
+import { createBoardEditorWindow } from './boardEditor';
 
 function waveformArgument(argv: string[]): string {
     const index = argv.indexOf('--waveform');
@@ -80,6 +81,15 @@ export async function createWaveformWindow(source: string): Promise<BrowserWindo
 }
 
 async function run(): Promise<void> {
+    const boardIndex = process.argv.indexOf('--board-library');
+    if (boardIndex >= 0) {
+        const configPath = process.argv[boardIndex + 1];
+        if (!configPath) throw new Error('missing required --board-library config path');
+        await app.whenReady();
+        await createBoardEditorWindow(path.resolve(configPath));
+        app.on('window-all-closed', () => app.quit());
+        return;
+    }
     const source = waveformArgument(process.argv);
     await app.whenReady();
     await createWaveformWindow(source);

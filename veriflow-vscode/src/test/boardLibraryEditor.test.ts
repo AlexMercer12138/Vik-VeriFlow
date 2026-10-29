@@ -23,7 +23,7 @@ async function main(): Promise<void> {
         fire(value: T): void { this.listeners.forEach(listener => listener(value)); }
         dispose(): void { this.listeners.clear(); }
     }
-    let opened: Uri | undefined, registration: any, warning = '', changes = 0;
+    let opened: Uri | undefined, registration: any, warning = '', changes = 0, importOptions: any;
     const textDocuments: any[] = [], messages: any[] = [];
     let receive: (message: any) => void = () => {};
     const mock = {
@@ -37,6 +37,7 @@ async function main(): Promise<void> {
             registerCustomEditorProvider: (_type: string, provider: unknown) => { registration = provider; return { dispose() {} }; },
             showWarningMessage: async (_message: string, options: any) => { warning = options.detail ?? ''; return 'Delete'; },
             showSaveDialog: async () => Uri.file(path.join(directory, 'export.json')),
+            showOpenDialog: async (options: any) => { importOptions = options; return [Uri.file(path.join(directory, 'carrier.xdc'))]; },
         },
     };
     const loader = Module as unknown as { _load: (...args: any[]) => any }, originalLoad = loader._load;
@@ -44,11 +45,16 @@ async function main(): Promise<void> {
     try {
         const { BoardLibraryEditor } = require('../archDesign/boardLibraryEditor');
         const interfaceRoot = path.resolve(__dirname, '../../../data/physical-models/interfaces');
-        const library = new UserPhysicalBoardLibrary({ configPath: path.join(directory, 'config.json'), interfaceRoot });
-        const editor = new BoardLibraryEditor({ globalStorageUri: Uri.file(directory) }, library, interfaceRoot, () => changes++);
+        const library = new UserPhysicalBoardLibrary({ configPath: path.join(directory, 'config.json') });
+        const editor = new BoardLibraryEditor({ globalStorageUri: Uri.file(directory) }, library, () => changes++);
         assert.equal(registration, editor);
-        const source = { id: 'clock', name: 'Clock', definitions: { 'clock.json': { kind: 'fixed', signals: ['clk'], function: { input: { clk: 'input' } } } },
-            model: { kind: 'board', vendor: 'amd', device: 'xcau15p-ffvb676-2-i', fpgaPins: [{ id: 'P1' }], interfaces: [{ id: 'CLK', definition: 'clock.json' }], routes: [{ interface: 'CLK', member: 'clk', pin: 'P1' }] } };
+        await fs.writeFile(path.join(directory, 'carrier.xdc'), 'set_property PACKAGE_PIN P1 [get_ports clk]\n');
+        await editor.importBoard();
+        assert.deepEqual(importOptions.filters, { 'Board constraints': ['xdc', 'qsf', 'lpf', 'pcf', 'sdc', 'txt'], 'Board profile': ['json'] });
+        const imported = JSON.parse(await fs.readFile(opened!.fsPath, 'utf8'));
+        assert.equal(imported.draft.model.extension, '.xdc');
+        assert.equal(imported.draft.model.constraints, 'set_property PACKAGE_PIN P1 [get_ports clk]\n');
+        const source = { id: 'clock', name: 'Clock', model: { kind: 'board', extension: '.xdc', constraints: 'set_property PACKAGE_PIN P1 [get_ports clk]\n', interfaces: [{ id: 'CLK', signals: [{ id: 'clk', direction: 'input', pins: ['P1'] }] }] } };
         await editor.openDraft(source);
         const doc = await editor.openCustomDocument(opened!, {}), edits: any[] = [];
         editor.onDidChangeCustomDocument((edit: any) => edits.push(edit));
@@ -70,7 +76,7 @@ async function main(): Promise<void> {
         const restored = await editor.openCustomDocument(opened!, { backupId: backup.id });
         assert.deepEqual(restored.draft, doc.draft);
         receive({ type: 'export' }); await doc.tail;
-        assert.equal(JSON.parse(await fs.readFile(path.join(directory, 'export.json'), 'utf8')).definitions['clock.json'].kind, 'fixed');
+        assert.equal(JSON.parse(await fs.readFile(path.join(directory, 'export.json'), 'utf8')).model.interfaces[0].signals[0].pins[0], 'P1');
         const external = library.get('clock'); external.name = 'External'; library.saveBoard(external, library.get('clock'));
         await assert.rejects(() => editor.saveCustomDocument(doc), /changed/);
         await editor.revertCustomDocument(doc); assert.equal(doc.draft.name, 'External');

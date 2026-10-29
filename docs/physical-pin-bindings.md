@@ -1,72 +1,57 @@
-# 引脚绑定与 XDC
+# 引脚绑定与原文约束
 
-AD 编辑器点击 **Pins / XDC**。普通 `.v` / `.sv` 文件通过资源管理器、编辑器右键或命令面板执行 **VeriFlow: Generate Pin Constraints (XDC)**；文件含多个模块时先选模块。AD 与 RTL 使用同一面板。
+AD 从工具栏的板卡引脚按钮打开；普通 `.v` / `.sv` 文件通过编辑器、资源管理器右键或 **VeriFlow: Generate Pin Constraints** 打开。同一套 TypeScript 核心同时服务扩展和 CLI。
 
-## 用户板卡库
+## 建立板卡
 
-板卡保存在 `~/.veriflow_config.json` 的 `boards` 数组，跨工程使用。点击板卡下拉框旁的 **Manage Boards…**，或执行 **VeriFlow: Manage Boards**，打开独立编辑器。选择已有板卡可编辑、复制或删除；**Import board JSON…** 在编辑器预览 JSON，保存后加入用户板卡库。保存保留已有语言、主题、库目录等设置。
+1. 打开 **Manage Boards… → Import board**，在文件选择器中过滤支持的约束格式或板卡 profile JSON。
+2. 填写 ID、名称；约束原文可以直接编辑，文件后缀随板卡保存。
+3. 添加 `UART0` 接口，创建输出 `tx`、输入 `rx`，位宽各为 1，分别匹配导入的引脚。
+4. 保存到 `~/.veriflow_config.json` 的 `boards`，所有工程共用；导出 JSON 可以分享。
 
-编辑器依次填写基本信息、Bank 与供电轨、封装脚/P/N 配对、接口实例与接线。首版仅手动录入，不支持表格导入或多行粘贴。搜索通用接口时会显示明确位宽；多角色接口须选择角色，并勾选实际接通的信号。接线表逐位展开，填写正脚后自动补齐空白负脚，复用引脚显示所有引用。时钟频率填写 Hz，电压填写整数 mV。
+接口直接属于板卡或子卡，不使用独立接口模型。总线保存按 MSB 到 LSB 排列的引脚列表，列表长度就是位宽；方向相对于 FPGA 顶层端口。不同接口可描述同一物理引脚的不同用途，实际同时绑定时检查冲突。
 
-右侧问题列表可点击定位。未知脚、重复映射、同一接口重复占脚、差分极性、角色或覆盖错误阻止保存；不同接口共享封装脚允许保存。底部显示接口数、接线覆盖、复用脚和 Bank 供电。用户接口模板可从通用接口复制，或手工填写信号/方向/位宽/配对/分组，再单独保存复用。IO 标准仍在工程约束面板选择。
+编辑器保留撤销/重做、关闭前的未保存提示和备份恢复。保存用户配置前写 `.bak`，原子替换，保留其他设置；外部修改或备份失败不会覆盖原配置。
 
-保存使用 VS Code 原生的未保存提示、撤销/重做与恢复机制；用户配置更新前写入 `.bak`，并原子替换原文件。发生外部修改冲突时拒绝覆盖，可使用 VS Code 的还原操作重新加载。删除前列出当前打开的 AD 引用。另存为新板卡可维护硬件版本；导出 JSON 携带所有接口快照，可直接分享后再次导入。
+## 绑定与导出
 
-板卡记录包含 `id`、`name`、`model` 和 `definitions`。通用接口通过 `library:interfaces/<文件名>.json` 引用插件的正式接口库，不重复嵌入各板卡；`definitions` 只保存相对文件引用的板卡专用或用户自定义定义，原文件移动后仍可使用。AD 用 `user:<id>` 引用板卡。旧 AD 相对板卡路径仍可读取。
+选择板卡，勾选接口或信号，再选择匹配的顶层端口或从右侧拖入。方向、位宽必须匹配；总线按 HDL 声明顺序映射，支持升序、非零和负数索引。所勾选的信号必须全部绑定。只输出已绑定引脚对应的约束。
 
-正式数据统一位于 [data/physical-models](../data/physical-models/README.md)。[AU15P 板卡](../data/physical-models/boards/atk-au15p/board.json) 可直接导入；板卡、子卡及示例不打包进 VSIX。
+**Confirm & Export Constraints** 将 AD 绑定保存到 `.ad`；RTL 可以显式加载、保存 `top.pins.json`。相对板卡/子卡路径以配置文件所在目录为准，另存时自动重定位。输出冲突在提交 AD 草稿前检查。
 
-## 操作
-
-1. 选择板卡。上方为每条可调供电轨列出 Bank 电压，只能选板卡声明的值；固定电压显示文本。共用轨的 Bank 使用同一电压，没有跳线设置。
-2. 左侧勾选接口、组或信号，立即预留引脚。复用信号自动禁用；必须整体选择的组有一脚冲突时整组禁用。固定功能差分对共同选择，扩展差分对仍可拆为单端。
-3. 中间每个信号只占两行：第一行为信号/引脚/Bank，第二行为端口和 IO 标准两个下拉框。拖动右侧端口也能绑定。端口选择空项解除映射；没有 Bind / Clear 按钮。
-4. **先确定上方 Bank 电压，再选 IO 标准。** 候选按电压、器件 Bank 类型、方向和单端/差分用途过滤。3.3V HR/HD 单端为 `LVCMOS33`、`LVTTL`；AMD 实际标准名是 `LVTTL`。更换电压后，旧标准若不再适用会标为 unavailable 并阻止导出，用户重新选择。
-5. 点击 **Confirm & Generate XDC**。所选信号须全部分配并显式选标准；未知引脚、非法标准、方向/位宽/差分配对错误等阻止导出。
-
-用户决定 HDMI 等接口实际采用的 IO 标准，生成器不按板卡名猜测电路。DCI、VREF、终端和 DDR/MIPI/GT 的 IP 参数须按实际设计配置；此工具生成所选的封装脚、IOSTANDARD 和已知板载时钟约束。
-
-## 总线与差分
-
-接口 `signals` 只列逻辑信号，`bus` 统一保存数字位宽，例如 `"data_p": 3`，不再使用成员数组。界面显示 `data_p[2:0] / data_n[2:0]`，P/N 共用一个绑定项；拖入 `tmds_data_p[2:0]` 或 `tmds_data_n[2:0]` 任一端，按声明索引顺序同时绑定六脚。展开左侧总线可按位选择。为固定差分总线选择标准会同步其对应 N/P 成员。端口向量、方向和极性均校验。
-
-## AD 持久化
-
-选择、分配和标准先作为面板草稿，确认前不改 AD。确认时写入 `physical` 并保存 AD，随后生成 XDC。文档更改和输出文件冲突会重新检查。
-
-```jsonc
-"physical": {
-  "board": "user:atk-au15p",
-  "railVoltages": [{"rail": "VCCIO_B64", "millivolts": 1800}],
-  "selections": [{"interface": "HDMI_OUT", "members": ["data_p.2", "data_n.2"]}],
-  "ioStandards": [
-    {"interface": "HDMI_OUT", "member": "data_p.2", "standard": "LVDS"},
-    {"interface": "HDMI_OUT", "member": "data_n.2", "standard": "LVDS"}
-  ],
-  "bindings": [
-    {"source": {"interface": "HDMI_OUT", "member": "data_p.2"}, "port": {"name": "tmds_data_p", "bit": 2}},
-    {"source": {"interface": "HDMI_OUT", "member": "data_n.2"}, "port": {"name": "tmds_data_n", "bit": 2}}
-  ]
-}
-```
-
-旧 AD 没有 `selections` 时从绑定推断；旧跳线设置读取后忽略，新保存不再写入。已有绑定没有 IO 标准时须在面板选择，避免静默猜测。
-
-XDC 跟随 AD 的 RTL 输出目录和文件主名，例如 `generated/video.sv` 对应 `generated/video.xdc`。AD 属性 **XDC output path** 可覆盖路径，对应 `export.xdcOutput`。RTL 与 XDC 在 AD 树下并列显示。
-
-**Build Arch Design** 命令及 `.ad` 右键构建会从同一设计快照生成 RTL 与 XDC，CLI 对应 `veriflow arch build top.ad`。有 `physical` 时，物理配置无效会中止整个构建；`--rtl-only` 可显式只生成 RTL。原 **Export RTL** / `arch export` 保留只导出 RTL 的用途。
-
-## RTL 快速工具
-
-RTL 面板可以临时配置，也可通过 **Load / Save Pin Bindings** 显式加载、保存 `top.pins.json`。其内容直接使用上文的 `physical` 对象结构，不增加外层字段。相对板卡路径以绑定文件所在目录为基准；另存时自动重定位。加载前需保存文档，保存时检测已有文件和外部变化。AD 绑定仍直接保存到 `.ad`。
-
-确认生成时用 VS Code `showSaveDialog` 选择 XDC 路径。CLI 可复用保存的配置：
+AD 构建同时生成 RTL 和原文约束，扩展名来自板卡。`export.constraintsOutput` 或 CLI `--constraints-output` 可覆盖路径。保存 `.pcf` 就输出 `.pcf`，不转换格式。
 
 ```bash
+veriflow board import board.xdc --id my-board
+veriflow board ui
+veriflow board export user:my-board -o my-board.json
 veriflow pins validate top.v --config top.pins.json
 veriflow pins export top.v --config top.pins.json -o generated/top.xdc
+veriflow arch build top.ad
 ```
 
-XDC 包含来源标记，只覆盖同一来源生成的文件；人工文件和其他来源的文件会报告冲突。
+输出文件旁的 `<output>.veriflow.json` 保存来源和上次生成内容的摘要。保留该文件才能再次生成；人工修改或其他来源的输出会报告冲突。约束正文不插入生成器头部。
 
-图形化板卡编辑器的范围和数据约定见 [板卡编辑器方案](board-library-editor-proposal.md)。
+## 子卡
+
+导入子卡约束，在编辑器中选择 **Daughtercard**。原文使用连接器/逻辑引脚名，并在子卡内建立接口和信号。
+
+工程引脚面板展开 **Daughtercards**，选择子卡并填写实例 ID，将子卡引脚逐一映射到主板物理引脚。子卡接口随后与主板接口一起显示；已映射的物理引脚在挂载期间被预留，移除子卡后释放。
+
+选中的子卡信号输出子卡自己保存的约束，只把逻辑引脚替换成主板引脚，不叠加主板同一脚的电气属性。活动模型必须使用相同后缀。缺失映射、重复占脚、无效端口、方向/位宽错误或格式混用会阻止导出。
+
+CLI 导入子卡：`veriflow board import card.xdc --kind daughtercard --id serial-card`。挂载和绑定与 UI 使用同一份 `.pins.json`/AD 配置，见 [V1 模型](physical-interface-model.md) 和 [AD 示例](../data/physical-models/examples/top.ad)。
+
+## 原文支持范围
+
+静态识别 XDC 的 PACKAGE_PIN/LOC、`set_property -dict` 和 `get_ports` 字面量，Tcl 不执行。共享端口列表按绑定筛选；保留注释、命令顺序、属性值和换行。动态 Tcl、通配符、多个端口查询或歧义会明确报错，用户可以编辑原文或使用显式锚点。
+
+其他格式保留后缀，在可编辑原文中明确标记替换位置：
+
+```text
+set_io {{PORT:A1}} {{PIN:A1}}
+```
+
+`PORT` 替换为顶层端口，`PIN` 替换为最终物理引脚（含子卡映射）。有未绑定锚点的命令不输出，未关联引脚的公共文本保留。XDC 不支持的表达式也可改成显式锚点；引用和转义由模板明确表达。
+
+工具只检查映射，不再选择 Bank 电压、推导 IO 标准或维护厂商电气规则，约束属性按用户保存内容输出。未发布旧板卡数据没有原始约束，需重新导入 XDC。

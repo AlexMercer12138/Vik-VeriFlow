@@ -3,9 +3,10 @@ import { readFile, unlink } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { parseArchDesignText } from '@veriflow/schematic-core/arch-design';
-import { emptyBoard, inferredBankType, inspectBoardDraft, parseBoardDraft, validateInterfaceDefinition } from './boardEditorModel';
+import { BOARD_CONSTRAINT_EXTENSIONS } from '@veriflow/schematic-webview/boardLibraryView';
+import { emptyBoard, inspectBoardDraft, parseBoardDraft, physicalPins } from './boardEditorModel';
 import { boardLibraryHtml } from './boardLibraryView';
-import { readPhysicalBoardFile, UserPhysicalBoardLibrary, type BoardInterfaceTemplate, type SavedPhysicalBoard } from './physicalBoardLibrary';
+import { readPhysicalBoardFile, UserPhysicalBoardLibrary, type SavedPhysicalBoard } from './physicalBoardLibrary';
 
 type BoardSnapshot = { draft: SavedPhysicalBoard; expected?: SavedPhysicalBoard };
 export class BoardLibraryDocument implements vscode.CustomDocument {
@@ -35,12 +36,11 @@ export class BoardLibraryEditor implements vscode.CustomEditorProvider<BoardLibr
     private readonly registration: vscode.Disposable;
     private readonly documents = new Set<BoardLibraryDocument>();
     constructor(private readonly context: vscode.ExtensionContext, private readonly librarySource: UserPhysicalBoardLibrary | (() => UserPhysicalBoardLibrary),
-        private readonly interfaceRootSource: string | (() => string), private readonly onLibraryChange: () => void) {
+        private readonly onLibraryChange: () => void) {
         this.registration = vscode.window.registerCustomEditorProvider(BoardLibraryEditor.viewType, this,
             { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: false });
     }
     private get library(): UserPhysicalBoardLibrary { return typeof this.librarySource === 'function' ? this.librarySource() : this.librarySource; }
-    private get interfaceRoot(): string { return typeof this.interfaceRootSource === 'function' ? this.interfaceRootSource() : this.interfaceRootSource; }
     dispose(): void { this.registration.dispose(); this.edits?.dispose(); for (const doc of this.documents) for (const panel of doc.panels) panel.dispose(); }
     private uniqueId(base: string): string {
         const ids = new Set(this.library.list().map(b => b.id));
@@ -64,11 +64,12 @@ export class BoardLibraryEditor implements vscode.CustomEditorProvider<BoardLibr
         await vscode.commands.executeCommand('vscode.openWith', uri, BoardLibraryEditor.viewType);
     }
     async importBoard(): Promise<void> {
-        const files = await vscode.window.showOpenDialog({ title: 'Import Board JSON', canSelectMany: false, filters: { 'Board JSON': ['json'] } });
+        const files = await vscode.window.showOpenDialog({ title: 'Import board', canSelectMany: false, filters: { 'Board constraints': [...BOARD_CONSTRAINT_EXTENSIONS], 'Board profile': ['json'] } });
         if (!files?.[0]) return;
-        const file = files[0].fsPath, data = await readPhysicalBoardFile(file, this.interfaceRoot);
-        const input = JSON.parse(await readFile(file, 'utf8'));
-        const base = path.basename(file, '.json') === 'board' ? path.basename(path.dirname(file)) : path.basename(file, '.json');
+        const file = files[0].fsPath, data = await readPhysicalBoardFile(file);
+        const input = path.extname(file).toLowerCase() === '.json' ? JSON.parse(await readFile(file, 'utf8')) : {};
+        const stem = path.basename(file, path.extname(file));
+        const base = stem === 'board' ? path.basename(path.dirname(file)) : stem;
         await this.openDraft({ ...data, id: this.uniqueId(typeof input.id === 'string' ? input.id : base), name: typeof input.name === 'string' ? input.name : base });
     }
     async openCustomDocument(uri: vscode.Uri, context: vscode.CustomDocumentOpenContext): Promise<BoardLibraryDocument> {
@@ -79,32 +80,21 @@ export class BoardLibraryEditor implements vscode.CustomEditorProvider<BoardLibr
         return doc;
     }
     private snapshot(doc: BoardLibraryDocument): BoardSnapshot { return structuredClone({ draft: doc.draft, expected: doc.expected }); }
-    private validation(doc: BoardLibraryDocument) {
-        return { ...inspectBoardDraft(doc.draft), bankTypes: Object.fromEntries((doc.draft.model.banks ?? []).map(bank => [bank.id, inferredBankType(doc.draft.model, bank.id)])) };
-    }
-    private templates(doc: BoardLibraryDocument): BoardInterfaceTemplate[] {
-        const templates = this.library.templates();
-        for (const [reference, definition] of Object.entries(doc.draft.definitions)) {
-            const existing = templates.find(t => t.reference === reference);
-            if (!existing) templates.push({ reference, name: reference, definition });
-            else if (!reference.startsWith('library:interfaces/')) existing.definition = definition;
-        }
-        return templates;
-    }
+    private validation(doc: BoardLibraryDocument) { return { ...inspectBoardDraft(doc.draft), pins: physicalPins(doc.draft.model) }; }
     private async publish(doc: BoardLibraryDocument): Promise<void> {
         const message = { type: 'state', draft: doc.draft, saved: !!doc.expected, boards: this.library.list().map(b => ({ id: b.id, name: b.name })),
-            templates: this.templates(doc), ...this.validation(doc) };
+            ...this.validation(doc) };
         for (const panel of doc.panels) { panel.title = 'Board · ' + (doc.draft.name || 'New'); await panel.webview.postMessage(message); }
     }
     private replace(doc: BoardLibraryDocument, value: SavedPhysicalBoard): void {
         const before = structuredClone(doc.draft), after = parseBoardDraft(value);
-        for (const bank of after.model.banks ?? []) bank.type ??= inferredBankType(after.model, bank.id);
         if (JSON.stringify(before) === JSON.stringify(after)) return;
         doc.draft = after; doc.generation++;
         this.edits?.fire({ document: doc, label: 'Edit Board', undo: async () => { doc.draft = before; doc.generation++; await this.publish(doc); },
             redo: async () => { doc.draft = after; doc.generation++; await this.publish(doc); } });
     }
     async saveCustomDocument(doc: BoardLibraryDocument): Promise<void> {
+        await doc.tail;
         const generation = doc.generation;
         this.library.saveBoard(doc.draft, doc.expected);
         const saved = this.library.get(doc.draft.id);
@@ -115,6 +105,7 @@ export class BoardLibraryEditor implements vscode.CustomEditorProvider<BoardLibr
         if (generation === doc.generation) { doc.draft = structuredClone(saved); await this.publish(doc); }
     }
     async saveCustomDocumentAs(doc: BoardLibraryDocument, destination: vscode.Uri): Promise<void> {
+        await doc.tail;
         const copy = structuredClone(doc.draft); copy.id = this.uniqueId(copy.id + '-copy'); copy.name += ' copy';
         this.library.saveBoard(copy);
         const saved = this.library.get(copy.id);
@@ -127,6 +118,7 @@ export class BoardLibraryEditor implements vscode.CustomEditorProvider<BoardLibr
         doc.generation++; doc.saved = this.snapshot(doc); await this.publish(doc);
     }
     async backupCustomDocument(doc: BoardLibraryDocument, context: vscode.CustomDocumentBackupContext): Promise<vscode.CustomDocumentBackup> {
+        await doc.tail;
         await vscode.workspace.fs.writeFile(context.destination, Buffer.from(JSON.stringify(this.snapshot(doc))));
         return { id: context.destination.toString(), delete: async () => { try { await unlink(context.destination.fsPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } } };
     }
@@ -165,7 +157,7 @@ export class BoardLibraryEditor implements vscode.CustomEditorProvider<BoardLibr
                 if (message.type === 'export') {
                     const errors = this.validation(doc).issues.filter(i => i.severity === 'error');
                     if (errors.length) throw new Error(errors.map(i => i.message).join('\n'));
-                    const target = await vscode.window.showSaveDialog({ title: 'Export Board with Interface Snapshots', defaultUri: vscode.Uri.file(path.join(path.dirname(doc.uri.fsPath), doc.draft.id + '.json')), filters: { JSON: ['json'] } });
+                    const target = await vscode.window.showSaveDialog({ title: 'Export Constraint Profile', defaultUri: vscode.Uri.file(path.join(path.dirname(doc.uri.fsPath), doc.draft.id + '.json')), filters: { JSON: ['json'] } });
                     if (target) await vscode.workspace.fs.writeFile(target, Buffer.from(JSON.stringify(doc.draft, null, 2)));
                     return;
                 }
@@ -174,7 +166,8 @@ export class BoardLibraryEditor implements vscode.CustomEditorProvider<BoardLibr
                     const references = vscode.workspace.textDocuments.filter(document => {
                         if (!/\.ad$/i.test(document.uri.path)) return false;
                         const parsed = parseArchDesignText(document.getText());
-                        return parsed.status === 'editable' && parsed.design.physical?.board === 'user:' + doc.expected!.id;
+                        return parsed.status === 'editable' && (parsed.design.physical?.board === 'user:' + doc.expected!.id
+                            || parsed.design.physical?.cards?.some(card => card.board === 'user:' + doc.expected!.id));
                     }).map(document => document.uri.fsPath);
                     const answer = await vscode.window.showWarningMessage('Delete user board ' + doc.expected.name + '?', { modal: true,
                         detail: references.length ? 'Open AD documents referencing this board:\n' + references.join('\n') : 'No open AD documents reference this board.' }, 'Delete');
@@ -183,23 +176,6 @@ export class BoardLibraryEditor implements vscode.CustomEditorProvider<BoardLibr
                         this.replace(doc, emptyBoard()); this.onLibraryChange(); await this.publish(doc);
                     }
                     return;
-                }
-                if (message.type === 'saveTemplate' || message.type === 'useTemplate') {
-                    validateInterfaceDefinition(message.definition);
-                    let reference: string;
-                    if (message.type === 'saveTemplate') {
-                        if (typeof message.id !== 'string' || typeof message.name !== 'string') throw new Error('Invalid template');
-                        const existing = this.library.templates().find(t => t.reference === 'user-interfaces/' + message.id + '.json');
-                        if (existing && await vscode.window.showWarningMessage('Replace user interface template ' + existing.name + '?', { modal: true }, 'Replace') !== 'Replace') return;
-                        this.library.saveTemplate(message.id, message.name, message.definition);
-                        reference = 'user-interfaces/' + message.id + '.json';
-                    } else {
-                        if (typeof message.reference !== 'string' || !/^board-interfaces\/[A-Za-z0-9_][A-Za-z0-9_.-]*\.json$/.test(message.reference) || typeof message.name !== 'string') throw new Error('Invalid template reference');
-                        reference = message.reference;
-                    }
-                    const templates = this.templates(doc).filter(t => t.reference !== reference);
-                    templates.push({ reference, name: message.name, definition: message.definition, user: true });
-                    await panel.webview.postMessage({ type: 'templates', templates, reference, notice: message.type === 'saveTemplate' ? 'Saved to the user interface library. Existing board interface snapshots are unchanged.' : 'Interface ready. Enter an instance name to add it.' });
                 }
             }).catch(async error => { await panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); });
         });

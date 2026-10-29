@@ -700,17 +700,17 @@ function normalizeArchDesignEdit(value: unknown): ArchDesignEdit | undefined {
         case 'setExport': {
             const language = ownValue(value, 'language');
             const output = ownValue(value, 'output');
-            const xdcOutput = ownValue(value, 'xdcOutput');
+            const constraintsOutput = ownValue(value, 'constraintsOutput');
             if (language !== undefined
                 && language !== 'verilog'
                 && language !== 'systemverilog') return undefined;
             if (output !== undefined && !nonEmptyString(output)) return undefined;
-            if (xdcOutput !== undefined && !nonEmptyString(xdcOutput)) return undefined;
+            if (constraintsOutput !== undefined && !nonEmptyString(constraintsOutput)) return undefined;
             return {
                 type,
                 ...(language === undefined ? {} : { language }),
                 ...(output === undefined ? {} : { output }),
-                ...(xdcOutput === undefined ? {} : { xdcOutput }),
+                ...(constraintsOutput === undefined ? {} : { constraintsOutput }),
             };
         }
         case 'setPresentation': {

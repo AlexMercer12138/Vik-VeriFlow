@@ -6,6 +6,20 @@ import * as os from 'node:os';
 import { createEmptyArchDesign } from '@veriflow/schematic-core/arch-design';
 import { prepareArchDesignBuild, publishArtifactPlan } from '../src/archDesign';
 
+test('raw constraints use profile extension and separate ownership without a generated header', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'veriflow-profile-build-'));
+    try {
+        await writeFile(path.join(dir, 'board.json'), JSON.stringify({ kind: 'board', extension: '.pcf', constraints: 'set_io {{PORT:A1}} {{PIN:A1}}\n', interfaces: [{ id: 'GPIO', signals: [{ id: 'led', direction: 'output', pins: ['A1'] }] }] }));
+        const design = { ...createEmptyArchDesign('top'), ports: [{ name: 'led', direction: 'output' as const }], defaults: { 'led.value': "1'b0" }, physical: { board: 'board.json', bindings: [{ source: { interface: 'GPIO', member: 'led' }, port: { name: 'led' } }] } };
+        const source = path.join(dir, 'top.ad');
+        await publishArtifactPlan(await prepareArchDesignBuild(source, design, []));
+        assert.equal(await readFile(path.join(dir, 'top.pcf'), 'utf8'), 'set_io led A1\n');
+        await publishArtifactPlan(await prepareArchDesignBuild(source, design, []));
+        await writeFile(path.join(dir, 'top.pcf'), 'manual edit');
+        await assert.rejects(publishArtifactPlan(await prepareArchDesignBuild(source, design, [])), /conflict/i);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('a conflict in the second artifact prevents publishing the first', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'veriflow-build-'));
     try {

@@ -99,7 +99,7 @@ positional arguments:
     validate  validate an Arch Design
     export    export an Arch Design to RTL
     apply     apply a versioned edit batch
-    build     generate RTL and optional XDC together
+    build     generate RTL and optional pin constraints together
 
 options:
   -h, --help  show this help message and exit

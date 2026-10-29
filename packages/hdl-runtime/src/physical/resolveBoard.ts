@@ -1,28 +1,28 @@
 import * as path from 'node:path';
-import { createPhysicalBoard, type PhysicalBoard } from '@veriflow/schematic-core/arch-design';
+import { createPhysicalBoard, type PhysicalBoard, type PhysicalConfiguration } from '@veriflow/schematic-core/arch-design';
 import { readPhysicalBoardFile, UserPhysicalBoardLibrary } from './boardLibrary';
-
-/** Installed resources, independent of the working directory. Hosts may inject their own copy. */
-export function physicalInterfaceRoot(): string {
-    return path.resolve(__dirname, '../../resources/physical-models/interfaces');
-}
-
-export async function resolvePhysicalBoard(
-    ownerPath: string,
-    reference: string,
-    options: { interfaceRoot?: string; configPath?: string; library?: UserPhysicalBoardLibrary; onInput?: (file: string, text: string) => void } = {},
-    sources?: (files: string[]) => void
-): Promise<PhysicalBoard> {
-    const interfaceRoot = options.interfaceRoot ?? physicalInterfaceRoot();
-    const library = options.library ?? new UserPhysicalBoardLibrary({ interfaceRoot, configPath: options.configPath });
+export async function resolvePhysicalBoard(ownerPath: string, reference: string, options: {
+    configPath?: string;
+    library?: UserPhysicalBoardLibrary;
+    onInput?: (file: string, text: string) => void;
+} = {}, sources?: (files: string[]) => void): Promise<PhysicalBoard> {
+    const library = options.library ?? new UserPhysicalBoardLibrary({ configPath: options.configPath });
     if (/^user:[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(reference)) {
         sources?.([library.configPath]);
-        return library.load(reference.slice(5), sources, options.onInput);
+        return library.load(reference.slice(5), options.onInput);
     }
     if (!/^(?![A-Za-z][A-Za-z0-9+.-]*:)(?![/\\])(?!.*[\r\n\0]).+$/.test(reference))
-        throw new Error('Choose a saved user board or use a relative workspace board path');
+        throw new Error('Use a saved user board or relative workspace board path');
     const file = path.resolve(path.dirname(ownerPath), reference);
     sources?.([file]);
-    const data = await readPhysicalBoardFile(file, interfaceRoot, sources, options.onInput);
-    return createPhysicalBoard(data.model, data.definitions);
+    return createPhysicalBoard((await readPhysicalBoardFile(file, options.onInput)).model);
+}
+export async function resolvePhysicalConfiguration(ownerPath: string, configuration: PhysicalConfiguration, options: Parameters<typeof resolvePhysicalBoard>[2] = {}): Promise<PhysicalBoard> {
+    const board = await resolvePhysicalBoard(ownerPath, configuration.board, options);
+    if (board.model.kind !== 'board')
+        throw new Error('Select a main board profile');
+    board.cards = Object.create(null);
+    for (const card of configuration.cards ?? [])
+        board.cards![card.id] = (await resolvePhysicalBoard(ownerPath, card.board, options)).model;
+    return board;
 }

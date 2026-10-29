@@ -69,7 +69,7 @@ import { SimulationTaskController } from './simulationTask/taskController';
 import { SimulationTaskEditorProvider } from './simulationTask/taskEditorProvider';
 import { createSimulationBackendRegistry } from './core/simulationService';
 import { parseArchDesignText } from '@veriflow/schematic-core/arch-design';
-import { exportArchDesignToFile, archDesignXdcOutputPath } from './archDesign/archDesignExport';
+import { archDesignConstraintsOutputPath } from './archDesign/archDesignExport';
 import { PhysicalPinsPanel } from './archDesign/physicalPinsPanel';
 import { adPhysicalPorts, rtlPhysicalPorts } from './archDesign/physicalPinsSupport';
 import { isFreshWaveform, waveIdentity } from './workflowArtifact';
@@ -489,8 +489,9 @@ export function activate(context: vscode.ExtensionContext): void {
         if (parsed.status !== 'editable') throw new Error('Invalid Architecture Design');
         const root = vscode.workspace.getWorkspaceFolder(uri)?.uri ?? vscode.Uri.file(path.dirname(uri.fsPath));
         const rtlFiles = await exportedFiles(uri, parsed.design.export.output ?? path.basename(uri.fsPath, path.extname(uri.fsPath)) + (parsed.design.export.language === 'systemverilog' ? '.sv' : '.v'));
-        const xdcFiles = parsed.design.physical ? await exportedFiles(uri, archDesignXdcOutputPath(uri.fsPath, parsed.design)) : [];
-        return { dependencies: projectArchitectureDependencies(parsed.design, await designDefinitions(uri), root.toString()), exportedFiles: [...rtlFiles, ...xdcFiles] };
+        const constraintExtension = parsed.design.physical ? (await pinBindings.loadBoard(uri, parsed.design.physical.board)).model.extension : '.xdc';
+        const constraintFiles = parsed.design.physical ? await exportedFiles(uri, archDesignConstraintsOutputPath(uri.fsPath, parsed.design, constraintExtension)) : [];
+        return { dependencies: projectArchitectureDependencies(parsed.design, await designDefinitions(uri), root.toString()), exportedFiles: [...rtlFiles, ...constraintFiles] };
     };
     const adView = new DesignDocumentTreeProvider('ad', {
         files: async () => vscode.workspace.findFiles('**/*.ad', '**/{node_modules,.git,.veriflow,.trash}/**'), load: adDetails,

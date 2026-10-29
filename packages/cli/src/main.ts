@@ -6,7 +6,7 @@ import type { CommandExecutor } from '@veriflow/flow-core/simulation';
 
 import { adExport, adNew, adValidate, archBuild } from './commands/ad';
 import { archApply, taskNew, taskApply, taskTb } from './commands/authoring';
-import { boardCommand } from './commands/board';
+import { boardCommand, type BoardEditorLauncher } from './commands/board';
 import { pinsCommand } from './commands/pins';
 import { hdlCommand } from './commands/hdl';
 import { result } from './commands/artifacts';
@@ -25,11 +25,13 @@ import type { CliDependencySessionFactory } from './commands/sim';
 import { runTask, validateTask } from './commands/task';
 import { openWaveform, type WaveViewerLauncher } from './commands/wave';
 import { NodeWaveViewerLauncher } from './runtime/nodeWaveViewerLauncher';
+import { NodeBoardEditorLauncher } from './runtime/nodeBoardEditorLauncher';
 import type { CliSimulationBackendOptions } from './runtime/simulationBackends';
 
 export interface CliEnvironment extends CommandEnvironment {
     commandExecutor?: CommandExecutor;
     waveViewerLauncher?: WaveViewerLauncher;
+    boardEditorLauncher?: BoardEditorLauncher;
     simulationBackendOptions?: CliSimulationBackendOptions;
     dependencySessionFactory?: CliDependencySessionFactory;
 }
@@ -128,7 +130,7 @@ positional arguments:
     validate  validate an Arch Design
     export    export an Arch Design to RTL
     apply     apply a versioned edit batch
-    build     generate RTL and optional XDC together
+    build     generate RTL and optional pin constraints together
 
 options:
   -h, --help  show this help message and exit
@@ -442,14 +444,14 @@ Object.assign(LEAF_COMMANDS, {
     'arch build': newCommand('arch build', archBuild, [...outputOptions,
         { key: 'project', aliases: ['--project', '-p'] }, { key: 'lib', aliases: ['--lib', '-L'] },
         { key: 'language', aliases: ['--language'], choices: ['verilog', 'systemverilog'] },
-        { key: 'xdcOutput', aliases: ['--xdc-output'] }, { key: 'rtlOnly', aliases: ['--rtl-only'], takesValue: false }], 'design'),
+        { key: 'constraintsOutput', aliases: ['--constraints-output'] }, { key: 'rtlOnly', aliases: ['--rtl-only'], takesValue: false }], 'design'),
     'task new': newCommand('task new', taskNew, outputOptions),
     'task apply': newCommand('task apply', taskApply, documentOptions, 'task'),
     'task tb': newCommand('task tb', taskTb, [...outputOptions, { key: 'project', aliases: ['--project', '-p'] }], 'task'),
 });
-for (const action of ['list', 'validate', 'import', 'export']) {
+for (const action of ['list', 'validate', 'import', 'export', 'ui']) {
     LEAF_COMMANDS[`board ${action}`] = newCommand(`board ${action}`, (o, e) => boardCommand(action, o, e),
-        [...outputOptions, ...(action === 'import' ? [{ key: 'id', aliases: ['--id'] }, { key: 'name', aliases: ['--name'] }] : [])], action === 'list' ? undefined : 'board');
+        action === 'ui' ? [] : [...outputOptions, ...(action === 'import' ? [{ key: 'id', aliases: ['--id'] }, { key: 'name', aliases: ['--name'] }, { key: 'kind', aliases: ['--kind'], choices: ['board', 'daughtercard'] }] : [])], action === 'list' || action === 'ui' ? undefined : 'board');
 }
 for (const action of ['validate', 'export']) {
     LEAF_COMMANDS[`pins ${action}`] = newCommand(`pins ${action}`, (o, e) => pinsCommand(action, o, e),
@@ -746,6 +748,7 @@ if (require.main === module) {
         stdout: text => { process.stdout.write(text); },
         stderr: text => { process.stderr.write(text); },
         waveViewerLauncher: new NodeWaveViewerLauncher(),
+        boardEditorLauncher: new NodeBoardEditorLauncher(),
     }).then(exitCode => {
         process.exitCode = exitCode;
     });

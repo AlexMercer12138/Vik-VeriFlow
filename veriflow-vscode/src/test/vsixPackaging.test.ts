@@ -245,14 +245,7 @@ function run(): void {
         const packagedManifest = JSON.parse(entryText('extension/package.json'));
         const physicalRoot = 'extension/resources/physical-models';
         const physicalEntries = entries.filter(name => name.startsWith(`${physicalRoot}/`));
-        const interfaceNames = fs.readdirSync(path.join(repositoryRoot, 'data/physical-models/interfaces')).filter(name => /\.(fixed|expansion)\.json$/.test(name));
-        assert.deepStrictEqual(physicalEntries.sort(), interfaceNames.map(name => `${physicalRoot}/interfaces/${name}`).sort(), 'VSIX must contain only reusable interfaces, without boards, daughtercards or assemblies');
-        for (const name of interfaceNames) {
-            const definition = JSON.parse(entryText(`${physicalRoot}/interfaces/${name}`));
-            assert.ok(['fixed', 'expansion'].includes(definition.kind));
-            assert.deepStrictEqual(definition, JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'data/physical-models/interfaces', name), 'utf8')));
-        }
-        assert.equal(JSON.parse(entryText(`${physicalRoot}/interfaces/rgb.fixed.json`)).bus.pdata, 24);
+        assert.deepStrictEqual(physicalEntries, [], 'Board and daughtercard constraints are user data; physical interface templates are no longer bundled');
         const archDesignEditor = packagedManifest.contributes.customEditors.find(
             (item: { viewType?: string }) => item.viewType === 'veriflow.archDesignEditor'
         );

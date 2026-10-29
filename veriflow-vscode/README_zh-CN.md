@@ -38,9 +38,9 @@
 
 - 自动识别 **APB、AHB、AXI** 总线接口，实现主从快速连接
 - 内置常用组合逻辑模块 **Logic Utility**，提高连接灵活性
-- **Pins / XDC** 将板卡导入 `~/.veriflow_config.json` 后供所有工程共用。左栏勾选接口即检查并锁定冲突引脚与必选组，中栏接收右栏顶层端口的拖放，确认后生成 XDC。AD 在确认时保存选择和绑定；RTL 右键与命令入口使用相同界面，确认时弹出保存对话框。总线拖放同步绑定 P/N；AD 的 XDC 默认与 RTL 使用相同目录和文件主名，在 AD 树下并列显示。插件只打包通用接口。
+- **Pin Constraints** 直接导入 XDC，保存板卡/子卡约束原文与文件后缀。用户在各板卡中添加 UART 等接口、信号、方向、位宽并匹配引脚；工程面板共用于 AD/RTL，绑定顶层端口，子卡通过连接器引脚映射安装到主板。导出只替换实际绑定的端口和引脚，保留原格式。
 
-先选择板卡声明的 Bank 电压，再在两行高的分配卡片中显式选择端口及 IO 标准，支持拖放，空端口选项解除绑定。AMD UltraScale/UltraScale+ 候选按 Bank 类型、电压、方向和单端/差分用途过滤；DDR/MIPI 的 IP 参数、VREF 和终端由用户设计配置。详见 [引脚绑定说明](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md)。
+无需配置器件、Bank、电压或独立接口模板。其他格式可在原文中使用明确的端口/引脚锚点。详见 [引脚绑定说明](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md)。
 
 ![图形化架构设计](https://i.imgs.ovh/2026/09/18/3254e83e61781f004e33ccb05d88f7f3.gif)
 

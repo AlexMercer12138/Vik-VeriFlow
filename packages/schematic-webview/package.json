@@ -16,6 +16,11 @@
     "tslib": "2.8.1"
   },
   "exports": {
+    "./boardLibraryView": {
+      "types": "./dist/boardLibraryView.d.ts",
+      "require": "./dist/boardLibraryView.js",
+      "default": "./dist/boardLibraryView.js"
+    },
     "./shared/protocol": {
       "types": "./dist/shared/protocol.d.ts",
       "require": "./dist/shared/protocol.js",
@@ -39,6 +44,9 @@
   },
   "typesVersions": {
     "*": {
+      "boardLibraryView": [
+        "dist/boardLibraryView.d.ts"
+      ],
       "shared/protocol": [
         "dist/shared/protocol.d.ts"
       ],

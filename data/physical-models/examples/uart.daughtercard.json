@@ -1,7 +1,12 @@
 {
+  "id": "serial-card",
+  "name": "Serial daughtercard",
   "kind": "daughtercard",
   "extension": ".xdc",
-  "constraints": "set_property PACKAGE_PIN P1 [get_ports tx]\nset_property PACKAGE_PIN P2 [get_ports rx]\nset_property IOSTANDARD LVCMOS33 [get_ports {tx rx}]\n",
+  "pins": {
+    "P1": "set_property PACKAGE_PIN {pin name} [get_ports {{signal name}}]\nset_property IOSTANDARD LVCMOS18 [get_ports {{signal name}}]\n",
+    "P2": "set_property PACKAGE_PIN {pin name} [get_ports {{signal name}}]\nset_property IOSTANDARD LVCMOS18 [get_ports {{signal name}}]\n"
+  },
   "interfaces": [
     {
       "id": "UART",

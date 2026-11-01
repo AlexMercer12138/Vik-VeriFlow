@@ -9,6 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const webDistRoot = path.join(root, 'web-dist');
 
 export const webApplications = [
+    { name: 'constraints', sourceRoot: 'packages/schematic-webview/src/constraints', staticFiles: ['index.html', 'index.css'], legacyScripts: ['index.js'] },
     {
         name: 'waveform',
         sourceRoot: 'packages/waveform-webview/src',

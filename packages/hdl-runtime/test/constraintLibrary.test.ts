@@ -1,29 +1,15 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import test from 'node:test';
-import { readPhysicalBoardFile, UserPhysicalBoardLibrary } from '../src/physical/boardLibrary';
-test('raw constraint imports preserve extension, other settings, backup and stale edit protection', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'veriflow-constraint-library-'));
-    try {
-        const source = path.join(root, 'carrier.xdc'), configPath = path.join(root, '.veriflow_config.json');
-        await writeFile(source, 'set_property PACKAGE_PIN A1 [get_ports tx]\n');
-        await writeFile(configPath, '{"language":"zh-cn","boards":[]}');
-        assert.equal((await readPhysicalBoardFile(source)).model.extension, '.xdc');
-        const library = new UserPhysicalBoardLibrary({ configPath });
-        await library.importBoard(source, 'Carrier', 'carrier');
-        const saved = library.get('carrier');
-        assert.equal(saved.model.constraints, 'set_property PACKAGE_PIN A1 [get_ports tx]\n');
-        assert.equal(JSON.parse(await readFile(configPath, 'utf8')).language, 'zh-cn');
-        assert.equal(JSON.parse(await readFile(configPath + '.bak', 'utf8')).language, 'zh-cn');
-        library.saveBoard({ ...saved, name: 'Edited' }, saved);
-        assert.throws(() => library.saveBoard({ ...saved, name: 'Stale' }, saved), /outside|changed/i);
-        await writeFile(path.join(root, 'card.json'), JSON.stringify({ kind: 'daughtercard', extension: '.qsf', constraints: '{{PORT:P1}} {{PIN:P1}}\n', interfaces: [] }));
-        await library.importBoard(path.join(root, 'card.json'), 'Card', 'card');
-        assert.equal(library.get('card').model.kind, 'daughtercard');
-    }
-    finally {
-        await rm(root, { recursive: true, force: true });
-    }
+import os from 'node:os'; import path from 'node:path'; import test from 'node:test';
+import { newPhysicalBoard, physicalBoardFile, readPhysicalBoardFile, UserPhysicalBoardLibrary } from '../src/physical/boardLibrary';
+test('board files are JSON-only with stable identities and conflict-safe library writes',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'vf-template-library-'));
+ try{const file=path.join(root,'board.json'),configPath=path.join(root,'config.json');await writeFile(configPath,'{"custom":true}');
+ const created=newPhysicalBoard('Carrier','board','.custom');assert.match(created.id,/^[0-9a-f-]{36}$/);
+ created.model.pins={tx:'opaque {signal name} A1'};created.model.interfaces=[{id:'UART',signals:[{id:'tx',direction:'output',pins:['tx']}]}];
+ await writeFile(file,JSON.stringify(physicalBoardFile(created)));assert.deepEqual(await readPhysicalBoardFile(file),created);
+ await writeFile(path.join(root,'board.xdc'),'not a board');await assert.rejects(readPhysicalBoardFile(path.join(root,'board.xdc')),/JSON/i);
+ const library=new UserPhysicalBoardLibrary({configPath});await library.importBoard(file);const before=library.get(created.id);library.saveBoard({...before,name:'Renamed'},before);assert.equal(library.get(created.id).id,created.id);assert.equal(JSON.parse(await readFile(configPath,'utf8')).custom,true);assert.equal(JSON.parse(await readFile(configPath+'.bak','utf8')).custom,true);
+ assert.throws(()=>library.saveBoard({...before,name:'Stale'},before),/changed|outside/);await assert.rejects(library.importBoard(file),/exists/);
+ }finally{await rm(root,{recursive:true,force:true});}
 });

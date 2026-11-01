@@ -9,7 +9,7 @@ import { prepareArchDesignBuild, publishArtifactPlan } from '../src/archDesign';
 test('raw constraints use profile extension and separate ownership without a generated header', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'veriflow-profile-build-'));
     try {
-        await writeFile(path.join(dir, 'board.json'), JSON.stringify({ kind: 'board', extension: '.pcf', constraints: 'set_io {{PORT:A1}} {{PIN:A1}}\n', interfaces: [{ id: 'GPIO', signals: [{ id: 'led', direction: 'output', pins: ['A1'] }] }] }));
+        await writeFile(path.join(dir, 'board.json'), JSON.stringify({ id:'demo', name:'Demo', kind: 'board', extension: '.pcf', pins: {A1:'set_io {signal name} A1\n'}, interfaces: [{ id: 'GPIO', signals: [{ id: 'led', direction: 'output', pins: ['A1'] }] }] }));
         const design = { ...createEmptyArchDesign('top'), ports: [{ name: 'led', direction: 'output' as const }], defaults: { 'led.value': "1'b0" }, physical: { board: 'board.json', bindings: [{ source: { interface: 'GPIO', member: 'led' }, port: { name: 'led' } }] } };
         const source = path.join(dir, 'top.ad');
         await publishArtifactPlan(await prepareArchDesignBuild(source, design, []));

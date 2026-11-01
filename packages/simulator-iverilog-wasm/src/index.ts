@@ -6,6 +6,8 @@ export {
 export { ArtifactWriteError } from './artifactWriter';
 export {
     IverilogWasmBackend,
+    type IverilogCompileOnlyRequest,
+    type IverilogCompileOnlyResult,
     IVERILOG_WASM_VERSION,
     type IverilogApiProvider,
     type IverilogWasmBackendOptions,

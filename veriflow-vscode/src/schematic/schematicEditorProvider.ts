@@ -572,7 +572,7 @@ export class SchematicEditorProvider implements vscode.CustomTextEditorProvider 
                     case 'selectModule':
                         await handle.selectModule(command.moduleKey);
                         return;
-                    case 'saveLayout':
+                    case 'saveLayout': {
                         if (!state.modules.some(module =>
                             module.key === command.moduleKey
                         )) {
@@ -640,6 +640,7 @@ export class SchematicEditorProvider implements vscode.CustomTextEditorProvider 
                             layout,
                         });
                         return;
+                    }
                     case 'relayoutAll': {
                         if (command.moduleKey !== state.selectedModuleKey
                             || command.revision !== state.graphRevision

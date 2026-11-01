@@ -1,6 +1,4 @@
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,22 +21,9 @@ await build({
 });
 
 const constraintsRoot = path.join(packageRoot, 'assets', 'constraints');
-const constraintsBundle = path.join(packageRoot, 'dist', 'boardLibraryView.cjs');
+const constraintsSource = path.join(repositoryRoot, 'packages', 'schematic-webview', 'src', 'constraints');
 await mkdir(constraintsRoot, { recursive: true });
-await build({
-    entryPoints: [path.join(repositoryRoot, 'packages', 'schematic-webview', 'src', 'boardLibraryView.ts')],
-    outfile: constraintsBundle,
-    bundle: true,
-    platform: 'node',
-    format: 'cjs',
-    target: 'node24',
-});
-try {
-    const { boardLibraryHtml } = createRequire(import.meta.url)(constraintsBundle);
-    await writeFile(path.join(constraintsRoot, 'index.html'), boardLibraryHtml(randomBytes(16).toString('hex')), 'utf8');
-} finally {
-    await rm(constraintsBundle, { force: true });
-}
+for (const name of ['index.html','index.css','index.js']) await copyFile(path.join(constraintsSource,name),path.join(constraintsRoot,name));
 
 await rm(destinationRoot, { recursive: true, force: true });
 await mkdir(destinationRoot, { recursive: true });

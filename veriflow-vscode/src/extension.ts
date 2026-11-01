@@ -20,7 +20,6 @@ import { pathToFileURL } from 'url';
 import {
     createExtensionIverilogLoader,
     IverilogWasmBackend,
-    IVERILOG_WASM_VERSION,
 } from '@veriflow/simulator-iverilog-wasm';
 import {
     getWorkspaceRoot, getTopModule, setTopModule, resolveTopModuleSelection,
@@ -32,6 +31,8 @@ import type { TopModuleSelection } from './config';
 import { HdlAnalysisState } from './hdlAnalysisState';
 import { showModuleInstantiationPicker } from './moduleInstantiationCommand';
 import { registerHdlFormatting } from './hdlFormatting';
+import { registerHdlLanguageFeatures } from './hdlLanguageFeatures';
+import { compileIverilogDiagnostics } from './hdlIverilogDiagnostics';
 import { registerHdlTemplateCommands } from './testbench/templateCommands';
 import { WaveformEditorProvider } from './waveformEditorProvider';
 import { ArchDesignEditorProvider } from './archDesign/archDesignEditorProvider';
@@ -71,6 +72,7 @@ import { createSimulationBackendRegistry } from './core/simulationService';
 import { parseArchDesignText } from '@veriflow/schematic-core/arch-design';
 import { archDesignConstraintsOutputPath } from './archDesign/archDesignExport';
 import { PhysicalPinsPanel } from './archDesign/physicalPinsPanel';
+import { snapshotIndexedInputs } from '@veriflow/hdl-runtime/archDesign';
 import { adPhysicalPorts, rtlPhysicalPorts } from './archDesign/physicalPinsSupport';
 import { isFreshWaveform, waveIdentity } from './workflowArtifact';
 
@@ -251,6 +253,28 @@ export function activate(context: vscode.ExtensionContext): void {
     externalWaveViewerLauncher = new ExternalWaveViewerLauncher();
     analysisState = new HdlAnalysisState();
 
+    context.subscriptions.push(registerHdlLanguageFeatures({
+        getIndex: (document, owner) => _getSchematicIndex(context, document.uri, owner),
+        releaseIndex: _releaseSchematicIndex,
+        compile: async (document, index, parsed, signal) => {
+            const settings = getSettings(document.uri);
+            if (!settings.iverilogDiagnosticsEnabled) return [];
+            const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+                ?? path.dirname(document.uri.fsPath);
+            const backend = new IverilogWasmBackend(
+                () => iverilogLoader.load(packagedIverilogEntry)
+            );
+            return compileIverilogDiagnostics(
+                backend,
+                index,
+                document,
+                parsed,
+                settings,
+                workspaceRoot,
+                signal
+            );
+        },
+    }));
 
     context.subscriptions.push(
         vscode.window.registerCustomEditorProvider(
@@ -462,14 +486,28 @@ export function activate(context: vscode.ExtensionContext): void {
         return [{ uri: artifact, exists: await vscode.workspace.fs.stat(artifact).then(stat => stat.type === vscode.FileType.File, () => false) }];
     };
     const pinModuleChoices = new Map<string, string>();
+    const pinSourceInputs = new Map<string, {path:string;text:string}[]>();
     const pinBindings = new PhysicalPinsPanel(context, {
+        module: uri => pinModuleChoices.get(uri.toString()),
+        inputs: async uri => pinSourceInputs.get(uri.toString()) ?? [],
         ports: async document => {
-            const definitions = await designDefinitions(document.uri, undefined, /\.(v|sv)$/i.test(document.uri.path) ? [document.uri] : []);
+            if (document.isDirty) throw new Error('Save the source file before editing constraints.');
+            const owner = {};
+            let definitions: readonly HdlDefinitionSummary[];
+            try {
+                definitions = await designDefinitions(document.uri, owner, /\.(v|sv)$/i.test(document.uri.path) ? [document.uri] : []);
+                const index = await _getSchematicIndex(context, document.uri, owner);
+                const inputs = index ? await snapshotIndexedInputs(index, definitions.map(item => item.uri).filter(uri => !!index.getFile(uri))) : [];
+                const sourceText = document.getText();
+                pinSourceInputs.set(document.uri.toString(), [...inputs.filter(item => path.resolve(item.path).toLowerCase() !== path.resolve(document.uri.fsPath).toLowerCase()), { path: document.uri.fsPath, text: sourceText }]);
+            } finally { _releaseSchematicIndex(owner); }
+
             if (/\.ad$/i.test(document.uri.path)) {
                 const parsed = parseArchDesignText(document.getText());
                 if (parsed.status !== 'editable') throw new Error('AD is not editable');
                 const protocols = await interfaceProtocolLoader.load(document.uri.toString());
-                return adPhysicalPorts(parsed.design, toArchDesignModuleDefinitions(definitions), protocols.catalog);
+                const catalog = createArchDesignDefinitionCatalog(definitions, (vscode.workspace.getWorkspaceFolder(document.uri)?.uri ?? vscode.Uri.file(path.dirname(document.uri.fsPath))).toString());
+                return adPhysicalPorts(normalizeArchDesignDefinitionKeys(parsed.design, catalog), toArchDesignModuleDefinitions(catalog.definitions), protocols.catalog);
             }
             const modules = definitions.filter(definition => definition.kind === 'module'
                 && canonicalizeSourceUri(definition.uri) === canonicalizeSourceUri(document.uri.toString()));
@@ -483,7 +521,7 @@ export function activate(context: vscode.ExtensionContext): void {
             return rtlPhysicalPorts(selected.ports, selected.parameters);
         },
     });
-    pinBindings.registerBoardEditor();
+
     const adDetails = async (uri: vscode.Uri) => {
         const parsed = parseArchDesignText((await vscode.workspace.openTextDocument(uri)).getText());
         if (parsed.status !== 'editable') throw new Error('Invalid Architecture Design');

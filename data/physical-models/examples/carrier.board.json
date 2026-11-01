@@ -1,7 +1,12 @@
 {
+  "id": "carrier",
+  "name": "Carrier board",
   "kind": "board",
   "extension": ".xdc",
-  "constraints": "# Demo carrier; illustrative pins only\nset_property PACKAGE_PIN A1 [get_ports tx]\nset_property PACKAGE_PIN A2 [get_ports rx]\nset_property IOSTANDARD LVCMOS33 [get_ports {tx rx}]\nset_property PACKAGE_PIN A3 [get_ports gpio0]\nset_property PACKAGE_PIN A4 [get_ports gpio1]\n",
+  "pins": {
+    "uart_tx": "set_property PACKAGE_PIN A1 [get_ports {{signal name}}]\nset_property IOSTANDARD LVCMOS33 [get_ports {{signal name}}]\n",
+    "uart_rx": "set_property PACKAGE_PIN A2 [get_ports {{signal name}}]\nset_property IOSTANDARD LVCMOS33 [get_ports {{signal name}}]\n"
+  },
   "interfaces": [
     {
       "id": "UART0",
@@ -10,33 +15,14 @@
           "id": "tx",
           "direction": "output",
           "pins": [
-            "A1"
+            "uart_tx"
           ]
         },
         {
           "id": "rx",
           "direction": "input",
           "pins": [
-            "A2"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "J1",
-      "signals": [
-        {
-          "id": "io0",
-          "direction": "inout",
-          "pins": [
-            "A3"
-          ]
-        },
-        {
-          "id": "io1",
-          "direction": "inout",
-          "pins": [
-            "A4"
+            "uart_rx"
           ]
         }
       ]

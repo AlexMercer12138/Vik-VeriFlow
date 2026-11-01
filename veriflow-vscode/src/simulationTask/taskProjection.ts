@@ -1,8 +1,8 @@
 import { taskDesign, taskModuleKey } from '@veriflow/hdl-runtime/simulationTask';
 export { taskDesign, taskModuleKey } from '@veriflow/hdl-runtime/simulationTask';
-import { createEmptyArchDesign, projectArchDesignGraph, reconcileArchDesignInstanceParameters, type ArchDesign, type ArchDesignModuleDefinition } from '@veriflow/schematic-core/arch-design';
+import { projectArchDesignGraph, reconcileArchDesignInstanceParameters, type ArchDesignModuleDefinition } from '@veriflow/schematic-core/arch-design';
 import { createInterfaceProtocolCatalog, type InterfaceProtocolCatalog } from '@veriflow/schematic-core/interfaces';
-import { describePreset, deriveTaskModuleName, resolveProtocolPresetPorts, type SimulationTaskDocument, type TaskModuleDefinition } from '@veriflow/hdl-runtime/simulationTask';
+import { describePreset, type SimulationTaskDocument, type TaskModuleDefinition } from '@veriflow/hdl-runtime/simulationTask';
 import { archDesignLayout, projectArchDesignInspectorData } from '../archDesign/editorSupport';
 import type { SchematicEditorProjection } from '../schematic/protocol';
 export function projectSimulationTask(task: SimulationTaskDocument, modules: readonly TaskModuleDefinition[], uri: string,
@@ -28,6 +28,7 @@ export function projectSimulationTask(task: SimulationTaskDocument, modules: rea
         const instance = task.instances.find(item => node.id === 'instance:' + item.id);
         if (!instance || !('preset' in instance)) return node;
         const { definitionKey: _key, ...presetNode } = node;
+        void _key;
         const preset = instance.preset;
         const title = preset.kind === 'protocol'
             ? `${({ axis: 'AXI-STREAM', axi4lite: 'AXI-Lite', axi4: 'AXI-Full', rgb888: 'RGB' } as Record<string, string>)[preset.protocol] ?? preset.protocol.toUpperCase()} ${preset.role}`

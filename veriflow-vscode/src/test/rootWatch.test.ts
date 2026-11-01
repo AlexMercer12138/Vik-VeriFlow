@@ -143,6 +143,7 @@ async function run(): Promise<void> {
             const webDist = path.join(fixtureRoot, 'web-dist');
             fs.rmSync(webDist, { recursive: true, force: true });
             for (const [application, marker, files] of [
+                ['constraints', schematicMarker, ['index.css','index.html','index.js']],
                 ['waveform', waveformMarker, [
                     'index.css',
                     'index.html',

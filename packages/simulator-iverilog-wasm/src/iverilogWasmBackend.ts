@@ -19,7 +19,14 @@ import {
     writeRequestedArtifacts,
     type ArtifactWriterFileSystem,
 } from './artifactWriter';
-import type { IverilogApi, RunResult, VirtualFile } from './iverilogApi';
+import type {
+    CompileRequest,
+    CompileResult,
+    Generation,
+    IverilogApi,
+    RunResult,
+    VirtualFile,
+} from './iverilogApi';
 import { loadIverilog } from './loadIverilog';
 import {
     buildVirtualWorkspace,
@@ -37,11 +44,57 @@ export interface IverilogWasmBackendOptions {
     artifactFileSystem?: ArtifactWriterFileSystem;
 }
 
+export interface IverilogCompileOnlyRequest {
+    files: readonly string[];
+    includeFiles?: readonly string[];
+    includeDirs?: readonly string[];
+    defines?: Readonly<Record<string, string | number | boolean>>;
+    cwd: string;
+    topModule: string;
+    generation?: Generation;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+}
+
+export interface IverilogCompileOnlyResult extends CompileResult {
+    hostPathByVirtualPath: ReadonlyMap<string, string>;
+}
+
 export class IverilogWasmBackend implements SimulatorBackend {
     constructor(
         private readonly loadApi: IverilogApiProvider = loadIverilog,
         private readonly options: IverilogWasmBackendOptions = {},
     ) {}
+
+    async compileOnly(
+        input: IverilogCompileOnlyRequest,
+    ): Promise<IverilogCompileOnlyResult> {
+        if (input.signal?.aborted) {
+            throw new DOMException('The operation was aborted', 'AbortError');
+        }
+        const workspace = await buildVirtualWorkspace({
+            cwd: input.cwd,
+            files: input.files,
+            runtimeFiles: [],
+            includeFiles: input.includeFiles,
+            includeDirs: input.includeDirs ?? [],
+        }, this.options.workspaceFileSystem);
+        if (input.signal?.aborted) {
+            throw new DOMException('The operation was aborted', 'AbortError');
+        }
+        const request: CompileRequest = {
+            files: workspace.files,
+            sources: workspace.sources,
+            top: input.topModule,
+            generation: input.generation ?? '2012',
+            defines: { ...input.defines ?? {} },
+            includeDirs: workspace.includeDirs,
+            ...(input.signal === undefined ? {} : { signal: input.signal }),
+            ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+        };
+        const result = await (await this.loadApi()).compile(request);
+        return { ...result, hostPathByVirtualPath: workspace.hostPathByVirtualPath };
+    }
 
     async compileAndRun(input: SimulationRequest): Promise<NormalizedSimulationExecution> {
         const request = createSimulationRequest(input);

@@ -28,17 +28,7 @@
     "cards": [
       {
         "id": "serial0",
-        "board": "uart.daughtercard.json",
-        "connections": [
-          {
-            "cardPin": "P1",
-            "boardPin": "A3"
-          },
-          {
-            "cardPin": "P2",
-            "boardPin": "A4"
-          }
-        ]
+        "board": "uart.daughtercard.json"
       }
     ],
     "bindings": [
@@ -50,7 +40,8 @@
         },
         "port": {
           "name": "uart_tx"
-        }
+        },
+        "pin": "A3"
       },
       {
         "source": {
@@ -60,7 +51,8 @@
         },
         "port": {
           "name": "uart_rx"
-        }
+        },
+        "pin": "A4"
       }
     ]
   }

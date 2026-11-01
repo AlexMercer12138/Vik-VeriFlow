@@ -7,13 +7,15 @@ import { runCli } from '../src/main';
 
 test('board ui opens the shared editor and rejects the unpublished XDC-only option', async () => {
     const homeDir = path.join(os.tmpdir(), 'veriflow-board-ui-home');
-    let openedConfig = '', stderr = '';
+    let openedConfig = '', stderr = ''; let uiOptions:any;
     const environment: any = {
         cwd: process.cwd(), homeDir, stdout: () => undefined, stderr: (text: string) => { stderr += text; },
-        boardEditorLauncher: { open: async (configPath: string) => { openedConfig = configPath; } },
+        boardEditorLauncher: { open: async (configPath: string, options:any) => { openedConfig = configPath; uiOptions=options; } },
     };
     assert.equal(await runCli(['board', 'ui'], environment), 0, stderr);
     assert.equal(openedConfig, path.join(homeDir, '.veriflow_config.json'));
+    assert.equal(await runCli(['pins','ui','top.v','--module','top'],environment),0,stderr);
+    assert.equal(uiOptions.source,path.resolve('top.v')); assert.equal(uiOptions.module,'top');
     stderr = '';
     assert.equal(await runCli(['arch', 'build', 'top.ad', '--xdc-output', 'old.xdc'], environment), 2);
     assert.match(stderr, /unrecognized arguments: --xdc-output/);
@@ -81,7 +83,7 @@ test('AD build integrates XDC, pins exports agree, and board dry-run preserves o
     try {
         const config = path.join(dir, '.veriflow_config.json');
         await writeFile(config, JSON.stringify({ libDirs: [], customSetting: { preserve: true } }));
-        await writeFile(path.join(dir, 'board.json'), JSON.stringify({ model: { kind: 'board', extension: '.xdc', constraints: 'set_property PACKAGE_PIN A1 [get_ports led]\n', interfaces: [{ id: 'GPIO', signals: [{ id: 'led', direction: 'output', pins: ['A1'] }] }] } }));
+        await writeFile(path.join(dir, 'board.json'), JSON.stringify({ id:'demo', name:'Demo', kind: 'board', extension: '.xdc', pins:{A1:'set_property PACKAGE_PIN A1 [get_ports {signal name}]\n'}, interfaces: [{ id: 'GPIO', signals: [{ id: 'led', direction: 'output', pins: ['A1'] }] }] }));
         const original = await readFile(config, 'utf8');
         assert.equal(await run(['board', 'import', 'board.json', '--id', 'demo', '--dry-run']), 0, stderr);
         assert.equal(await readFile(config, 'utf8'), original);

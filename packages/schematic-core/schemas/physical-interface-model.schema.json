@@ -1,13 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:veriflow:physical-model:v1",
-  "title": "VeriFlow constraint profile V1",
+  "title": "VeriFlow board pin templates V1",
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "id",
+    "name",
     "kind",
     "extension",
-    "constraints",
+    "pins",
     "interfaces"
   ],
   "properties": {
@@ -20,10 +22,6 @@
     "extension": {
       "type": "string",
       "pattern": "^\\.[A-Za-z0-9][A-Za-z0-9._-]*$"
-    },
-    "constraints": {
-      "type": "string",
-      "maxLength": 20000000
     },
     "interfaces": {
       "type": "array",
@@ -76,6 +74,24 @@
             }
           }
         }
+      }
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pins": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.:-]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 2000000
       }
     }
   }

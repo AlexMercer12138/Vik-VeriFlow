@@ -1,15 +1,5 @@
-# 板卡与子卡编辑器
+# 板卡库工作台
 
-通过 **VeriFlow: Manage Boards** 或引脚面板的 **Manage Boards…** 打开。
+Manage Boards 与 Add constraints 使用同一标签，分别进入 Board library / Pin bindings。新建只填名称、类型、后缀；Pins 编写模板，Interfaces 将资源分组；ID 自动生成。Import board 只接受板卡 JSON，主板不解析位置，子卡在工程直接填 FPGA 引脚，无映射。
 
-1. 导入 XDC 或板卡 JSON，填写 ID、名称及板卡/子卡类型。
-2. 保留、查看和编辑约束原文；文件后缀随模型保存。
-3. 直接创建本板接口。例如 UART0 添加输出 tx、输入 rx，各匹配一个引脚。
-4. 总线在界面设置位宽并逐位匹配，引脚数组顺序为 MSB 到 LSB。
-5. 保存到共用用户库；复制、JSON 导出及外部编辑冲突保护沿用原生编辑器。
-
-不维护独立接口模板库，也不要求填写厂商、器件、Bank、供电轨或 IO 标准。接口就是用户在该板卡或子卡内维护的信号列表。
-
-子卡与板卡使用相同编辑器和模型。安装关系在工程引脚面板维护：添加子卡实例，再将连接器引脚逐一匹配到载板实际引脚。
-
-使用方法见 [引脚绑定](physical-pin-bindings.md)，数据契约见 [V1 模型](physical-interface-model.md)。
+见 [使用说明](physical-pin-bindings.md) 和 [已确认设计](constraint-workbench-design.md)。

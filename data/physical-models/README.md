@@ -1,8 +1,8 @@
-# 原文约束模型与示例
+# 显式引脚模板模型与示例
 
-`examples/carrier.board.json`、`examples/uart.daughtercard.json` 是最小 V1 板卡/子卡模型。`examples/top.ad` 展示子卡安装和顶层端口绑定。示例引脚只用于演示，不作为实物约束。
+`examples/carrier.board.json`、`examples/uart.daughtercard.json` 是最小 V1 板卡/子卡模型。`examples/top.ad` 展示子卡实例和顶层端口绑定。示例引脚只用于演示，不作为实物约束。
 
-接口直接保存在各板卡/子卡中，不再维护或打包独立物理接口库。用户数据导入后保存在 `~/.veriflow_config.json`，跨工程复用。
+接口直接保存在各板卡/子卡中，不再维护或打包独立物理接口库。板卡 JSON 导入后保存在 `~/.veriflow_config.json`，跨工程复用。
 
 ```bash
 veriflow board import examples/carrier.board.json --id carrier

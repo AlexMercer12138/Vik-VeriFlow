@@ -7,7 +7,7 @@ import { copyTree, recreate } from './lib/files.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const extensionRoot = path.join(root, 'veriflow-vscode');
-const applications = ['waveform', 'schematic'];
+const applications = ['waveform', 'schematic', 'constraints'];
 
 function runNpm(args, cwd) {
     const npmExecPath = process.env.npm_execpath;

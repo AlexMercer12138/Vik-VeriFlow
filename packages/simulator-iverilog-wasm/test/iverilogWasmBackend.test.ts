@@ -24,6 +24,7 @@ import {
     type IverilogApiProvider,
 } from '../src/iverilogWasmBackend';
 import type {
+    CompileRequest,
     IverilogApi,
     RunResult,
     SimulateRequest,
@@ -31,6 +32,79 @@ import type {
 
 const packageRoot = path.resolve(__dirname, '../..');
 const fixtureRoot = path.join(packageRoot, 'test', 'fixtures');
+
+test('compileOnly stages sources and returns compiler diagnostics without running VVP', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'veriflow-wasm-compile-only-'));
+    const source = path.join(root, 'rtl', 'top.sv');
+    const includeDir = path.join(root, 'include');
+    await mkdir(path.dirname(source), { recursive: true });
+    await mkdir(includeDir);
+    await writeFile(source, 'module top; endmodule\n');
+    const requests: CompileRequest[] = [];
+    const api: IverilogApi = {
+        async compile(request) {
+            requests.push(request);
+            return {
+                success: false,
+                stage: 'compile',
+                exitCode: 2,
+                stdout: '',
+                stderr: 'workspace/rtl/top.sv:1: syntax error\n',
+                combinedOutput: 'workspace/rtl/top.sv:1: syntax error\n',
+                timings: { compile: 4 },
+            };
+        },
+        async run(): Promise<never> { throw new Error('run() must not be called'); },
+        async simulate(): Promise<never> { throw new Error('simulate() must not be called'); },
+    };
+    try {
+        const result = await new IverilogWasmBackend(providerFor(api)).compileOnly({
+            files: [source],
+            includeDirs: [includeDir],
+            defines: { FEATURE: true },
+            cwd: root,
+            topModule: 'top',
+            generation: '2012',
+            timeoutMs: 1_000,
+        });
+        assert.equal(requests.length, 1);
+        assert.deepEqual(requests[0].sources, ['workspace/rtl/top.sv']);
+        assert.equal(requests[0].top, 'top');
+        assert.equal(requests[0].generation, '2012');
+        assert.deepEqual(requests[0].defines, { FEATURE: true });
+        assert.deepEqual(requests[0].includeDirs, ['libraries/0']);
+        assert.equal(Buffer.from(requests[0].files[0].data).toString(), 'module top; endmodule\n');
+        assert.equal(result.success, false);
+        assert.equal(result.stage, 'compile');
+        assert.equal(result.hostPathByVirtualPath.get('workspace/rtl/top.sv'), source);
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
+test('real Icarus compileOnly reports an unresolved module without running VVP', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'veriflow-wasm-compile-only-real-'));
+    const source = path.join(root, 'top.sv');
+    await writeFile(source, 'module top; missing_child u_missing(); endmodule\n');
+    try {
+        const result = await new IverilogWasmBackend().compileOnly({
+            files: [source],
+            cwd: root,
+            topModule: 'top',
+            generation: '2012',
+            timeoutMs: 5_000,
+        });
+        assert.equal(result.success, false);
+        assert.equal(result.stage, 'compile');
+        assert.match(result.stderr, /Unknown module type: missing_child/);
+        assert.equal(
+            result.hostPathByVirtualPath.get('workspace/top.sv'),
+            source
+        );
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
 
 type TestRunResult = Omit<RunResult, 'combinedOutput'> & {
     combinedOutput?: string;

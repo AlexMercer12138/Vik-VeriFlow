@@ -25,3 +25,8 @@ media/schematic/**
 !media/schematic/index.html
 !media/schematic/index.css
 !media/schematic/index.js
+
+media/constraints/**
+!media/constraints/index.html
+!media/constraints/index.css
+!media/constraints/index.js

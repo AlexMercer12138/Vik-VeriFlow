@@ -451,9 +451,9 @@ Object.assign(LEAF_COMMANDS, {
 });
 for (const action of ['list', 'validate', 'import', 'export', 'ui']) {
     LEAF_COMMANDS[`board ${action}`] = newCommand(`board ${action}`, (o, e) => boardCommand(action, o, e),
-        action === 'ui' ? [] : [...outputOptions, ...(action === 'import' ? [{ key: 'id', aliases: ['--id'] }, { key: 'name', aliases: ['--name'] }, { key: 'kind', aliases: ['--kind'], choices: ['board', 'daughtercard'] }] : [])], action === 'list' || action === 'ui' ? undefined : 'board');
+        action === 'ui' ? [] : [...outputOptions, ...(action === 'import' ? [{ key: 'id', aliases: ['--id'] }, { key: 'name', aliases: ['--name'] }] : [])], action === 'list' || action === 'ui' ? undefined : 'board');
 }
-for (const action of ['validate', 'export']) {
+for (const action of ['validate', 'export', 'ui']) {
     LEAF_COMMANDS[`pins ${action}`] = newCommand(`pins ${action}`, (o, e) => pinsCommand(action, o, e),
         [...outputOptions, { key: 'config', aliases: ['--config'] }, { key: 'module', aliases: ['--module'] }, { key: 'project', aliases: ['--project', '-p'] }, { key: 'lib', aliases: ['--lib', '-L'] }], 'file');
 }

@@ -2,3 +2,5 @@ export * from './boardLibrary';
 export * from './ports';
 export * from './resolveBoard';
 export * from './constraintArtifacts';
+export * from './workbench';
+export * from './source';

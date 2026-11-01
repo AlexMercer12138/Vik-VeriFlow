@@ -9,7 +9,7 @@ export type BoardIssue = {
     message: string;
     target: string;
 };
-export function emptyBoard(): SavedPhysicalBoard { return { id: '', name: '', model: { kind: 'board', extension: '.xdc', constraints: '', interfaces: [] } }; }
+export function emptyBoard(): SavedPhysicalBoard { return { id: '', name: '', model: { kind: 'board', extension: '.xdc', pins: {}, interfaces: [] } }; }
 export function parseBoardDraft(value: unknown): SavedPhysicalBoard {
     if (!value || typeof value !== 'object')
         throw new Error('Invalid board profile');
@@ -17,9 +17,9 @@ export function parseBoardDraft(value: unknown): SavedPhysicalBoard {
     if (typeof draft.id !== 'string' || typeof draft.name !== 'string')
         throw new Error('Invalid board identity');
     const model = draft.model;
-    if (!model || typeof model !== 'object' || typeof model.constraints !== 'string' || typeof model.extension !== 'string'
+    if (!model || typeof model !== 'object' || !model.pins || typeof model.pins !== 'object' || Array.isArray(model.pins) || Object.values(model.pins).some(t => typeof t !== 'string') || typeof model.extension !== 'string'
         || !['board', 'daughtercard'].includes(model.kind) || !Array.isArray(model.interfaces))
-        throw new Error('Import the constraint file again; this board has no raw constraints');
+        throw new Error('Invalid board pin templates');
     for (const iface of model.interfaces) {
         if (!iface || typeof iface.id !== 'string' || !Array.isArray(iface.signals))
             throw new Error('Invalid interface draft');
@@ -39,7 +39,7 @@ export function inspectBoardDraft(draft: SavedPhysicalBoard): {
 } {
     const issues: BoardIssue[] = [], error = (message: string, target = 'interfaces') => { issues.push({ severity: 'error', message, target }); };
     if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(draft.id))
-        error('Enter a valid ID', 'id');
+        error('Invalid board identity', 'id');
     if (!draft.name.trim())
         error('Enter a name', 'name');
     try {
@@ -49,8 +49,6 @@ export function inspectBoardDraft(draft: SavedPhysicalBoard): {
         error((e as Error).message);
     }
     const pins = physicalPins(draft.model);
-    if (!pins.length)
-        error('Import a board file or add explicit {{PORT:pin}} anchors', 'constraints');
     for (const iface of draft.model.interfaces)
         for (const signal of iface.signals)
             if (signal.pins.some(p => !pins.includes(p)))

@@ -24,12 +24,12 @@ export class TraditionalTestbenchController implements vscode.Disposable {
     private readonly subscriptions: vscode.Disposable[] = [];
     constructor(context: vscode.ExtensionContext, private readonly services: TraditionalTestbenchServices,
         private readonly coordinator: SimulationRunCoordinator) {
-        const commands: Array<[string, (...args: any[]) => unknown]> = [
+        const commands: Array<[string, Parameters<typeof vscode.commands.registerCommand>[1]]> = [
             ['veriflow.runTraditionalTestbench', (target?: HdlDefinitionSummary | vscode.Uri) => this.runFromEditor(target)],
             ['veriflow.selectTraditionalTestbench', () => this.run()],
             ['veriflow.cancelTraditionalTestbench', (target: SimulationRunTarget) => this.coordinator.cancel(target)],
         ];
-        for (const [name, callback] of commands) this.subscriptions.push(vscode.commands.registerCommand(name, async (...args: any[]) => {
+        for (const [name, callback] of commands) this.subscriptions.push(vscode.commands.registerCommand(name, async (...args) => {
             try { return await callback(...args); } catch (error) { void vscode.window.showErrorMessage(`VeriFlow: ${error instanceof Error ? error.message : String(error)}`); }
         }));
         context.subscriptions.push(this);

@@ -57,6 +57,10 @@ const publishable = [
         name: '@veriflow/waveform-desktop',
         workspace: 'packages/waveform-desktop',
         requiredFiles: [
+            'assets/constraints/index.html',
+            'assets/constraints/index.css',
+            'assets/constraints/index.js',
+            'dist/boardEditor.js',
             'assets/waveform/index.html',
             'assets/waveform/index.js',
             'dist/launcher.js',

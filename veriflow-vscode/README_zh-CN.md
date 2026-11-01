@@ -16,7 +16,7 @@
 
 ## 快速开始
 
-1. 打开 `.v` / `.sv` 文件。
+1. 打开 `.v` / `.sv` / `.xdc` / `.sdc` 文件。
 
 2. 在文件内右键 -> VeriFlow -> 插入模板 / 例化模块 / 格式化文档 / 运行仿真。
 
@@ -38,9 +38,9 @@
 
 - 自动识别 **APB、AHB、AXI** 总线接口，实现主从快速连接
 - 内置常用组合逻辑模块 **Logic Utility**，提高连接灵活性
-- **Pin Constraints** 直接导入 XDC，保存板卡/子卡约束原文与文件后缀。用户在各板卡中添加 UART 等接口、信号、方向、位宽并匹配引脚；工程面板共用于 AD/RTL，绑定顶层端口，子卡通过连接器引脚映射安装到主板。导出只替换实际绑定的端口和引脚，保留原格式。
+- **Pin Constraints** 在一个工作台内切换板卡库与绑定页。右键 Verilog/SystemVerilog 即可添加约束，无需 AD 工程；新建或导入板卡 JSON，手写每个资源的模板，再分组为接口，从右侧拖入顶层端口。主板只替换 `{signal name}`，可选子卡再替换工程填写的 `{pin name}`，ID 自动生成。
 
-无需配置器件、Bank、电压或独立接口模板。其他格式可在原文中使用明确的端口/引脚锚点。详见 [引脚绑定说明](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md)。
+不配置器件、Bank、电压或独立接口模板，也不解析约束文件。输出使用用户保存的后缀和字符串。详见 [引脚绑定说明](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md)。
 
 ![图形化架构设计](https://i.imgs.ovh/2026/09/18/3254e83e61781f004e33ccb05d88f7f3.gif)
 
@@ -54,6 +54,10 @@
 ![图形化测试平台](https://i.imgs.ovh/2026/09/18/b2092a9a5e1dc50dc859305a20f7a7e2.gif)
 
 ### 4. 常用工具
+
+Verilog 和 SystemVerilog 编辑器还提供上游 Verilog-HDL/SystemVerilog 扩展的常用代码片段，可在输入片段前缀时直接选择。VeriFlow 的 HDL 模板命令继续独立保留，用于后续扩展完整功能块模板。
+
+保存 `.v` / `.sv` 时，VeriFlow 使用内置 Icarus 编译器做仅编译检查，并将语法/展开错误及编译警告显示在编辑器中；这一步不会启动 VVP 仿真。检查使用 SystemVerilog 2012 模式。若设计使用了 Icarus 尚不支持的语法，可将 `veriflow.diagnostics.iverilog.enabled` 设为 `false`。编辑时的快速语法诊断由现有解析器提供。
 
 在 Verilog / SystemVerilog 文件内右键 -> VeriFlow ->
 

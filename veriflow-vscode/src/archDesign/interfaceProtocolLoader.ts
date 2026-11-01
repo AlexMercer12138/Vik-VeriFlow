@@ -1,9 +1,7 @@
 import { loadInterfaceProtocolCatalog } from '@veriflow/hdl-runtime/interfaces';
 import {
     createInterfaceProtocolCatalog,
-    parseInterfaceProtocolText,
     type InterfaceProtocolCatalog,
-    type InterfaceProtocolCatalogInput,
 } from '@veriflow/schematic-core/interfaces';
 
 export type InterfaceProtocolFileDiagnostic = Readonly<{

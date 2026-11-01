@@ -18,10 +18,10 @@ flowchart TD
 | 位置 | 维护内容 |
 | --- | --- |
 | `packages/schematic-core/src/archDesign` | AD 解析、编辑、解析后的图和 RTL 生成 |
-| `packages/schematic-core/src/physical*.ts` | 板卡/子卡原文约束、本板接口、绑定与渲染纯算法 |
+| `packages/schematic-core/src/physical*.ts` | 板卡/子卡显式引脚模板、本板接口、绑定与固定标记替换 |
 | `packages/hdl-runtime/src/archDesign` | HDL 定义身份、脚本编辑批次、RTL/约束构建计划 |
 | `packages/hdl-runtime/src/artifacts` | 输入快照、输出冲突、生成归属、文件发布 |
-| `packages/hdl-runtime/src/physical` | 板卡文件、用户库、装配、输出归属和 RTL 端口解析 |
+| `packages/hdl-runtime/src/physical` | 板卡文件、用户库、共享工作台状态、输出保护与 HDL 端口读取 |
 | `packages/hdl-runtime/src/interfaces` | 工程逻辑协议文件加载与诊断 |
 | `packages/hdl-runtime/src/simulationTask*` | ST 模型、编辑、预设、TB 和工作区来源解析 |
 | `packages/hdl-runtime/src/hdl` | 例化、快捷 TB 的纯文本生成 |
@@ -38,16 +38,16 @@ flowchart TD
 | AD 文档 v2 | 用户工程的 `.ad`；解析器在 `schematic-core/src/archDesign` | 画布与 `arch`；`physical` 是该设计引脚配置的持久化来源 |
 | ST 文档 v1 | 用户工程的 `.st`；模型在 `hdl-runtime/src/simulationTask` | 画布与 `task`；引用 HDL/AD，保存预设、连线与运行设置 |
 | AXI4、AXIS、APB、AHB-Lite 逻辑协议 | `packages/schematic-core/src/interfaces/builtins/*.json` | 随共享包编译发布；工程可通过 `project.json` 的 `interfaceProtocolFiles` 扩充 |
-| 板卡与子卡 | 用户原始约束及 JSON profile | 完整原文、后缀、板卡内接口；不维护独立接口模型 |
+| 板卡与子卡 | 用户板卡 JSON 文件 | 逐资源模板、后缀、本板接口；不维护独立接口模型 |
 | 用户板卡/子卡库 | `~/.veriflow_config.json` 的 `boards` | 两入口共用；保存保留其他设置，检测配置变化 |
 | RTL 引脚绑定 | 用户工程的 `*.pins.json` | 复用 `PhysicalConfiguration`；扩展显式加载/保存，CLI `pins --config` |
 | 物理模型 Schema | `packages/schematic-core/schemas/physical-interface-model.schema.json` | 校验脚本和扩展构建消费副本 |
 | ST Schema | `packages/hdl-runtime/schemas/simulation-task.schema.json` | npm 导出和扩展 JSON 编辑器消费副本 |
-| 子卡和装配示例 | `data/physical-models/examples` | V1 模型与 AD 安装示例；引脚面板配置子卡物理引脚映射 |
+| 子卡和装配示例 | `data/physical-models/examples` | V1 模型与 AD 绑定示例；子卡位置直接在绑定中填写 |
 
 `data/physical-models` 只承担硬件资源。AD/ST 是工程文档，逻辑协议定义信号关系；它们的所有权按领域划分。
 
-构建时只复制编辑器 Schema 到 `veriflow-vscode/schemas`，不打包板卡或独立物理接口资源。板卡/子卡使用 `user:<id>` 或相对 JSON 路径；XDC 静态解析端口和引脚，其他格式用显式锚点保留原文与扩展名，不推导厂商电气规则。
+构建时只复制编辑器 Schema 到 `veriflow-vscode/schemas`，不打包板卡或独立物理接口资源。板卡/子卡使用 `user:<id>` 或相对 JSON 路径；只替换固定的 {signal name} / {pin name} 标记，不解析约束语法，不推导厂商电气规则。
 
 ## 构建与检查
 
@@ -80,6 +80,8 @@ veriflow task validate sim.st
 veriflow task run sim.st
 
 veriflow board import data/physical-models/examples/carrier.board.json --id demo
+veriflow board ui
+veriflow pins ui top.v
 veriflow board list --json
 veriflow board validate user:demo
 veriflow board export user:demo -o demo-board.json
@@ -95,7 +97,7 @@ veriflow hdl tb top.v -o top_tb.v
 veriflow hdl run top_tb.v --wave-output results/top.vcd
 ```
 
-`arch build` 无 `physical` 时只生成 RTL，有 `physical` 时校验板卡/子卡绑定并生成 RTL 与原文约束。`--rtl-only` 跳过物理构建。`arch export` 只导出 RTL。约束路径优先级为 CLI `--constraints-output`、`export.constraintsOutput`、实际 RTL 的同名文件加板卡保存的扩展名。`.veriflow.json` 记录约束文件归属与摘要，人工修改会阻止覆盖。`board ui` 启动共享板卡编辑器。
+`arch build` 无 `physical` 时只生成 RTL，有 `physical` 时校验板卡/子卡绑定并生成 RTL 与模板约束。`--rtl-only` 跳过物理构建。`arch export` 只导出 RTL。约束路径优先级为 CLI `--constraints-output`、`export.constraintsOutput`、实际 RTL 的同名文件加板卡保存的扩展名。`.veriflow.json` 记录约束文件归属与摘要，人工修改会阻止覆盖。`board ui` 启动共享板卡编辑器。
 
 ### AD 操作文件
 

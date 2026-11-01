@@ -44,6 +44,9 @@ const expectedRuntimeEntries = [
     ...expectedVendorEntries,
     'extension/media/parsers/tree-sitter-systemverilog.wasm',
     'extension/media/parsers/web-tree-sitter.wasm',
+    'extension/media/constraints/index.css',
+    'extension/media/constraints/index.html',
+    'extension/media/constraints/index.js',
     'extension/media/schematic/index.css',
     'extension/media/schematic/index.html',
     'extension/media/schematic/index.js',
@@ -313,6 +316,30 @@ function run(): void {
         assert.ok(entryText('extension/language-configuration.json'));
         assert.ok(entryText('extension/syntaxes/verilog.tmLanguage.json'));
         assert.ok(entryText('extension/syntaxes/systemverilog.tmLanguage.json'));
+        assert.ok(entryText('extension/syntaxes/sdc.tmLanguage.json'));
+        assert.ok(entryText('extension/configs/verilog.configuration.json'));
+        assert.ok(entryText('extension/configs/systemverilog.configuration.json'));
+        assert.ok(entryText('extension/configs/sdc.configuration.json'));
+        assert.ok(entryText('extension/snippets/verilog.json'));
+        assert.ok(entryText('extension/snippets/systemverilog.json'));
+        assert.ok(entryText('extension/THIRD_PARTY_NOTICES.md').includes('Masahiro H'));
+        for (const language of ['sdc', 'xdc']) {
+            assert.ok(
+                packagedManifest.contributes.languages.some(
+                    (item: { id?: string; extensions?: string[] }) =>
+                        item.id === language && item.extensions?.includes(`.${language}`)
+                ),
+                `VSIX manifest is missing the ${language} language`
+            );
+        }
+        for (const language of ['verilog', 'systemverilog']) {
+            assert.ok(
+                packagedManifest.contributes.snippets.some(
+                    (item: { language?: string }) => item.language === language
+                ),
+                `VSIX manifest is missing ${language} snippets`
+            );
+        }
         for (const command of [
             'veriflow.validateArchDesign',
             'veriflow.exportArchDesign',
@@ -389,6 +416,7 @@ function run(): void {
             || entry.startsWith('extension/media/parsers/')
             || entry.startsWith('extension/media/waveform/')
             || entry.startsWith('extension/media/schematic/')
+            || entry.startsWith('extension/media/constraints/')
         )).sort();
         assert.deepStrictEqual(
             runtimeEntries,

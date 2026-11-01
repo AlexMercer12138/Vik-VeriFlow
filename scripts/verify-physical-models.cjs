@@ -14,8 +14,9 @@ for (const name of ['carrier.board.json', 'uart.daughtercard.json']) {
     for (const iface of model.interfaces) {
         assert.equal(new Set(iface.signals.map(s => s.id)).size, iface.signals.length);
         const pins = iface.signals.flatMap(s => s.pins);
+        for (const pin of pins) assert.equal(typeof model.pins[pin], 'string');
         assert.equal(new Set(pins).size, pins.length);
     }
     for (const field of ['vendor', 'device', 'banks', 'rails', 'definitions']) assert.equal(shape({ ...model, [field]: 'unsupported' }), false);
 }
-console.log('Constraint profiles V1: local UART interfaces, board and daughtercard shapes passed.');
+console.log('Board templates V1: explicit resources, local interfaces and JSON-only board shapes passed.');

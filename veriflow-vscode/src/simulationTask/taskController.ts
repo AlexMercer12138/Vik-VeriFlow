@@ -60,7 +60,7 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
             for (const [key, state] of this.states) if (state.canOpenWave) this.states.set(key, { status: 'idle', canOpenWave: false, error: 'Settings changed. Run the task again.' });
             this.emitter.fire();
         }));
-        const commands: Array<[string, (...args: any[]) => unknown]> = [
+        const commands: Array<[string, Parameters<typeof vscode.commands.registerCommand>[1]]> = [
             ['veriflow.newSimulationTask', () => this.create()],
             ['veriflow.openSimulationTask', (uri?: vscode.Uri) => this.open(uri)],
             ['veriflow.runSimulationTask', (uri?: vscode.Uri) => this.withTarget(uri, document => this.run(document))],
@@ -69,7 +69,7 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
             ['veriflow.exportSimulationTestbench', (uri?: vscode.Uri) => this.withTarget(uri, document => this.generate(document))],
             ['veriflow.validateSimulationTask', (uri?: vscode.Uri) => this.withTarget(uri, async document => { const prepared = await this.services.prepare(parseSimulationTask(document.getText()), document.uri); try { await vscode.window.showInformationMessage('Simulation Task validated'); } finally { await prepared.dispose(); } })],
         ];
-        for (const [command, handler] of commands) this.subscriptions.push(vscode.commands.registerCommand(command, async (...args: any[]) => {
+        for (const [command, handler] of commands) this.subscriptions.push(vscode.commands.registerCommand(command, async (...args) => {
             try { return await handler(...args); } catch (error) { void vscode.window.showErrorMessage(`VeriFlow: ${error instanceof Error ? error.message : String(error)}`); }
         }));
     }

@@ -8,7 +8,7 @@ async function main() {
     try {
         const file = path.join(dir, 'board.json'), configPath = path.join(dir, 'config.json');
         await writeFile(configPath, JSON.stringify({ language: 'zh', other: { keep: true } }));
-        await writeFile(file, JSON.stringify({ kind: 'board', extension: '.xdc', constraints: 'set_property PACKAGE_PIN A1 [get_ports tx]\n', interfaces: [{ id: 'UART', signals: [{ id: 'tx', direction: 'output', pins: ['A1'] }] }] }));
+        await writeFile(file, JSON.stringify({ id:'b', name:'Board', kind: 'board', extension: '.xdc', pins:{A1:'set_property PACKAGE_PIN A1 [get_ports {signal name}]\n'}, interfaces: [{ id: 'UART', signals: [{ id: 'tx', direction: 'output', pins: ['A1'] }] }] }));
         const lib = new UserPhysicalBoardLibrary({ configPath });
         await lib.importBoard(file, 'Board', 'b');
         const original = lib.get('b');

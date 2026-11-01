@@ -86,7 +86,8 @@ async function run(): Promise<void> {
         const configPath = process.argv[boardIndex + 1];
         if (!configPath) throw new Error('missing required --board-library config path');
         await app.whenReady();
-        await createBoardEditorWindow(path.resolve(configPath));
+        const arg = (name:string) => {const index=process.argv.indexOf('--'+name);return index<0?undefined:process.argv[index+1];};
+        await createBoardEditorWindow(path.resolve(configPath),arg('source'),{module:arg('module'),project:arg('project'),lib:arg('lib')?.split(','),config:arg('config')});
         app.on('window-all-closed', () => app.quit());
         return;
     }

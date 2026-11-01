@@ -53,6 +53,13 @@ async function testExtensionLifecycle(): Promise<void> {
     const parsers: FakeParserClient[] = [];
     const disposable = { dispose(): void {} };
     const vscodeStub = {
+        Disposable: class {
+            constructor(private readonly cleanup: () => void) {}
+            dispose(): void { this.cleanup(); }
+            static from(...items: { dispose(): void }[]) {
+                return { dispose: () => items.forEach(item => item.dispose()) };
+            }
+        },
         StatusBarAlignment: { Left: 1 },
         ProgressLocation: { Notification: 15 },
         window: {
@@ -67,8 +74,20 @@ async function testExtensionLifecycle(): Promise<void> {
         commands: {
             registerCommand: () => disposable,
         },
+        languages: {
+            createDiagnosticCollection: () => ({
+                set(): void {},
+                delete(): void {},
+                dispose(): void {},
+            }),
+            registerDefinitionProvider: () => disposable,
+        },
         workspace: {
+            textDocuments: [],
+            onDidOpenTextDocument: () => disposable,
             onDidChangeTextDocument: () => ({ dispose() {} }),
+            onDidSaveTextDocument: () => disposable,
+            onDidCloseTextDocument: () => disposable,
             onDidChangeConfiguration(
                 listener: (event: { affectsConfiguration(section: string): boolean }) => void
             ) {

@@ -1,8 +1,8 @@
 import * as path from 'node:path';
-import { readPhysicalBoardFile, UserPhysicalBoardLibrary } from '@veriflow/hdl-runtime/physical';
+import { readPhysicalBoardFile, physicalBoardFile, UserPhysicalBoardLibrary } from '@veriflow/hdl-runtime/physical';
 import type { CommandEnvironment, CommandOptions } from './project';
 import { emitText, result } from './artifacts';
-export interface BoardEditorLauncher { open(configPath: string): Promise<void>; }
+export interface BoardEditorLauncher { open(configPath: string, options?: {source?:string;module?:string;project?:string;lib?:string;config?:string}): Promise<void>; }
 export function boardLibrary(env: CommandEnvironment): UserPhysicalBoardLibrary { return new UserPhysicalBoardLibrary({ configPath: path.join(env.homeDir, '.veriflow_config.json') }); }
 export async function boardCommand(action: string, options: CommandOptions, env: CommandEnvironment & { boardEditorLauncher?: BoardEditorLauncher }): Promise<number> {
     const library = boardLibrary(env);
@@ -23,8 +23,8 @@ export async function boardCommand(action: string, options: CommandOptions, env:
     const reference = options.board!;
     if (action === 'import') {
         if (reference.startsWith('user:'))
-            throw new Error('Import requires a profile JSON or constraint file');
-        const id = await library.importBoard(path.resolve(env.cwd, reference), options.name, options.id, !!options.dryRun, options.kind as 'board' | 'daughtercard' | undefined);
+            throw new Error('Import board requires a board JSON file');
+        const id = await library.importBoard(path.resolve(env.cwd, reference), options.name, options.id, !!options.dryRun);
         if (options.json)
             result(options, env, { board: 'user:' + id, diagnostics: [] });
         else
@@ -33,7 +33,7 @@ export async function boardCommand(action: string, options: CommandOptions, env:
     }
     const data = reference.startsWith('user:') ? library.get(reference.slice(5)) : await readPhysicalBoardFile(path.resolve(env.cwd, reference));
     if (action === 'export')
-        return emitText(JSON.stringify(data, null, 2) + '\n', 'board', options, env);
+        return emitText(JSON.stringify(physicalBoardFile(data), null, 2) + '\n', 'board', options, env);
     if (options.json)
         result(options, env, { diagnostics: [], board: reference });
     else

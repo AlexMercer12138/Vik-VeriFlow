@@ -47,3 +47,5 @@ veriflow-vscode/resources/physical-models/
 # Generated model resources and editor schemas (sources live in shared packages).
 packages/hdl-runtime/resources/
 veriflow-vscode/schemas/
+
+veriflow-vscode/media/constraints/

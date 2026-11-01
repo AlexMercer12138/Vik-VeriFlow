@@ -848,6 +848,13 @@ async function testScanWatcherAndConfigUseOneExactIndex(): Promise<void> {
     const vscodeStub = {
         Uri: FakeUri,
         RelativePattern: FakeRelativePattern,
+        Disposable: class {
+            constructor(private readonly cleanup: () => void) {}
+            dispose(): void { this.cleanup(); }
+            static from(...items: { dispose(): void }[]) {
+                return { dispose: () => items.forEach(item => item.dispose()) };
+            }
+        },
         FileType: { File: 1, Directory: 2 },
         StatusBarAlignment: { Left: 1 },
         ProgressLocation: { Notification: 15 },
@@ -924,8 +931,20 @@ async function testScanWatcherAndConfigUseOneExactIndex(): Promise<void> {
                 executedCommands.push({ name, args });
             },
         },
+        languages: {
+            createDiagnosticCollection: () => ({
+                set(): void {},
+                delete(): void {},
+                dispose(): void {},
+            }),
+            registerDefinitionProvider: () => disposable,
+        },
         workspace: {
+            textDocuments: [],
+            onDidOpenTextDocument: () => disposable,
             onDidChangeTextDocument: () => ({ dispose() {} }),
+            onDidSaveTextDocument: () => disposable,
+            onDidCloseTextDocument: () => disposable,
             workspaceFolders,
             getWorkspaceFolder(resource: FakeUri) {
                 return workspaceFolders.find(workspaceFolder =>

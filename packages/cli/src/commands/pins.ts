@@ -11,6 +11,11 @@ import type { CommandOptions } from './project';
 import type { CliEnvironment } from '../main';
 export async function pinsCommand(action: string, options: CommandOptions, env: CliEnvironment): Promise<number> {
     const source = path.resolve(env.cwd, options.file!);
+    if (action === 'ui') {
+        if (!env.boardEditorLauncher) throw new Error('Constraint editor launcher is unavailable');
+        await env.boardEditorLauncher.open(path.join(env.homeDir,'.veriflow_config.json'),{source,module:options.module,project:options.project?path.resolve(env.cwd,options.project):undefined,lib:options.lib,config:options.config?path.resolve(env.cwd,options.config):undefined});
+        env.stdout('Pin constraint workbench launched\n'); return 0;
+    }
     let owner = source, configuration, ports;
     const inputs = [{ path: source, text: await readFile(source, 'utf8') }];
     if (/\.ad$/i.test(source)) {

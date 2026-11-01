@@ -3,7 +3,7 @@ import { inspectBoardDraft, parseBoardDraft, emptyBoard } from '../archDesign/bo
 const draft = emptyBoard();
 draft.id = 'uart';
 draft.name = 'UART';
-draft.model.constraints = 'set_property PACKAGE_PIN A1 [get_ports tx]\n';
+draft.model.pins = {A1:'set_property PACKAGE_PIN A1 [get_ports {signal name}]\n'};
 draft.model.interfaces = [{ id: 'UART0', signals: [{ id: 'tx', direction: 'output', pins: ['A1'] }] }];
 assert.deepEqual(inspectBoardDraft(draft).issues, []);
 const invalid = structuredClone(draft);

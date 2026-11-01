@@ -186,12 +186,22 @@ async function writeThirdPartyNotices(runtimePackage) {
         licenseText: await readFile(asset.licensePath, 'utf8'),
     })));
     const frontendPackages = await collectSchematicPackageNotices();
+    const reusedHdlAssetsLicense = await readFile(
+        path.join(extensionRoot, 'third-party', 'vscode-verilog-hdl-support.LICENSE'),
+        'utf8'
+    );
+    const notices = formatThirdPartyNotices(
+        [...parserPackages, runtimePackage.notice],
+        frontendPackages
+    );
     await writeFile(
         path.join(extensionRoot, 'THIRD_PARTY_NOTICES.md'),
-        formatThirdPartyNotices(
-            [...parserPackages, runtimePackage.notice],
-            frontendPackages
-        ),
+        `${notices}\n\n## Verilog-HDL/SystemVerilog VS Code assets\n\n`
+            + 'Source: [mshr-h/vscode-verilog-hdl-support](https://github.com/mshr-h/vscode-verilog-hdl-support), '
+            + 'commit `53484f7c5bc6313cf648955d050dbffcd3fe6855`.\n\n'
+            + 'The Verilog/SystemVerilog/XDC/SDC TextMate grammars, language configurations, '
+            + 'and Verilog/SystemVerilog snippets are reused under the MIT License.\n\n'
+            + `${reusedHdlAssetsLicense.trim()}\n`,
         'utf8'
     );
 }

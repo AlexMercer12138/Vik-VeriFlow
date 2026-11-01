@@ -403,6 +403,13 @@ function createExtensionHarness(
     const vscodeStub = {
         Uri: FakeUri,
         RelativePattern: FakeRelativePattern,
+        Disposable: class {
+            constructor(private readonly cleanup: () => void) {}
+            dispose(): void { this.cleanup(); }
+            static from(...items: { dispose(): void }[]) {
+                return { dispose: () => items.forEach(item => item.dispose()) };
+            }
+        },
         FileType: { File: 1, Directory: 2 },
         StatusBarAlignment: { Left: 1 },
         ProgressLocation: { Notification: 15 },
@@ -430,9 +437,21 @@ function createExtensionHarness(
                 return disposable;
             },
         },
+        languages: {
+            createDiagnosticCollection: () => ({
+                set(): void {},
+                delete(): void {},
+                dispose(): void {},
+            }),
+            registerDefinitionProvider: () => disposable,
+        },
         workspace: {
+            textDocuments: [],
             getWorkspaceFolder: (uri: FakeUri) => uri.path.startsWith(folder.uri.path + '/') ? folder : undefined,
+            onDidOpenTextDocument: () => disposable,
             onDidChangeTextDocument: () => ({ dispose() {} }),
+            onDidSaveTextDocument: () => disposable,
+            onDidCloseTextDocument: () => disposable,
             workspaceFolders: [folder],
             fs: {
                 async readDirectory(uri: FakeUri): Promise<[string, number][]> {

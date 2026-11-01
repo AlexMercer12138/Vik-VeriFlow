@@ -31,23 +31,17 @@
     "directory": "veriflow-vscode"
   },
   "activationEvents": [
+    "onLanguage:verilog",
+    "onLanguage:systemverilog",
     "workspaceContains:**/*.v",
     "workspaceContains:**/*.sv",
+    "workspaceContains:**/*.sdc",
+    "workspaceContains:**/*.xdc",
     "workspaceContains:**/*.st"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "customEditors": [
-      {
-        "viewType": "veriflow.boardLibrary",
-        "displayName": "VeriFlow Board Library Editor",
-        "selector": [
-          {
-            "filenamePattern": "*.vfboard"
-          }
-        ],
-        "priority": "default"
-      },
       {
         "viewType": "veriflow.waveformEditor",
         "displayName": "VeriFlow Waveform Viewer",
@@ -108,9 +102,10 @@
         ],
         "extensions": [
           ".v",
-          ".vh"
+          ".vh",
+          ".vl"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./configs/verilog.configuration.json"
       },
       {
         "id": "systemverilog",
@@ -120,9 +115,32 @@
         ],
         "extensions": [
           ".sv",
-          ".svh"
+          ".svh",
+          ".SV"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./configs/systemverilog.configuration.json"
+      },
+      {
+        "id": "sdc",
+        "aliases": [
+          "Synopsys Design Constraints",
+          "sdc"
+        ],
+        "extensions": [
+          ".sdc"
+        ],
+        "configuration": "./configs/sdc.configuration.json"
+      },
+      {
+        "id": "xdc",
+        "aliases": [
+          "Xilinx Design Constraints",
+          "xdc"
+        ],
+        "extensions": [
+          ".xdc"
+        ],
+        "configuration": "./configs/sdc.configuration.json"
       }
     ],
     "views": {
@@ -366,7 +384,7 @@
       },
       {
         "command": "veriflow.generatePinConstraints",
-        "title": "Generate Pin Constraints",
+        "title": "Add constraints",
         "category": "VeriFlow",
         "icon": "$(circuit-board)"
       },
@@ -837,6 +855,12 @@
           },
           "description": "SystemVerilog preprocessor defines used by VeriFlow structural parsing"
         },
+        "veriflow.diagnostics.iverilog.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "language-overridable",
+          "description": "Run the bundled Icarus compile-only semantic check when Verilog/SystemVerilog files are saved. It does not run simulation. Disable for code that uses SystemVerilog features unsupported by Icarus."
+        },
         "veriflow.simulator": {
           "type": "string",
           "enum": [
@@ -904,6 +928,26 @@
         "language": "systemverilog",
         "scopeName": "source.systemverilog",
         "path": "./syntaxes/systemverilog.tmLanguage.json"
+      },
+      {
+        "language": "sdc",
+        "scopeName": "source.sdc",
+        "path": "./syntaxes/sdc.tmLanguage.json"
+      },
+      {
+        "language": "xdc",
+        "scopeName": "source.sdc",
+        "path": "./syntaxes/sdc.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "verilog",
+        "path": "./snippets/verilog.json"
+      },
+      {
+        "language": "systemverilog",
+        "path": "./snippets/systemverilog.json"
       }
     ]
   },

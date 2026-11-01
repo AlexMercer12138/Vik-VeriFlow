@@ -3,18 +3,27 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { GlobalConfigStore } from '@veriflow/flow-core';
-import { createPhysicalBoard, importPhysicalConstraints, parseBoardDraft, inspectBoardDraft, type PhysicalBoard, type PhysicalBoardModel, type SavedPhysicalBoard } from '@veriflow/schematic-core/arch-design';
+import { createPhysicalBoard, parseBoardDraft, inspectBoardDraft, type PhysicalBoard, type PhysicalBoardModel, type SavedPhysicalBoard } from '@veriflow/schematic-core/arch-design';
 export type { SavedPhysicalBoard } from '@veriflow/schematic-core/arch-design';
 const identifier = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
-export async function readPhysicalBoardFile(file: string, onInput?: (file: string, text: string) => void): Promise<{
-    model: PhysicalBoardModel;
-}> {
+export function physicalBoardFile(board: SavedPhysicalBoard): Record<string, unknown> {
+    return { id: board.id, name: board.name, ...board.model };
+}
+export async function readPhysicalBoardFile(file: string, onInput?: (file: string, text: string) => void): Promise<SavedPhysicalBoard> {
+    if (path.extname(file).toLowerCase() !== '.json')
+        throw new Error('Import board accepts board JSON files only');
     const text = await readFile(file, 'utf8');
     onInput?.(file, text);
-    if (path.extname(file).toLowerCase() !== '.json')
-        return { model: importPhysicalConstraints(text, path.extname(file)) };
-    const input = JSON.parse(text);
-    return { model: createPhysicalBoard(input?.model ?? input).model };
+    const value = JSON.parse(text);
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        throw new Error('Invalid board file');
+    const { id, name, ...model } = value;
+    if (typeof id !== 'string' || !identifier.test(id) || typeof name !== 'string' || !name.trim())
+        throw new Error('Invalid board identity');
+    return parseBoardDraft({ id, name, model: createPhysicalBoard(model).model });
+}
+export function newPhysicalBoard(name: string, kind: PhysicalBoardModel['kind'], extension: string): SavedPhysicalBoard {
+    return { id: randomUUID(), name: name.trim(), model: createPhysicalBoard({ kind, extension, pins: {}, interfaces: [] }).model };
 }
 export class UserPhysicalBoardLibrary {
     private readonly store: GlobalConfigStore;
@@ -23,13 +32,15 @@ export class UserPhysicalBoardLibrary {
     constructor(options: {
         configPath?: string;
     } = {}) { this.store = new GlobalConfigStore(options); this.configPath = this.store.configPath; }
-    private currentText(): string | undefined { try {
-        return readFileSync(this.configPath, 'utf8');
+    private currentText(): string | undefined {
+        try {
+            return readFileSync(this.configPath, 'utf8');
+        }
+        catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'ENOENT')
+                throw e;
+        }
     }
-    catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== 'ENOENT')
-            throw e;
-    } }
     private config(): Record<string, unknown> {
         const text = this.currentText();
         if (text !== undefined) {
@@ -53,7 +64,6 @@ export class UserPhysicalBoardLibrary {
             if (!item || typeof item.id !== 'string' || !identifier.test(item.id) || typeof item.name !== 'string' || !item.name.trim()
                 || !item.model || typeof item.model !== 'object' || ids.has(item.id))
                 throw new Error('Invalid or duplicate board');
-            // Unpublished old records remain recoverable in the config but cannot be used as raw constraint profiles.
             ids.add(item.id);
             return item as SavedPhysicalBoard;
         });
@@ -61,7 +71,8 @@ export class UserPhysicalBoardLibrary {
     list(): SavedPhysicalBoard[] { return structuredClone(this.records(this.config())); }
     get(id: string): SavedPhysicalBoard {
         const saved = this.list().find(b => b.id === id);
-        if (!saved) throw new Error('User board not found: ' + id);
+        if (!saved)
+            throw new Error('User board not found: ' + id);
         return { id: saved.id, name: saved.name, model: createPhysicalBoard(saved.model).model };
     }
     load(id: string, onInput?: (file: string, text: string) => void): PhysicalBoard {
@@ -108,21 +119,19 @@ export class UserPhysicalBoardLibrary {
         config.boards = records.filter(b => b.id !== id);
         this.saveConfig(config);
     }
-    async importBoard(file: string, name?: string, requestedId?: string, dryRun = false, kind?: PhysicalBoardModel['kind']): Promise<string> {
-        const data = await readPhysicalBoardFile(file);
-        if (kind)
-            data.model.kind = kind;
-        const config = this.config(), records = this.records(config), base = path.basename(file, path.extname(file)).replace(/[^A-Za-z0-9_.-]/g, '_') || 'board';
-        let id = requestedId ?? base;
-        if (!identifier.test(id))
-            throw new Error('Invalid board ID');
-        if (requestedId && records.some(b => b.id === id))
-            throw new Error('User board already exists: ' + id);
-        for (let i = 2; records.some(b => b.id === id); i++)
-            id = base + '-' + i;
-        config.boards = [...records, { id, name: name?.trim() || base, ...data }];
+    async importBoard(file: string, name?: string, requestedId?: string, dryRun = false): Promise<string> {
+        const value = await readPhysicalBoardFile(file);
+        if (name)
+            value.name = name.trim();
+        if (requestedId)
+            value.id = requestedId;
+        const issues = inspectBoardDraft(value).issues.filter(i => i.severity === 'error');
+        if (issues.length)
+            throw new Error(issues.map(i => i.message).join('\n'));
+        if (this.list().some(b => b.id === value.id))
+            throw new Error('User board already exists: ' + value.name);
         if (!dryRun)
-            this.saveConfig(config);
-        return id;
+            this.saveBoard(value);
+        return value.id;
     }
 }

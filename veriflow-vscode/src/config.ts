@@ -89,6 +89,7 @@ export async function setDependencyResult(context: vscode.ExtensionContext, resu
 export interface ExtensionSettings {
     libDirs: string[];
     defines: Record<string, string | boolean>;
+    iverilogDiagnosticsEnabled: boolean;
     simulator: string;
     waveViewer: string;
     simulatorCompileCmd: string;
@@ -120,6 +121,7 @@ export function getSettings(resource?: vscode.Uri): ExtensionSettings {
     return {
         libDirs: config.get<string[]>('libDirs', []),
         defines: normalizeDefines(config.get<unknown>('defines', {})),
+        iverilogDiagnosticsEnabled: config.get<boolean>('diagnostics.iverilog.enabled', true),
         simulator: config.get<string>('simulator', 'builtin'),
         waveViewer: config.get<string>('waveViewer', 'builtin'),
         simulatorCompileCmd: config.get<string>('simulatorCompileCmd', ''),

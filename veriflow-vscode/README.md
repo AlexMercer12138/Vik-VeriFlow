@@ -13,7 +13,7 @@
 
 ## Quick Start
 
-1. Open a `.v` / `.sv` file.
+1. Open a `.v` / `.sv` / `.xdc` / `.sdc` file.
 2. Right-click inside the file → **VeriFlow** → insert a template / instantiate a module / format the document / run a simulation.
 3. Open **VeriFlow** from the Activity Bar.
 4. The sidebar provides module browsing → graphical top-level design → graphical Testbench design.
@@ -32,9 +32,9 @@ Select **Create Architecture Design** under **Architecture Design** in the sideb
 
 - Automatically recognizes **APB, AHB, and AXI** bus interfaces for quick master/slave connections.
 - Built-in **Logic Utility** components provide common combinational logic for more flexible connections.
-- **Pin Constraints** imports XDC into a reusable board/card profile. Define interfaces locally (for example UART tx/rx), choose directions and widths, and match imported pins. The AD/RTL panel binds these signals to top-level ports; daughtercards map connector pins to carrier pins. Export keeps the saved constraint text and extension, changing only mapped references.
+- **Pin Constraints** opens one workspace for board templates and pin bindings. Right-click a Verilog/SystemVerilog file to add constraints without an AD project. Create a board or import board JSON, write per-pin templates, group them into interfaces, and drag top-level ports to bind. Board templates replace `{signal name}`; optional daughtercards also replace `{pin name}` with the FPGA pin entered in the design. IDs are generated automatically.
 
-No device, Bank, voltage or independent interface library is required. Other formats use explicit port/pin anchors in their original text. See the [pin binding guide](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md).
+No device, Bank, voltage, constraint-language parser or independent interface library is required. The saved suffix and template text determine the output. See the [pin binding guide](https://github.com/AlexMercer12138/Vik-VeriFlow/blob/main/docs/physical-pin-bindings.md).
 
 ![Graphical architecture design](https://i.imgs.ovh/2026/09/18/3254e83e61781f004e33ccb05d88f7f3.gif)
 
@@ -48,6 +48,10 @@ Select **Create Simulation Task** under **Simulation Task** in the sidebar to cr
 ![Graphical Testbench](https://i.imgs.ovh/2026/09/18/b2092a9a5e1dc50dc859305a20f7a7e2.gif)
 
 ### 4. Common Tools
+
+Verilog and SystemVerilog editors also include the common snippets from the upstream Verilog-HDL/SystemVerilog extension. VeriFlow HDL template commands remain separate for future full-featured block templates.
+
+On save, VeriFlow runs the bundled Icarus compiler in compile-only mode and shows syntax/elaboration errors and compiler warnings in the editor. It never starts VVP for this check. The check uses SystemVerilog 2012 mode; disable `veriflow.diagnostics.iverilog.enabled` for designs using constructs outside Icarus's supported subset. Parser syntax diagnostics update while editing.
 
 Right-click inside a Verilog / SystemVerilog file → **VeriFlow** →
 

@@ -186,7 +186,7 @@ export class SimulationTaskEditorProvider implements vscode.CustomTextEditorProv
                 if (!message || (disposed && message.type !== 'saveLayout')) return;
                 if (message.type === 'ready') { ready = true; await publish(); return; }
                 if ('revision' in message && message.revision !== revision()) throw new Error('The task changed; retry this action.');
-                let task = parseSimulationTask(document.getText());
+                const task = parseSimulationTask(document.getText());
                 if (message.type === 'saveLayout' && projected) {
                     if (message.moduleKey !== projected.graph.moduleKey) return;
                     task.presentation = archDesignPresentationFromLayout(projected.projection.design, projected.graph, message.layout);
@@ -213,7 +213,7 @@ export class SimulationTaskEditorProvider implements vscode.CustomTextEditorProv
                     return;
                 }
                 if (message.type !== 'simulationTaskCommand') return;
-                const data = (message.payload ?? {}) as Record<string, any>;
+                const data = (message.payload ?? {}) as Record<string, unknown>;
                 switch (message.command) {
                     case 'addPreset': case 'updatePreset': case 'updateTaskSettings':
                         await write(applyTaskEdit(task, modules, { type: message.command, ...data } as Parameters<typeof applyTaskEdit>[2])); break;

@@ -1,57 +1,53 @@
-# 引脚绑定与原文约束
+# 约束工作台
 
-AD 从工具栏的板卡引脚按钮打开；普通 `.v` / `.sv` 文件通过编辑器、资源管理器右键或 **VeriFlow: Generate Pin Constraints** 打开。同一套 TypeScript 核心同时服务扩展和 CLI。
+右键 `.v` / `.sv` 选择 **VeriFlow: Add constraints**，直接使用被点击的文件；不需要 AD 工程。AD 使用工具栏/右键的板卡约束入口。工作台只有一个标签，内部 **Pin bindings / Board library** 两页共用，切页保留草稿。
 
 ## 建立板卡
 
-1. 打开 **Manage Boards… → Import board**，在文件选择器中过滤支持的约束格式或板卡 profile JSON。
-2. 填写 ID、名称；约束原文可以直接编辑，文件后缀随板卡保存。
-3. 添加 `UART0` 接口，创建输出 `tx`、输入 `rx`，位宽各为 1，分别匹配导入的引脚。
-4. 保存到 `~/.veriflow_config.json` 的 `boards`，所有工程共用；导出 JSON 可以分享。
+1. **Manage Boards → New board**，填写名称、类型、输出后缀。ID 自动生成，不要求输入。
+2. **Pins → Add pin**，填写资源名（例如 uart_tx），编写多行约束模板。主板位置直接写在字符串内，只插入 `{signal name}`。
+3. **Interfaces → Add interface**，为 UART 等接口添加信号、方向和有序资源列表。列表长度是位宽；支持多选 Pins 后直接创建接口。
+4. **Save board** 保存到用户库。**Import board** 只接受板卡 JSON；不能导入约束文件。复制会生成新的内部身份，重命名保留原身份。
 
-接口直接属于板卡或子卡，不使用独立接口模型。总线保存按 MSB 到 LSB 排列的引脚列表，列表长度就是位宽；方向相对于 FPGA 顶层端口。不同接口可描述同一物理引脚的不同用途，实际同时绑定时检查冲突。
+主板示例：
 
-编辑器保留撤销/重做、关闭前的未保存提示和备份恢复。保存用户配置前写 `.bak`，原子替换，保留其他设置；外部修改或备份失败不会覆盖原配置。
+```text
+set_property PACKAGE_PIN A1 [get_ports {{signal name}}]
+set_property IOSTANDARD LVCMOS33 [get_ports {{signal name}}]
+```
+
+这里只替换内层 `{signal name}`。绑定 console_tx 后得到 `[get_ports {console_tx}]`；外层花括号属于用户文本。任何格式都按相同固定标记替换，不解析约束语言，不执行 Tcl。
 
 ## 绑定与导出
 
-选择板卡，勾选接口或信号，再选择匹配的顶层端口或从右侧拖入。方向、位宽必须匹配；总线按 HDL 声明顺序映射，支持升序、非零和负数索引。所勾选的信号必须全部绑定。只输出已绑定引脚对应的约束。
+选择主板，勾选接口或信号，从右侧端口列表拖入对应行。拖起时高亮方向和位宽兼容的目标；可搜索端口，已绑定端口可一键解除。键盘可先选择端口再选择目标行，无端口下拉框。
 
-**Confirm & Export Constraints** 将 AD 绑定保存到 `.ad`；RTL 可以显式加载、保存 `top.pins.json`。相对板卡/子卡路径以配置文件所在目录为准，另存时自动重定位。输出冲突在提交 AD 草稿前检查。
+总线按真实 HDL 声明顺序逐位绑定，支持升序、非零和负数索引。主板无需另外填写封装引脚。**Save bindings** 保存到 AD 的 physical 或默认同名 RTL `.pins.json`，也可加载/另存绑定；不需要手工编辑 JSON。
 
-AD 构建同时生成 RTL 和原文约束，扩展名来自板卡。`export.constraintsOutput` 或 CLI `--constraints-output` 可覆盖路径。保存 `.pcf` 就输出 `.pcf`，不转换格式。
-
-```bash
-veriflow board import board.xdc --id my-board
-veriflow board ui
-veriflow board export user:my-board -o my-board.json
-veriflow pins validate top.v --config top.pins.json
-veriflow pins export top.v --config top.pins.json -o generated/top.xdc
-veriflow arch build top.ad
-```
-
-输出文件旁的 `<output>.veriflow.json` 保存来源和上次生成内容的摘要。保留该文件才能再次生成；人工修改或其他来源的输出会报告冲突。约束正文不插入生成器头部。
+**Export constraints** 使用主板后缀输出选中的模板。格式不转换，未绑定资源不输出。完整性、方向、位宽、重复信号和所需子卡位置均通过后才导出；输出冲突在保存 AD 草稿前检查。生成文件旁的 `.veriflow.json` 记录来源和内容摘要，人工修改后的输出不会被静默覆盖。
 
 ## 子卡
 
-导入子卡约束，在编辑器中选择 **Daughtercard**。原文使用连接器/逻辑引脚名，并在子卡内建立接口和信号。
-
-工程引脚面板展开 **Daughtercards**，选择子卡并填写实例 ID，将子卡引脚逐一映射到主板物理引脚。子卡接口随后与主板接口一起显示；已映射的物理引脚在挂载期间被预留，移除子卡后释放。
-
-选中的子卡信号输出子卡自己保存的约束，只把逻辑引脚替换成主板引脚，不叠加主板同一脚的电气属性。活动模型必须使用相同后缀。缺失映射、重复占脚、无效端口、方向/位宽错误或格式混用会阻止导出。
-
-CLI 导入子卡：`veriflow board import card.xdc --kind daughtercard --id serial-card`。挂载和绑定与 UI 使用同一份 `.pins.json`/AD 配置，见 [V1 模型](physical-interface-model.md) 和 [AD 示例](../data/physical-models/examples/top.ad)。
-
-## 原文支持范围
-
-静态识别 XDC 的 PACKAGE_PIN/LOC、`set_property -dict` 和 `get_ports` 字面量，Tcl 不执行。共享端口列表按绑定筛选；保留注释、命令顺序、属性值和换行。动态 Tcl、通配符、多个端口查询或歧义会明确报错，用户可以编辑原文或使用显式锚点。
-
-其他格式保留后缀，在可编辑原文中明确标记替换位置：
+子卡与主板独立建模。**Add daughtercard** 只选模型，实例 ID 自动生成；重复添加以名称后的序号区分。每个子卡信号从右侧拖入顶层端口，模板使用 `{pin name}` 时在工程绑定行填写最终 FPGA 引脚，例如 B7。总线展开逐位填写。
 
 ```text
-set_io {{PORT:A1}} {{PIN:A1}}
+set_property PACKAGE_PIN {pin name} [get_ports {{signal name}}]
+set_property IOSTANDARD LVCMOS18 [get_ports {{signal name}}]
 ```
 
-`PORT` 替换为顶层端口，`PIN` 替换为最终物理引脚（含子卡映射）。有未绑定锚点的命令不输出，未关联引脚的公共文本保留。XDC 不支持的表达式也可改成显式锚点；引用和转义由模板明确表达。
+子卡使用自己的全部模板，不映射主板资源、不继承主板电平，不做跨板物理占用检查。主板必须选择，子卡可选，所用模板后缀必须一致。主板只维护固定板载功能，扩展排针/FMC 功能由子卡维护。
 
-工具只检查映射，不再选择 Bank 电压、推导 IO 标准或维护厂商电气规则，约束属性按用户保存内容输出。未发布旧板卡数据没有原始约束，需重新导入 XDC。
+## CLI
+
+```bash
+veriflow board ui
+veriflow pins ui top.v
+veriflow pins ui top.ad
+veriflow board import carrier.board.json
+veriflow board export user:BOARD_ID -o carrier.board.json
+veriflow pins validate top.v --config top.pins.json
+veriflow pins export top.v --config top.pins.json -o top.xdc
+veriflow arch build top.ad
+```
+
+单文件只有一个模块时自动使用，多模块才选择模块或提供 `--module`。CLI UI 和 VS Code 使用相同前端、库模型与导出核心。结构见 [V1 模型](physical-interface-model.md)，完整交互见 [工作台设计](constraint-workbench-design.md)。

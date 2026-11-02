@@ -68,6 +68,25 @@ export class UserPhysicalBoardLibrary {
             return item as SavedPhysicalBoard;
         });
     }
+    /** Remove saved boards from older, incompatible formats while preserving the rest of the user config. */
+    cleanInvalidBoards(): number {
+        const config = this.config();
+        if (config.boards === undefined) return 0;
+        const records = Array.isArray(config.boards) ? config.boards : [];
+        const ids = new Set<string>();
+        const valid = records.filter(item => {
+            try {
+                const board = parseBoardDraft(item);
+                if (!identifier.test(board.id) || !board.name.trim() || ids.has(board.id)
+                    || inspectBoardDraft(board).issues.some(issue => issue.severity === 'error')) return false;
+                ids.add(board.id);
+                return true;
+            } catch { return false; }
+        });
+        const removed = Array.isArray(config.boards) ? records.length - valid.length : 1;
+        if (removed) { config.boards = valid; this.saveConfig(config); }
+        return removed;
+    }
     list(): SavedPhysicalBoard[] { return structuredClone(this.records(this.config())); }
     get(id: string): SavedPhysicalBoard {
         const saved = this.list().find(b => b.id === id);

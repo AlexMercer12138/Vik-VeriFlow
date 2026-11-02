@@ -55,9 +55,9 @@
             $('footer-hint').textContent=state.issues[0]?.message??'Available to all projects';
         }
         else {
-            $('status').innerHTML='<span class="dot '+(state.canExport? 'good':'')+'"></span><span>'+esc(state.diagnostics[0]?.message??(state.canExport? 'Ready to export':state.source? 'Select a board and assign signals':'Open a HDL / AD file'))+'</span>';
+            $('status').innerHTML='<span class="dot '+(state.canExport? 'good':'')+'"></span><span>'+(state.canExport? 'Ready to export':state.source? 'Ready to edit bindings':'Open a HDL / AD file')+'</span>';
             $('footer-hint').textContent=state.source? (state.source.isAd? 'Saved in '+basename(state.source.path):'Bindings: '+basename(state.source.path).replace(/\.(v|sv)$/i,'.pins.json')):'';
-            $('export').disabled=!state.canExport;
+            $('export').disabled=!state.source;
             $('save-bindings').disabled=!state.configuration?.board;
             $('load-bindings').hidden=!!state.source?.isAd;
             $('save-bindings-as').hidden=!!state.source?.isAd;
@@ -348,7 +348,7 @@
         $('interface-count').textContent=state.interfaces.length;
         $('export-preview').textContent=state.preview;
         $('output-filename').textContent=basename(state.output);
-        $('incomplete-note').textContent=state.diagnostics[0]?.message??'';
+        $('incomplete-note').textContent=state.diagnostics.length? 'Complete the selected bindings, then export for details.':'';
         const cards=state.configuration?.cards??[];
         $('card-count').textContent=cards.length+' added';
         $('card-instance').replaceChildren();
@@ -425,11 +425,14 @@
     $('save-bindings-as').onclick=() => post('bindings-save',{ saveAs: true });
     $('load-bindings').onclick=() => post('bindings-load');
     $('open-file').onclick=() => post('source-open');
-    $('new-board').onclick=() => $('new-board-dialog').showModal();
+    $('new-board').onclick=() => { $('new-board-dialog').showModal(); $('new-name').focus(); };
     $('confirm-new-board').onclick=() => {
-        if(!$('new-name').value.trim()||!$('new-extension').value.trim())
-            return; post('board-new',{ name: $('new-name').value,kind: $('new-kind').value,extension: $('new-extension').value }); $('new-board-dialog').close(); pinName=''; section='pins';
+        if(!$('new-name').value.trim()) { $('new-name').setCustomValidity('Enter a board name'); $('new-name').reportValidity(); return; }
+        $('new-name').setCustomValidity('');
+        if(!$('new-extension').reportValidity()) return;
+        post('board-new',{ name: $('new-name').value,kind: $('new-kind').value,extension: $('new-extension').value }); $('new-board-dialog').close(); pinName=''; section='pins';
     };
+    $('new-name').oninput=() => $('new-name').setCustomValidity('');
     $('import-board').onclick=() => post('board-import');
     for(const [id,type] of [['save-board','board-save'],['discard','board-discard'],['copy-board','board-copy'],['export-board','board-export'],['delete-board','board-delete'],['undo-board','board-undo'],['redo-board','board-redo'],['use-board','board-use'],['save-bindings','bindings-save'],['export','export']])
         $(id).onclick=() => post(type);

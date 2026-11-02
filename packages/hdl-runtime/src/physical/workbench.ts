@@ -64,8 +64,11 @@ export class ConstraintWorkbench {
                 page?: string;
             };
             for (const draft of record?.drafts ?? []) {
-                const parsed = parseBoardDraft(draft.value);
-                this.drafts.set(parsed.id, { value: parsed, expected: draft.expected, undo: [], redo: [] });
+                try {
+                    const parsed = parseBoardDraft(draft.value);
+                    if (!['board', 'daughtercard'].includes(parsed.model.kind)) continue;
+                    this.drafts.set(parsed.id, { value: parsed, expected: draft.expected, undo: [], redo: [] });
+                } catch { /* Ignore obsolete unpublished recovery drafts. */ }
             }
             for (const draft of record?.bindings ?? []) {
                 if (!draft.source || typeof draft.source.path !== 'string' || !Array.isArray(draft.source.ports))
@@ -73,13 +76,11 @@ export class ConstraintWorkbench {
                 const config = draft.config.board ? parsePhysicalConfiguration(draft.config) : { board: '', bindings: [] };
                 this.bindings.set(draft.source.path, { ...draft, config, active: Array.isArray(draft.active) ? draft.active : [] });
             }
-            this.currentBoard = record?.board;
+            this.currentBoard = record?.board && this.drafts.has(record.board) ? record.board : undefined;
             this.currentSource = record?.source;
             this.page = record?.page === 'bindings' ? 'bindings' : 'library';
         }
-        catch {
-            this.notice = 'A recovery draft could not be loaded. Saved boards have not been changed.';
-        }
+        catch { /* A malformed recovery snapshot must not block the workbench. */ }
     }
     snapshot(): unknown { return { drafts: [...this.drafts.values()].map(d => ({ value: d.value, expected: d.expected })), bindings: [...this.bindings.values()], board: this.currentBoard, source: this.currentSource, page: this.page }; }
     open(file?: string): Promise<void> {
@@ -88,6 +89,7 @@ export class ConstraintWorkbench {
         return operation;
     }
     private async openContext(file?: string): Promise<void> {
+        this.services.library.cleanInvalidBoards();
         if (file) {
             file = path.resolve(file);
             if (!this.bindings.has(file)) {
@@ -109,6 +111,7 @@ export class ConstraintWorkbench {
                 return;
             this.error = '';
             this.notice = '';
+            if (command.type === 'ready') this.services.library.cleanInvalidBoards();
             if (command.type !== 'ready')
                 await this.command(command);
             await this.services.persist?.(this.snapshot());
@@ -396,13 +399,10 @@ export class ConstraintWorkbench {
     close():Promise<void>{return this.tail;}
     async publish(reason?: string, editId?: number): Promise<void> {
         const boards = this.services.library.list();
+        if (this.currentBoard && !this.drafts.has(this.currentBoard) && !boards.some(board => board.id === this.currentBoard))
+            this.currentBoard = undefined;
         if (!this.currentBoard && boards.length) {
-            try {
-                this.selectBoard(boards[0].id);
-            }
-            catch {
-                this.error = 'This saved board uses an obsolete unpublished model. Create or import a board JSON file.';
-            }
+            this.selectBoard(boards[0].id);
         }
         const b = this.binding;
         let board: PhysicalBoard | undefined, diagnostics: {

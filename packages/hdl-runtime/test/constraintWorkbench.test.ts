@@ -89,6 +89,78 @@ test('an active unassigned signal blocks direct export even when other bindings 
     }
 });
 
+test('opening the workbench removes obsolete saved boards without reporting an idle error', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vf-obsolete-boards-'));
+    try {
+        const configPath = path.join(root, 'config.json');
+        await writeFile(configPath, JSON.stringify({ language: 'zh', boards: [
+            { id: 'old', name: 'Old', model: { pins: [{ name: 'A1' }], interfaces: [] } },
+            { id: 'good', name: 'Good', model: { kind: 'board', extension: '.pcf', pins: {}, interfaces: [] } }
+        ] }));
+        const library = new UserPhysicalBoardLibrary({ configPath });
+        let state: any;
+        const workbench = new ConstraintWorkbench({ library, source: async () => { throw new Error('unused'); }, saveAd: async s => s,
+            openFile: async () => undefined, saveFile: async () => undefined, confirmDelete: async () => false }, message => { state = message; });
+        await workbench.open();
+        assert.equal(state.error, '');
+        assert.deepEqual(state.boards.map((board: any) => board.id), ['good']);
+        assert.deepEqual(JSON.parse(await readFile(configPath, 'utf8')).boards.map((board: any) => board.id), ['good']);
+        assert.equal(JSON.parse(await readFile(configPath, 'utf8')).language, 'zh');
+        await workbench.dispatch({ type: 'board-new', name: 'New', kind: 'board', extension: '.xdc' });
+        assert.equal(state.draft.name, 'New');
+        assert.equal(state.error, '');
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('obsolete recovery drafts do not block an empty board library', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vf-obsolete-recovery-'));
+    try {
+        const configPath = path.join(root, 'config.json');
+        await writeFile(configPath, JSON.stringify({ boards: [{ id: 'old', name: 'Old', model: { pins: {}, interfaces: [], extension: '.xdc' } }] }));
+        const library = new UserPhysicalBoardLibrary({ configPath });
+        let state: any;
+        const workbench = new ConstraintWorkbench({ library, source: async () => { throw new Error('unused'); }, saveAd: async s => s,
+            openFile: async () => undefined, saveFile: async () => undefined, confirmDelete: async () => false }, message => { state = message; });
+        workbench.restore({ drafts: [{ value: { id: 'old', name: 'Old draft', model: { pins: {}, interfaces: [], extension: '.xdc' } } }], board: 'old', page: 'library' });
+        await workbench.open();
+        assert.equal(state.error, '');
+        assert.equal(state.notice, '');
+        assert.deepEqual(state.boards, []);
+        assert.equal(state.draft, undefined);
+        await workbench.dispatch({ type: 'board-new', name: 'Fresh', kind: 'board', extension: '.xdc' });
+        assert.equal(state.draft.name, 'Fresh');
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('ready message before opening cleans obsolete boards and publishes a usable state', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vf-ready-boards-'));
+    try {
+        const configPath = path.join(root, 'config.json');
+        await writeFile(configPath, JSON.stringify({ boards: [{ id: 'old', name: 'Old', model: { pins: [] } }] }));
+        let state: any;
+        const workbench = new ConstraintWorkbench({ library: new UserPhysicalBoardLibrary({ configPath }), source: async () => { throw new Error('unused'); },
+            saveAd: async s => s, openFile: async () => undefined, saveFile: async () => undefined, confirmDelete: async () => false }, message => { state = message; });
+        await workbench.dispatch({ type: 'ready' });
+        assert.equal(state.error, '');
+        assert.deepEqual(state.boards, []);
+        await workbench.dispatch({ type: 'board-new', name: 'Fresh', kind: 'board', extension: '.xdc' });
+        assert.equal(state.draft.name, 'Fresh');
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('recovery retains an editable V1 draft with unfinished pin templates', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vf-draft-boards-'));
+    try {
+        let state: any;
+        const workbench = new ConstraintWorkbench({ library: new UserPhysicalBoardLibrary({ configPath: path.join(root, 'config.json') }), source: async () => { throw new Error('unused'); },
+            saveAd: async s => s, openFile: async () => undefined, saveFile: async () => undefined, confirmDelete: async () => false }, message => { state = message; });
+        workbench.restore({ drafts: [{ value: { id: 'draft', name: 'Work in progress', model: { kind: 'board', extension: '', pins: { p: '' }, interfaces: [] } } }], board: 'draft', page: 'library' });
+        await workbench.open();
+        assert.equal(state.draft.name, 'Work in progress');
+        assert.equal(state.draft.model.extension, '');
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('AD export saves bindings in the source while retaining input and output ownership protection',async()=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'vf-ad-constraints-'));
  try{const file=path.join(root,'top.ad'),library=new UserPhysicalBoardLibrary({configPath:path.join(root,'library.json')});library.saveBoard({id:'b',name:'Board',model:{kind:'board',extension:'.txt',pins:{tx:'signal={signal name}'},interfaces:[{id:'U',signals:[{id:'tx',direction:'output',pins:['tx']}]}]}});await writeFile(file,serializeArchDesign({...createEmptyArchDesign('top'),ports:[{name:'tx',direction:'output'}],defaults:{'tx.value':"1'b0"}}));

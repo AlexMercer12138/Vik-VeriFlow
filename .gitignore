@@ -26,6 +26,7 @@ veriflow-vscode/*.vsix
 # IDE
 .vscode/
 .idea/
+.mote/
 *.swp
 *.swo
 

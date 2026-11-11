@@ -321,29 +321,29 @@ git commit -m "refactor: unify waveform workbench UI"
 - Preserves host actions `ready`, `board-change`, `bind`, `pin`, `board-save`, `bindings-save`, `bindings-load`, `export`, `board-open`, `source-open`, `undo`, and `redo`.
 - Placeholder insertion commands insert exactly `{signal name}` or `{pin name}` at the current textarea selection.
 
-- [ ] **Step 1: Add failing Electron assertions for the requested constraints layout**
+- [x] **Step 1: Add failing Electron assertions for the requested constraints layout**
 
 Extend the existing board editor Electron test to assert that both pages have one top toolbar row, no `.main-head`/brand/context bars, no binding progress element or per-row status cell, and that the two icon tools insert their exact token at the caret. Assert the editor grows with its parent rather than retaining the current fixed small height.
 
-- [ ] **Step 2: Run the focused constraints test and confirm it fails**
+- [x] **Step 2: Run the focused constraints test and confirm it fails**
 
 Run: `npm test --workspace @veriflow/waveform-desktop -- --test-name-pattern="shared workbench"`
 Expected: FAIL on the layout and caret-insertion assertions.
 
-- [ ] **Step 3: Convert renderer source and implement the two-page toolbar**
+- [x] **Step 3: Convert renderer source and implement the two-page toolbar**
 
 Add `@veriflow/webview-ui` as a workspace dependency. Use shared `vf-*` styles and icon rendering. Keep current board/source selectors and actions in the first toolbar row. Remove the redundant headings, descriptions, progress, and assignment status markup and update `applyPage()` to switch the active toolbar controls without changing the host page state.
 
-- [ ] **Step 4: Expand template editing and add cursor-aware icon tools**
+- [x] **Step 4: Expand template editing and add cursor-aware icon tools**
 
 Place the two icon buttons inside the constraint-template textarea frame. Give each a tooltip and `aria-label`; implement insertion by replacing the current selection and restoring the caret after the inserted token. Make the textarea consume available editor height; keep live preview in a separate resizable/collapsible region.
 
-- [ ] **Step 5: Verify real workbench messages and desktop bindings**
+- [x] **Step 5: Verify real workbench messages and desktop bindings**
 
 Run: `npm run typecheck --workspace @veriflow/schematic-webview`, `npm run test:browser --workspace @veriflow/schematic-webview`, and `npm test --workspace @veriflow/waveform-desktop -- --test-name-pattern="shared workbench"`.
 Expected: PASS for board CRUD, binding drag/drop, bus-bit editing, undo/redo, template save, export, and page switching.
 
-- [ ] **Step 6: Commit the constraints migration**
+- [x] **Step 6: Commit the constraints migration**
 
 ```bash
 git add packages/schematic-webview/src/constraints/index.js packages/schematic-webview/src/constraints/index.html packages/schematic-webview/src/constraints/index.css packages/schematic-webview/src/constraints/index.ts packages/schematic-webview/package.json packages/waveform-desktop/test/boardEditorHost.test.ts scripts/build-web.mjs package-lock.json

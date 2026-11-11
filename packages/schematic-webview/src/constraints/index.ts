@@ -1,21 +1,31 @@
+// @ts-nocheck
+import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
+
 /* Shared constraint workspace. Hosts send state and own all file operations. */
 (() => {
     'use strict';
     const $=id => document.getElementById(id),esc=value => String(value??'').replace(/[&<>"']/g,c => ({ '&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#39;' }[c]));
-    const icon=name => '<svg aria-hidden="true"><use href="#i-'+name+'"/></svg>';
-    const host=window.__boardEditorHost??(typeof acquireVsCodeApi==='function'? acquireVsCodeApi():undefined);
+    const iconAliases={ board: 'circuit-board', warning: 'triangle-alert', right: 'undo-2', arrow: 'redo-2', chevron: 'chevron-down', input: 'log-in', output: 'log-out', import: 'download', export: 'upload', grip: 'grip-vertical', edit: 'pencil', trash: 'trash-2' };
+    const icon=name => renderIcon(iconAliases[name]??name).outerHTML;
+    type WorkbenchMessage = { type: string; sourcePath?: string; [key: string]: unknown };
+    type WorkbenchViewState = { section?: string };
+    const transport=createWebviewTransport<WorkbenchMessage,WorkbenchMessage,WorkbenchViewState>(window);
     let editId=0;
-    const viewState=host?.getState?.()??{};
+    const viewState=transport.getState()??{};
     const savedViews=new Map();
     let state,draft,page='library',section=viewState.section??'pins',pinName='',selectedKey='',dragPort='',pickedPort='',filter='all',toastTimer;
     const selectedPins=new Set(),expanded=new Set();
     const signalKey=(card,iface,signal) => JSON.stringify([card??'',iface,signal]);
-    const post=(type,data={}) => { const snapshot=typeof structuredClone==='function'? structuredClone(data):JSON.parse(JSON.stringify(data)); host?.postMessage({ type,sourcePath:state?.source?.path,...snapshot }); };
+    const post=(type,data={}) => { const snapshot=typeof structuredClone==='function'? structuredClone(data):JSON.parse(JSON.stringify(data)); transport.postMessage({ type,sourcePath:state?.source?.path,...snapshot }); };
     const notice=text => {
         if(!text)
             return; $('toast-text').textContent=text; $('toast').classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(() => $('toast').classList.remove('show'),2600);
     };
-    document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML=icon(el.dataset.icon));
+    document.querySelectorAll('[data-icon]').forEach(el => {
+        const name=el.dataset.icon;
+        if(name)
+            el.replaceChildren(renderIcon(iconAliases[name]??name));
+    });
     const basename=file => file?.split(/[\\/]/).pop()??'';
     const modelFor=card => state.models?.[card??''];
     const bindingsFor=row => (state.configuration?.bindings??[]).filter(b => b.source.card===row.card&&b.source.interface===row.iface&&members(row).includes(b.source.member));
@@ -44,7 +54,7 @@
         } $('binding-empty').classList.toggle('hidden',page!=='bindings'||!!state.source); renderFooter();
     }
     function setSection(next) {
-        section=next; host?.setState?.({ section }); for(const p of ['pins','interfaces','details']) {
+        section=next; transport.setState({ section }); for(const p of ['pins','interfaces','details']) {
             $('section-'+p).classList.toggle('hidden',p!==next);
             document.querySelector('[data-section="'+p+'"]').classList.toggle('active',p===next);
         }
@@ -96,7 +106,6 @@
         $('board-title').textContent=draft?.name||'Create your first board';
         $('board-kind').textContent=draft?.model.kind==='daughtercard'? 'Daughtercard':'Board';
         $('use-board').disabled=!draft||!state.source||draft.model.kind!=='board'||state.dirty;
-        $('board-subtitle').textContent=draft? draft.model.interfaces.length+' interfaces · '+Object.keys(draft.model.pins).length+' pin templates · '+draft.model.extension:'New board or Import board to get started';
         if(!draft) {
             updateLibraryStatus();
             return;
@@ -112,14 +121,12 @@
         $('template-text').disabled=!pinName;
         $('delete-pin').disabled=!pinName;
         $('template-extension').textContent=draft.model.extension;
-        $('template-owner').textContent=pinUsage(pinName).join(', ')||'Not grouped';
         const card=draft.model.kind==='daughtercard';
         for(const id of ['insert-pin','guide-pin','example-pin-wrap'])
             $(id).classList.toggle('hidden',!card);
         $('guide-title').textContent=card? 'Daughtercard pin':'Board pin';
         $('guide-subtitle').textContent=card? 'Variable position, independent settings.':'Fixed location, replace the signal.';
         $('template-type').textContent=card? 'Position set in each design':'Fixed position';
-        $('template-caption').textContent=card? 'Write the card’s complete constraint. The design supplies its signal and FPGA pin.':'Write the physical pin directly in this text. Only the signal name is replaced.';
         $('detail-name').value=draft.name;
         $('detail-kind').value=draft.model.kind;
         $('detail-extension').value=draft.model.extension;
@@ -284,7 +291,7 @@
             tr.dataset.key=row.key;
             tr.className=(row.key===selectedKey? 'current ':'')+(!complete? 'needs':'');
             const label=row.iface+'.'+row.signal.id;
-            tr.innerHTML='<td class="row-select"><span class="signal-name">'+esc(label)+'</span><span class="binding-source-type">'+esc(labelFor(row.card))+'</span></td><td><span class="direction '+row.signal.direction+'">'+icon(row.signal.direction==='inout'? 'route':row.signal.direction)+' '+row.signal.direction+'</span><span class="width">'+row.signal.pins.length+'b</span></td><td><div class="port-dropzone '+(name? 'has-port':'empty-port')+'"><button class="port-drop-action" aria-label="Bind '+esc(labelFor(row.card)+' '+label)+'">'+icon(name? 'route':'plus')+'<span>'+esc(name||'Drop port here')+'</span></button>'+(name? '<button class="clear-binding" aria-label="Clear '+esc(label)+'">×</button>':'')+'</div></td><td class="physical-cell"></td><td class="statuscell">'+icon(complete? 'circle-check':'warning')+'</td>';
+            tr.innerHTML='<td class="row-select"><span class="signal-name">'+esc(label)+'</span><span class="binding-source-type">'+esc(labelFor(row.card))+'</span></td><td><span class="direction '+row.signal.direction+'">'+icon(row.signal.direction==='inout'? 'route':row.signal.direction)+' '+row.signal.direction+'</span><span class="width">'+row.signal.pins.length+'b</span></td><td><div class="port-dropzone '+(name? 'has-port':'empty-port')+'"><button class="port-drop-action" aria-label="Bind '+esc(labelFor(row.card)+' '+label)+'">'+icon(name? 'route':'plus')+'<span>'+esc(name||'Drop port here')+'</span></button>'+(name? '<button class="clear-binding" aria-label="Clear '+esc(label)+'">×</button>':'')+'</div></td><td class="physical-cell"></td>';
             tr.querySelector('.row-select').onclick=() => {
                 selectedKey=row.key; if(row.signal.pins.length>1) {
                     expanded.has(row.key)? expanded.delete(row.key):expanded.add(row.key);
@@ -326,7 +333,7 @@
                 const detail=document.createElement('tr');
                 detail.className='bus-expansion';
                 const td=document.createElement('td');
-                td.colSpan=5;
+                td.colSpan=4;
                 members(row).forEach((member,i) => {
                     const b=bs.find(b => b.source.member===member); const item=document.createElement('div'); item.className='bus-bit-row'; item.innerHTML='<span>'+esc(member)+'</span><span>'+esc(row.signal.pins[i])+'</span><span>'+esc(b? b.port.name+(b.port.bit!==undefined? '['+b.port.bit+']':''):'Not bound')+'</span>'; if(row.card&&model.pins[row.signal.pins[i]]?.includes('{pin name}')) {
                         const input=field(b?.pin??'',v => post('pin',{ card: row.card,interface: row.iface,member,pin: v }));
@@ -340,9 +347,6 @@
                 $('binding-rows').append(detail);
             }
         }
-        $('progress-label').textContent=ready+' of '+total+' ready';
-        $('progress-detail').textContent=state.ports.length+' ports';
-        $('progress-track').style.width=(ready/Math.max(total,1)*100)+'%';
         $('selected-count').textContent=total;
         $('incomplete-count').textContent=total-ready;
         $('interface-count').textContent=state.interfaces.length;
@@ -396,7 +400,7 @@
             $('selected-summary').textContent=row.card? 'Uses the daughtercard’s own template.':'Position is fixed in the board template.';
         }
     }
-    function receive(message) {
+    function receive(message: WorkbenchMessage) {
         const scroll={ library: document.querySelector('.library-main').scrollTop,main: document.querySelector('.main').scrollTop,inspector: document.querySelector('#port-browser').scrollTop }; const next=message?.data??message; if(next.type!=='state')
             return; if(state?.source?.path&&state.source.path!==next.source?.path) {
                 savedViews.set(state.source.path,{ selectedKey });
@@ -411,9 +415,7 @@
             notice(next.notice); if(keep&&focused?.isConnected)
             focused.focus(); document.querySelector('.library-main').scrollTop=scroll.library; document.querySelector('.main').scrollTop=scroll.main; document.querySelector('#port-browser').scrollTop=scroll.inspector;
     }
-    host?.onMessage?.(receive);
-    if(!host?.onMessage)
-        window.addEventListener('message',receive);
+    transport.onMessage(receive);
     document.querySelectorAll('[data-page]').forEach(b => b.onclick=() => setPage(b.dataset.page));
     document.querySelectorAll('[data-section]').forEach(b => b.onclick=() => setSection(b.dataset.section));
     document.querySelectorAll('[data-filter]').forEach(b => b.onclick=() => { filter=b.dataset.filter; document.querySelectorAll('[data-filter]').forEach(x => x.classList.toggle('active',x===b)); renderBindings(); });

@@ -6,7 +6,7 @@ import { applyArchDesignEdit, parseArchDesignText, serializeArchDesign } from '@
 import { publishGeneratedFile } from '@veriflow/hdl-runtime/archDesign';
 import { BOARD_EDITOR_HOST_MESSAGE_CHANNEL, BOARD_EDITOR_RENDERER_MESSAGE_CHANNEL } from './ipc';
 export async function createBoardEditorWindow(configPath: string, sourceFile?: string, options: ConstraintSourceOptions = {}): Promise<BrowserWindow> {
-    const window = new BrowserWindow({ width: 1440, height: 940, minWidth: 720, minHeight: 540, title: 'Pin constraints', backgroundColor: '#181b20', webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    const window = new BrowserWindow({ width: 1440, height: 940, minWidth: 720, minHeight: 540, title: 'Pin constraints', backgroundColor: '#181b20', webPreferences: { preload: path.join(__dirname, 'preload.js'), additionalArguments: ['--board-library'], contextIsolation: true, nodeIntegration: false, sandbox: true } });
     window.webContents.on('will-navigate', e => e.preventDefault());
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     const recovery = path.join(app.getPath('userData'), 'constraint-workbench.json');

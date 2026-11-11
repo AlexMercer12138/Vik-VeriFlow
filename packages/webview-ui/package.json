@@ -1,0 +1,21 @@
+{
+  "name": "@veriflow/webview-ui",
+  "version": "1.5.3",
+  "private": true,
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./tokens.css": "./src/tokens.css",
+    "./base.css": "./src/base.css"
+  },
+  "dependencies": {
+    "lucide": "1.28.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node test/run-tests.cjs"
+  }
+}

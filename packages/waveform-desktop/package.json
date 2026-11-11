@@ -53,9 +53,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/build-assets.mjs",
     "postinstall": "node scripts/install-electron.cjs",
-    "prepack": "npm run build",
+    "prepack": "npm run build:shared --prefix ../.. && npm run build:web --prefix ../.. && npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "pretest": "npm run build:shared --prefix ../..",
+    "pretest": "npm run build:shared --prefix ../.. && npm run build:web --prefix ../..",
     "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"
   },
   "devDependencies": {

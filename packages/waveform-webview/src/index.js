@@ -1,4 +1,3 @@
-const bootstrap = ${stateJson};
 const waveformTransport = globalThis.waveformTransport;
 const vscode = {
     postMessage(message) { waveformTransport.send(message); },

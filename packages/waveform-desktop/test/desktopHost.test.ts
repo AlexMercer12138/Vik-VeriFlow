@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -12,6 +12,20 @@ const repositoryRoot = path.resolve(__dirname, '../../../..');
 const mainEntry = path.join(repositoryRoot, 'packages', 'waveform-desktop', 'dist', 'main.js');
 const waveformFixture = path.join(repositoryRoot, 'tests', 'fixtures', 'waveform_debug.vcd');
 const screenshotRoot = path.join(repositoryRoot, '.artifacts', 'waveform-desktop');
+
+test('Electron workbenches use the canonical web-dist assets', () => {
+    for (const application of ['constraints', 'schematic', 'waveform']) {
+        const canonicalRoot = path.join(repositoryRoot, 'web-dist', application);
+        const desktopRoot = path.join(repositoryRoot, 'packages', 'waveform-desktop', 'assets', application);
+        for (const name of readdirSync(canonicalRoot)) {
+            assert.deepEqual(
+                readFileSync(path.join(desktopRoot, name)),
+                readFileSync(path.join(canonicalRoot, name)),
+                `${application}/${name} must be copied from web-dist`
+            );
+        }
+    }
+});
 
 function electronEnvironment(): Record<string, string> {
     return Object.fromEntries(

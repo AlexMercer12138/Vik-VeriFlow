@@ -12,6 +12,7 @@
     "@veriflow/hdl-runtime": "1.5.3",
     "@antv/x6": "3.1.7",
     "@veriflow/schematic-core": "1.5.3",
+    "@veriflow/webview-ui": "1.5.3",
     "lucide": "1.28.0",
     "tslib": "2.8.1"
   },

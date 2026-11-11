@@ -106,33 +106,19 @@ export class WaveformEditorProvider implements vscode.CustomReadonlyEditorProvid
     private _getHtml(webview: vscode.Webview): string {
         const nonce = getNonce();
         const assetsDir = path.join(this._context.extensionPath, 'media', 'waveform');
-        const css = fs.readFileSync(path.join(assetsDir, 'index.css'), 'utf-8');
-        const body = fs.readFileSync(path.join(assetsDir, 'index.html'), 'utf-8');
-        const coreScript = fs.readFileSync(path.join(assetsDir, 'viewer-core.js'), 'utf-8');
-        const transportScript = fs.readFileSync(path.join(assetsDir, 'viewer-transport.js'), 'utf-8');
-        const script = fs.readFileSync(path.join(assetsDir, 'index.js'), 'utf-8')
-            .replace('const bootstrap = ${stateJson};', 'const bootstrap = { nonce: "' + nonce + '" };');
-
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VeriFlow Waveform</title>
-<style>
-${css}
-</style>
-</head>
-<body>
-${body}
-<script nonce="${nonce}">
-${transportScript}
-${coreScript}
-${script}
-</script>
-</body>
-</html>`;
+        const source = fs.readFileSync(path.join(assetsDir, 'index.html'), 'utf-8');
+        const csp = `default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';`;
+        return source
+            .replace(/<meta\s+http-equiv="Content-Security-Policy"\s+content="[^"]*">/i,
+                `<meta http-equiv="Content-Security-Policy" content="${csp}">`)
+            .replace('href="./index.css"',
+                `href="${webview.asWebviewUri(vscode.Uri.file(path.join(assetsDir, 'index.css')))}"`)
+            .replace(/<script src="\.\/(viewer-transport|viewer-core|index)\.js"><\/script>/g,
+                (_tag, name: string) => {
+                    const scriptPath = path.join(assetsDir, `${name}.js`);
+                    const scriptUri = webview.asWebviewUri(vscode.Uri.file(scriptPath));
+                    return `<script nonce="${nonce}" src="${scriptUri}"></script>`;
+                });
     }
 }
 

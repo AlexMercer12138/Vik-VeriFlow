@@ -5,6 +5,7 @@ import * as path from 'path';
 const root = path.resolve(__dirname, '../../..');
 
 const outputFiles = {
+    constraints: ['index.css', 'index.html', 'index.js'],
     waveform: [
         'index.css',
         'index.html',
@@ -24,19 +25,39 @@ for (const [application, expectedFiles] of Object.entries(outputFiles)) {
             `web-dist/${application}/${fileName} is missing`
         );
     }
+    assert.match(
+        fs.readFileSync(path.join(outputRoot, 'index.css'), 'utf8'),
+        /--vf-bg:/,
+        `${application} must include the shared design tokens`
+    );
+    assert.ok(fs.readFileSync(path.join(outputRoot, 'index.js'), 'utf8').length > 100);
 }
 
-for (const [application, fileNames] of Object.entries({
-    waveform: outputFiles.waveform,
-    schematic: ['index.css', 'index.html'],
-})) {
+for (const [application, fileNames] of Object.entries(outputFiles)) {
     for (const fileName of fileNames) {
         assert.deepStrictEqual(
             fs.readFileSync(path.join(root, 'web-dist', application, fileName)),
-            fs.readFileSync(path.join(root, 'packages', `${application}-webview`, 'src', fileName)),
-            `${application}/${fileName} must be copied byte-for-byte`
+            fs.readFileSync(path.join(root, 'veriflow-vscode', 'media', application, fileName)),
+            `${application}/${fileName} must use the canonical VS Code asset`
         );
     }
+    for (const fileName of fs.readdirSync(path.join(root, 'web-dist', application))) {
+        assert.deepStrictEqual(
+            fs.readFileSync(path.join(root, 'web-dist', application, fileName)),
+            fs.readFileSync(path.join(root, 'packages', 'waveform-desktop', 'assets', application, fileName)),
+            `${application}/${fileName} must use the canonical Electron asset`
+        );
+    }
+}
+
+assert.doesNotMatch(
+    fs.readFileSync(path.join(root, 'web-dist', 'waveform', 'index.js'), 'utf8'),
+    /\$\{stateJson\}/,
+    'renderer source must not contain a host-specific bootstrap marker'
+);
+const waveformHtml = fs.readFileSync(path.join(root, 'web-dist', 'waveform', 'index.html'), 'utf8');
+for (const fileName of ['index.css', 'viewer-transport.js', 'viewer-core.js', 'index.js']) {
+    assert.ok(waveformHtml.includes(`./${fileName}`), `waveform HTML must reference ${fileName}`);
 }
 
 assert.ok(

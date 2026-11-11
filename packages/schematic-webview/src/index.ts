@@ -64,6 +64,7 @@ import type {
     ArchDesignWidth,
 } from '@veriflow/schematic-core/arch-design';
 import { isSafeDefaultExpression } from '@veriflow/schematic-core/arch-design/defaults';
+import { createWebviewTransport } from '@veriflow/webview-ui';
 import type { SchematicLayout } from './shared/layoutStore';
 import type { HostEvent, WebviewCommand } from './shared/protocol';
 import {
@@ -83,17 +84,6 @@ import {
 } from './shared/webviewSupport';
 
 type PersistedWebviewState = { layouts?: Record<string, SchematicLayout> };
-type VsCodeApi = {
-    postMessage(message: WebviewCommand): void;
-    getState(): PersistedWebviewState | undefined;
-    setState(state: PersistedWebviewState): void;
-};
-
-declare global {
-    interface Window {
-        acquireVsCodeApi?: () => VsCodeApi;
-    }
-}
 
 type CellData = {
     objectId: string;
@@ -245,26 +235,7 @@ function requiredElement<T extends HTMLElement>(id: string): T {
     return element as T;
 }
 
-function previewApi(): VsCodeApi {
-    let state: PersistedWebviewState | undefined;
-    return {
-        postMessage(message): void {
-            window.dispatchEvent(new CustomEvent('veriflow:webview-message', {
-                detail: message,
-            }));
-        },
-        getState(): PersistedWebviewState | undefined {
-            return state;
-        },
-        setState(nextState): void {
-            state = nextState;
-        },
-    };
-}
-
-const vscode = typeof window.acquireVsCodeApi === 'function'
-    ? window.acquireVsCodeApi()
-    : previewApi();
+const transport = createWebviewTransport<WebviewCommand, HostEvent, PersistedWebviewState>();
 
 let textMeasureContext: CanvasRenderingContext2D | null | undefined;
 
@@ -1136,7 +1107,7 @@ function refreshConnectionMagnets(): void {
 }
 
 function post(message: WebviewCommand): void {
-    vscode.postMessage(simulationTaskDocument && message.type === 'editArchDesign'
+    transport.postMessage(simulationTaskDocument && message.type === 'editArchDesign'
         ? { ...message, type: 'editSchematic' } : message);
 }
 
@@ -1176,11 +1147,11 @@ function persistCurrentLayoutState(): SchematicLayout | undefined {
     if (!currentLayout || !currentGraph || !currentRevision || applyingLayout) return undefined;
     const moduleKey = currentGraph.moduleKey;
     const layouts = mergeSchematicWebviewLayouts(
-        vscode.getState()?.layouts,
+        transport.getState()?.layouts,
         moduleKey,
         currentLayout
     );
-    vscode.setState({ layouts });
+    transport.setState({ layouts });
     return layouts[moduleKey];
 }
 
@@ -2504,7 +2475,7 @@ function handleHostEvent(event: HostEvent): void {
                 : undefined;
             const localViewport = event.fitOnFirstRender === true
                 && autoFittedModules.has(event.graph.moduleKey)
-                ? vscode.getState()?.layouts?.[event.graph.moduleKey]?.viewport
+                ? transport.getState()?.layouts?.[event.graph.moduleKey]?.viewport
                 : undefined;
             const localLayout = queuedArchDesignLayoutSave?.moduleKey
                 === event.graph.moduleKey
@@ -3530,17 +3501,7 @@ resizeObserver.observe(dom.canvasRegion);
 window.addEventListener('pagehide', flushLayoutSavesForUnload);
 window.addEventListener('beforeunload', flushLayoutSavesForUnload);
 
-window.addEventListener('message', event => {
-    if (!event.data || typeof event.data !== 'object') return;
-    const type = (event.data as { type?: unknown }).type;
-    if (type === 'initialize' || type === 'graph' || type === 'diagnostics'
-        || type === 'simulationTaskState' || type === 'simulationTaskExecution'
-        || type === 'archDesignState' || type === 'archDesignLayoutSaved'
-        || type === 'archDesignRevisionChanged'
-        || type === 'hostError') {
-        handleHostEvent(event.data as HostEvent);
-    }
-});
+transport.onMessage(handleHostEvent);
 
 dom.shell.dataset.runtimeReady = 'true';
 post({ type: 'ready' });

@@ -4,15 +4,24 @@ import test from 'node:test';
 import { createWebviewTransport } from '../src/host';
 
 type Listener = (event: { data: unknown }) => void;
+type CustomListener = (event: { detail: unknown }) => void;
 
 function createWindow() {
     const listeners = new Set<Listener>();
+    const customListeners = new Set<CustomListener>();
     const posted: unknown[] = [];
     return {
         listeners,
+        customListeners,
         posted,
-        addEventListener(_type: 'message', listener: Listener) { listeners.add(listener); },
-        removeEventListener(_type: 'message', listener: Listener) { listeners.delete(listener); },
+        addEventListener(type: string, listener: Listener | CustomListener) {
+            if (type === 'message') listeners.add(listener as Listener);
+            else if (type === 'veriflow:webview-host-message') customListeners.add(listener as CustomListener);
+        },
+        removeEventListener(type: string, listener: Listener | CustomListener) {
+            if (type === 'message') listeners.delete(listener as Listener);
+            else if (type === 'veriflow:webview-host-message') customListeners.delete(listener as CustomListener);
+        },
         postMessage(message: unknown) { posted.push(message); },
     };
 }
@@ -78,11 +87,16 @@ test('uses the preview event and local state when no host bridge exists', () => 
         },
     });
     const transport = createWebviewTransport(win as unknown as Window);
+    const received: unknown[] = [];
+    transport.onMessage(message => received.push(message));
     transport.setState({ selected: 'clk' });
     transport.postMessage({ type: 'ready' });
+    for (const listener of win.listeners) listener({ data: { type: 'initialize' } });
+    for (const listener of win.customListeners) listener({ detail: { type: 'preview' } });
     assert.deepEqual(dispatched, {
         type: 'veriflow:webview-message',
         detail: { type: 'ready' },
     });
     assert.deepEqual(transport.getState(), { selected: 'clk' });
+    assert.deepEqual(received, [{ type: 'initialize' }, { type: 'preview' }]);
 });

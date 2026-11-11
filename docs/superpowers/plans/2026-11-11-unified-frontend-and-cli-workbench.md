@@ -53,7 +53,7 @@
 - Produces `createWebviewTransport(window)` selecting VS Code `acquireVsCodeApi()` plus the window `message` event, or Electron `window.__veriflowHost`; the preview/test fallback dispatches the existing `veriflow:webview-message` event.
 - Produces `renderIcon(name)` from the existing Lucide package. Decorative SVGs are `aria-hidden`; icon buttons keep their caller-provided title and accessible name.
 
-- [ ] **Step 1: Add a failing transport test**
+- [x] **Step 1: Add a failing transport test**
 
 ```ts
 test('forwards commands and host events and preserves webview state', () => {
@@ -79,21 +79,21 @@ test('forwards commands and host events and preserves webview state', () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused test and confirm it fails**
+- [x] **Step 2: Run the focused test and confirm it fails**
 
 Run: `npm test --workspace @veriflow/webview-ui`
 Expected: FAIL because `createWebviewTransport` and the fake-window fixture do not exist.
 
-- [ ] **Step 3: Implement the host transport and common icon helper**
+- [x] **Step 3: Implement the host transport and common icon helper**
 
 Add the generic transport interface and adapters in `src/host.ts`; define the Electron global as a narrow renderer API with no Node access. Add `renderIcon` in `src/icons.ts`, pin `lucide` to the existing `1.28.0`, and copy the demo's semantic `--vf-*` tokens/base control rules into production CSS without theme presets or demo scripts.
 
-- [ ] **Step 4: Run package typecheck and tests**
+- [x] **Step 4: Run package typecheck and tests**
 
 Run: `npm run typecheck --workspace @veriflow/webview-ui` and `npm test --workspace @veriflow/webview-ui`
 Expected: PASS for VS Code, Electron, and preview adapters, including state persistence only where the host supports it.
 
-- [ ] **Step 5: Commit the shared UI foundation**
+- [x] **Step 5: Commit the shared UI foundation**
 
 ```bash
 git add package.json package-lock.json packages/webview-ui/package.json packages/webview-ui/tsconfig.json packages/webview-ui/src/host.ts packages/webview-ui/src/icons.ts packages/webview-ui/src/tokens.css packages/webview-ui/src/base.css packages/webview-ui/test/host.test.ts packages/webview-ui/test/run-tests.cjs
@@ -124,29 +124,29 @@ git commit -m "feat: add shared webview UI foundation"
 - Electron preload exposes the shared `__veriflowHost` API for each app while keeping `__waveformMemoryTransport` and `__boardEditorHost` aliases for existing renderers during migration.
 - Electron copies the canonical application directories without rewriting renderer files.
 
-- [ ] **Step 1: Add asset and waveform initialization contract assertions**
+- [x] **Step 1: Add asset and waveform initialization contract assertions**
 
 Update `webDistAssets.test.ts` to check all three app outputs, shared tokens, app CSS, HTML, and non-empty renderer scripts. Assert that the waveform bundle no longer contains the `${stateJson}` marker. Extend `desktopHost.test.ts` to verify Electron loads the canonical waveform asset and still receives initial metadata after `ready`.
 
-- [ ] **Step 2: Run focused tests to observe the current asset duplication**
+- [x] **Step 2: Run focused tests to observe the current asset duplication**
 
 Run: `npm test --workspace veriflow-vscode` and `npm test --workspace @veriflow/waveform-desktop -- --test-name-pattern="waveform renderer"`.
 Expected: FAIL because the current asset pipeline does not compose shared CSS or produce a single canonical output path for Electron.
 
-- [ ] **Step 3: Emit canonical app directories from `build-web.mjs`**
+- [x] **Step 3: Emit canonical app directories from `build-web.mjs`**
 
 For each app, compose `tokens.css`, `base.css`, and its app stylesheet into `index.css`. Support both a TypeScript `entryPoint` and the current JavaScript script list so the later migration tasks can switch apps incrementally. Keep stable HTML and script filenames. Make `build-vscode.mjs` copy the generated directories and make desktop `build-assets.mjs` copy those same directories instead of reading renderer sources directly.
 
-- [ ] **Step 4: Normalize Electron transport and remove source rewrites**
+- [x] **Step 4: Normalize Electron transport and remove source rewrites**
 
 Expose `__veriflowHost` from Electron preload with `postMessage`, `onMessage`, `getState`, and `setState`, while preserving the existing waveform and board bridge aliases during migration. Remove the unused `${stateJson}` marker and the VS Code provider's source replacement. Keep its existing `ready` handling and the Qt transport adapter unchanged. Ensure root `build:desktop`, desktop `pretest`, and desktop `prepack` build canonical web assets before copying them.
 
-- [ ] **Step 5: Run asset, host, and packaging checks**
+- [x] **Step 5: Run asset, host, and packaging checks**
 
 Run: `npm run build:web`, `npm test --workspace veriflow-vscode`, `npm test --workspace @veriflow/waveform-desktop -- --test-name-pattern="waveform renderer"`, and `npm run test:vsix --workspace veriflow-vscode`.
 Expected: PASS; both hosts consume the same canonical renderer HTML, CSS, and JavaScript, with host-specific CSP and resource URL handling confined to the adapters.
 
-- [ ] **Step 6: Commit canonical asset infrastructure**
+- [x] **Step 6: Commit canonical asset infrastructure**
 
 ```bash
 git add scripts/build-web.mjs scripts/build-vscode.mjs packages/waveform-desktop/scripts/build-assets.mjs packages/waveform-desktop/package.json packages/waveform-desktop/src/preload.ts packages/waveform-webview/src/index.js packages/waveform-desktop/test/desktopHost.test.ts veriflow-vscode/src/waveformEditorProvider.ts veriflow-vscode/src/test/webDistAssets.test.ts veriflow-vscode/src/test/schematicAssets.test.ts veriflow-vscode/src/test/rootBuild.test.ts veriflow-vscode/src/test/vsixPackaging.test.ts package.json
@@ -168,25 +168,25 @@ git commit -m "build: share canonical webview assets"
 - Consumes the `WebviewTransport<WebviewCommand, HostEvent, PersistedWebviewState>` from Task 1.
 - Produces the same `WebviewCommand` / `HostEvent` behavior for both `.ad` and `.st`; no host protocol changes.
 
-- [ ] **Step 1: Add failing browser assertions for shared shell behavior**
+- [x] **Step 1: Add failing browser assertions for shared shell behavior**
 
 Assert that both Arch Design and Simulation Task modes render one shared toolbar, use the common control classes, and still expose their mode-specific actions. Assert that the toolbar command buttons retain their current `aria-label`, `title`, and keyboard shortcut attributes.
 
-- [ ] **Step 2: Run the schematic browser test and confirm it fails**
+- [x] **Step 2: Run the schematic browser test and confirm it fails**
 
 Run: `npm run test:browser --workspace @veriflow/schematic-webview`
 Expected: FAIL on the new shared-shell assertions.
 
-- [ ] **Step 3: Apply shared tokens and transport**
+- [x] **Step 3: Apply shared tokens and transport**
 
 Add `@veriflow/webview-ui` as a workspace dependency. Map existing `--schematic-*` drawing colors to `--vf-*` semantic tokens in `index.css`. Replace the local VS Code-only API wrapper in `index.ts` with the shared transport. Keep X6 graph creation, `.ad` and `.st` state handling, diagnostics, inspector, export, run, and waveform commands intact.
 
-- [ ] **Step 4: Run schematic tests**
+- [x] **Step 4: Run schematic tests**
 
 Run: `npm test --workspace @veriflow/schematic-webview` and `npm run test:browser --workspace @veriflow/schematic-webview`
 Expected: PASS, including existing graph, edit, and task protocol tests.
 
-- [ ] **Step 5: Commit the schematic migration**
+- [x] **Step 5: Commit the schematic migration**
 
 ```bash
 git add packages/schematic-webview/src/index.html packages/schematic-webview/src/index.css packages/schematic-webview/src/index.ts packages/schematic-webview/test/schematicWebview.test.ts packages/schematic-webview/test/unifiedWorkbench.browser.cjs packages/schematic-webview/package.json package-lock.json

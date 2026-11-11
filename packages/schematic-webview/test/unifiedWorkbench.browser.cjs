@@ -49,6 +49,24 @@ async function initialize() {
  await send({type:'initialize',fileUri:'file:///demo.st',modules:[{key:projected.graph.moduleKey,name:'demo_tb'}],selectedModuleKey:projected.graph.moduleKey,documentKind:kind,editable:true});
  await state();
 }
+async function assertSharedToolbar(mode) {
+ assert.equal(await page.locator('#toolbar.vf-toolbar').count(),1,'both modes use the shared toolbar shell');
+ assert.equal(await page.locator('#module-selector.vf-select').count(),1,'module selection uses the shared control');
+ assert.ok(await page.locator('#toolbar .vf-tool-group').count()>=2,'toolbar actions use shared groups');
+ assert.ok(await page.locator('#toolbar .vf-icon-btn').count()>=8,'toolbar commands use shared icon buttons');
+ for(const [id,label,shortcut] of [
+  ['fit-button','Fit schematic','F'],
+  ['connect-button','Connect pins','C'],
+  ['add-instance-button','Add instance','A'],
+ ]) {
+  const button=page.locator('#'+id);
+  assert.equal(await button.getAttribute('aria-label'),label,`${id} keeps its accessible name`);
+  assert.equal(await button.getAttribute('title'),label,`${id} keeps its tooltip`);
+  assert.equal(await button.getAttribute('aria-keyshortcuts'),shortcut,`${id} keeps its shortcut`);
+ }
+ assert.equal(await page.locator('#run-task-button').isVisible(),mode==='simulation-task');
+ assert.equal(await page.locator('#add-port-button').isVisible(),mode==='arch-design');
+}
 (async()=>{
  const server=http.createServer((req,res)=>{const file=path.join(output,req.url==='/'?'index.html':req.url.slice(1));res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(fs.readFileSync(file));});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -80,6 +98,7 @@ async function initialize() {
   await page.addInitScript(()=>window.acquireVsCodeApi=()=>({postMessage:m=>window.hostMessage(m),getState:()=>({}),setState:()=>{}}));
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.locator('.x6-node').first().waitFor();
+  await assertSharedToolbar('simulation-task');
   task.instances.push({id:'dut',source:{kind:'hdl',path:'counter.v',module:'counter'},parameters:{}});
   await page.locator('.x6-node').first().click();
   await page.locator('#parameter-WIDTH').waitFor();
@@ -309,6 +328,7 @@ async function initialize() {
    }
   }
   kind='arch-design';await initialize();
+  await assertSharedToolbar('arch-design');
   await page.locator('#add-instance-button').click();
   assert.equal(await page.locator('#add-instance-dialog').evaluate(d=>d.open),true);
   await page.screenshot({path:path.join(output,'ad-same-dialog.png')});

@@ -64,11 +64,18 @@ export function createWebviewTransport<Outgoing, Incoming, State = unknown>(
     return {
         postMessage: message => dispatchDetail(target, 'veriflow:webview-message', message),
         onMessage(listener) {
-            const handler = (event: Event): void => {
+            const handleWindowMessage = (event: MessageEvent<Incoming>): void => {
+                listener(event.data);
+            };
+            const handlePreviewMessage = (event: Event): void => {
                 listener((event as CustomEvent<Incoming>).detail);
             };
-            target.addEventListener('veriflow:webview-host-message', handler);
-            return () => target.removeEventListener('veriflow:webview-host-message', handler);
+            target.addEventListener('message', handleWindowMessage);
+            target.addEventListener('veriflow:webview-host-message', handlePreviewMessage);
+            return () => {
+                target.removeEventListener('message', handleWindowMessage);
+                target.removeEventListener('veriflow:webview-host-message', handlePreviewMessage);
+            };
         },
         getState: () => state,
         setState: value => { state = value; },

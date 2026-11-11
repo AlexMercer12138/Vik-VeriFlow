@@ -8,35 +8,35 @@
     <link rel="stylesheet" href="./index.css">
 </head>
 <body>
-    <main id="schematic-shell" data-testid="schematic-shell">
-        <div id="toolbar" role="toolbar" aria-label="Schematic controls">
-            <select id="module-selector" aria-label="Module" disabled>
+    <main id="schematic-shell" class="vf-app" data-testid="schematic-shell">
+        <div id="toolbar" class="vf-toolbar" role="toolbar" aria-label="Schematic controls">
+            <select id="module-selector" class="vf-select" aria-label="Module" disabled>
                 <option>Loading</option>
             </select>
-            <div class="toolbar-actions">
-                <button id="fit-button" class="icon-button" type="button" title="Fit schematic" aria-label="Fit schematic" aria-keyshortcuts="F" disabled><span data-icon-slot></span></button>
-                <button id="zoom-reset-button" class="icon-button" type="button" title="Reset zoom to 100%" aria-label="Reset zoom to 100%" aria-keyshortcuts="0" disabled><span data-icon-slot></span></button>
-                <button id="relayout-button" class="icon-button" type="button" title="Relayout schematic" aria-label="Relayout schematic" aria-keyshortcuts="R" disabled><span data-icon-slot></span></button>
-                <button id="search-button" class="icon-button" type="button" title="Search schematic" aria-label="Search schematic" aria-keyshortcuts="Control+F Meta+F" aria-expanded="false" aria-controls="search-controls"><span data-icon-slot></span></button>
+            <div class="toolbar-actions vf-tool-group">
+                <button id="fit-button" class="icon-button vf-icon-btn" type="button" title="Fit schematic" aria-label="Fit schematic" aria-keyshortcuts="F" disabled><span data-icon-slot></span></button>
+                <button id="zoom-reset-button" class="icon-button vf-icon-btn" type="button" title="Reset zoom to 100%" aria-label="Reset zoom to 100%" aria-keyshortcuts="0" disabled><span data-icon-slot></span></button>
+                <button id="relayout-button" class="icon-button vf-icon-btn" type="button" title="Relayout schematic" aria-label="Relayout schematic" aria-keyshortcuts="R" disabled><span data-icon-slot></span></button>
+                <button id="search-button" class="icon-button vf-icon-btn" type="button" title="Search schematic" aria-label="Search schematic" aria-keyshortcuts="Control+F Meta+F" aria-expanded="false" aria-controls="search-controls"><span data-icon-slot></span></button>
                 <div id="search-controls" class="search-controls" hidden>
                     <input id="search-input" type="search" aria-label="Search query" autocomplete="off" spellcheck="false">
-                    <button id="search-previous-button" class="icon-button" type="button" title="Previous result" aria-label="Previous search result" aria-keyshortcuts="Shift+Enter" disabled><span data-icon-slot></span></button>
-                    <button id="search-next-button" class="icon-button" type="button" title="Next result" aria-label="Next search result" aria-keyshortcuts="Enter" disabled><span data-icon-slot></span></button>
+                    <button id="search-previous-button" class="icon-button vf-icon-btn" type="button" title="Previous result" aria-label="Previous search result" aria-keyshortcuts="Shift+Enter" disabled><span data-icon-slot></span></button>
+                    <button id="search-next-button" class="icon-button vf-icon-btn" type="button" title="Next result" aria-label="Next search result" aria-keyshortcuts="Enter" disabled><span data-icon-slot></span></button>
                 </div>
-                <button id="minimap-button" class="icon-button" type="button" title="Toggle minimap" aria-label="Toggle minimap" aria-keyshortcuts="M" aria-pressed="false" disabled><span data-icon-slot></span></button>
-                <button id="inspector-toggle-button" class="icon-button" type="button" title="Hide properties" aria-label="Hide properties" aria-keyshortcuts="I" aria-controls="inspector" aria-expanded="true"><span data-icon-slot></span></button>
+                <button id="minimap-button" class="icon-button vf-icon-btn" type="button" title="Toggle minimap" aria-label="Toggle minimap" aria-keyshortcuts="M" aria-pressed="false" disabled><span data-icon-slot></span></button>
+                <button id="inspector-toggle-button" class="icon-button vf-icon-btn" type="button" title="Hide properties" aria-label="Hide properties" aria-keyshortcuts="I" aria-controls="inspector" aria-expanded="true"><span data-icon-slot></span></button>
             </div>
-            <div id="authoring-actions" class="toolbar-actions authoring-actions" hidden>
-                <button id="add-instance-button" class="icon-button" type="button" title="Add instance" aria-label="Add instance" aria-keyshortcuts="A" disabled><span data-icon-slot></span></button>
-                <button id="add-logic-button" class="icon-button" type="button" title="Logic Utility" aria-label="Logic Utility" aria-keyshortcuts="L" disabled><span data-icon-slot></span></button>
-                <button id="add-simulation-button" class="icon-button" type="button" title="Simulation Utility" aria-label="Simulation Utility" hidden disabled><span data-icon-slot></span></button>
-                <button id="add-port-button" class="icon-button" type="button" title="Add port" aria-label="Add port" aria-keyshortcuts="P" disabled><span data-icon-slot></span></button>
-                <button id="connect-button" class="icon-button" type="button" title="Connect pins" aria-label="Connect pins" aria-keyshortcuts="C" aria-pressed="false" disabled><span data-icon-slot></span></button>
-                <button id="export-button" class="icon-button" type="button" title="Export RTL" aria-label="Export RTL" aria-keyshortcuts="E" disabled><span data-icon-slot></span></button>
-                <button id="physical-pins-button" class="icon-button" type="button" title="Board and pin bindings" aria-label="Board and pin bindings" hidden disabled><span data-icon-slot></span></button>
-                <button id="run-task-button" class="icon-button" type="button" title="Run simulation" aria-label="Run simulation" hidden disabled><span data-icon-slot></span></button>
-                <button id="wave-task-button" class="icon-button" type="button" title="Open waveform" aria-label="Open waveform" hidden disabled><span data-icon-slot></span></button>
-                <button id="delete-button" class="icon-button" type="button" title="Delete selection" aria-label="Delete selection" aria-keyshortcuts="Delete Backspace" disabled><span data-icon-slot></span></button>
+            <div id="authoring-actions" class="toolbar-actions authoring-actions vf-tool-group" hidden>
+                <button id="add-instance-button" class="icon-button vf-icon-btn" type="button" title="Add instance" aria-label="Add instance" aria-keyshortcuts="A" disabled><span data-icon-slot></span></button>
+                <button id="add-logic-button" class="icon-button vf-icon-btn" type="button" title="Logic Utility" aria-label="Logic Utility" aria-keyshortcuts="L" disabled><span data-icon-slot></span></button>
+                <button id="add-simulation-button" class="icon-button vf-icon-btn" type="button" title="Simulation Utility" aria-label="Simulation Utility" hidden disabled><span data-icon-slot></span></button>
+                <button id="add-port-button" class="icon-button vf-icon-btn" type="button" title="Add port" aria-label="Add port" aria-keyshortcuts="P" disabled><span data-icon-slot></span></button>
+                <button id="connect-button" class="icon-button vf-icon-btn" type="button" title="Connect pins" aria-label="Connect pins" aria-keyshortcuts="C" aria-pressed="false" disabled><span data-icon-slot></span></button>
+                <button id="export-button" class="icon-button vf-icon-btn" type="button" title="Export RTL" aria-label="Export RTL" aria-keyshortcuts="E" disabled><span data-icon-slot></span></button>
+                <button id="physical-pins-button" class="icon-button vf-icon-btn" type="button" title="Board and pin bindings" aria-label="Board and pin bindings" hidden disabled><span data-icon-slot></span></button>
+                <button id="run-task-button" class="icon-button vf-icon-btn" type="button" title="Run simulation" aria-label="Run simulation" hidden disabled><span data-icon-slot></span></button>
+                <button id="wave-task-button" class="icon-button vf-icon-btn" type="button" title="Open waveform" aria-label="Open waveform" hidden disabled><span data-icon-slot></span></button>
+                <button id="delete-button" class="icon-button vf-icon-btn" type="button" title="Delete selection" aria-label="Delete selection" aria-keyshortcuts="Delete Backspace" disabled><span data-icon-slot></span></button>
             </div>
             <div class="diagnostic-counts" aria-label="Validation counts">
                 <button id="error-count" class="diagnostic-button" type="button" title="Show errors" aria-haspopup="dialog">E 0</button>
@@ -60,7 +60,7 @@
                 <form id="inspector-form" aria-label="Arch Design properties" hidden></form>
             </aside>
         </div>
-        <footer id="status-strip" role="status" aria-live="polite">
+        <footer id="status-strip" class="vf-statusbar" role="status" aria-live="polite">
             <span id="selection-status">No selection</span>
             <span id="task-status" hidden>Not run</span>
             <span id="diagnostic-status">0 errors, 0 warnings</span>

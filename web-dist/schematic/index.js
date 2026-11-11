@@ -47066,6 +47066,62 @@
   var import_schematic_core = __toESM(require_dist());
   var import_defaults2 = __toESM(require_defaults());
 
+  // packages/webview-ui/src/host.ts
+  function dispatchDetail(target, type, detail) {
+    const CustomEventConstructor = target.CustomEvent ?? globalThis.CustomEvent;
+    const event = CustomEventConstructor ? new CustomEventConstructor(type, { detail }) : { type, detail };
+    target.dispatchEvent(event);
+  }
+  function createWebviewTransport(target = window) {
+    const hostWindow = target;
+    if (hostWindow.acquireVsCodeApi) {
+      const api = hostWindow.acquireVsCodeApi();
+      return {
+        postMessage: (message) => api.postMessage(message),
+        onMessage(listener) {
+          const handler = (event) => listener(event.data);
+          target.addEventListener("message", handler);
+          return () => target.removeEventListener("message", handler);
+        },
+        getState: () => api.getState(),
+        setState: (state2) => {
+          api.setState(state2);
+        }
+      };
+    }
+    if (hostWindow.__veriflowHost) {
+      const host = hostWindow.__veriflowHost;
+      return {
+        postMessage: (message) => host.postMessage(message),
+        onMessage: (listener) => host.onMessage(listener),
+        getState: () => host.getState?.(),
+        setState: (state2) => host.setState?.(state2)
+      };
+    }
+    let state;
+    return {
+      postMessage: (message) => dispatchDetail(target, "veriflow:webview-message", message),
+      onMessage(listener) {
+        const handleWindowMessage = (event) => {
+          listener(event.data);
+        };
+        const handlePreviewMessage = (event) => {
+          listener(event.detail);
+        };
+        target.addEventListener("message", handleWindowMessage);
+        target.addEventListener("veriflow:webview-host-message", handlePreviewMessage);
+        return () => {
+          target.removeEventListener("message", handleWindowMessage);
+          target.removeEventListener("veriflow:webview-host-message", handlePreviewMessage);
+        };
+      },
+      getState: () => state,
+      setState: (value) => {
+        state = value;
+      }
+    };
+  }
+
   // packages/schematic-webview/src/shared/webviewSupport.ts
   function canConnectScalarPins(graph2, first, second) {
     if (first.id === second.id) return false;
@@ -48345,23 +48401,7 @@
     if (!element) throw new Error(`Missing schematic element #${id}`);
     return element;
   }
-  function previewApi() {
-    let state;
-    return {
-      postMessage(message) {
-        window.dispatchEvent(new CustomEvent("veriflow:webview-message", {
-          detail: message
-        }));
-      },
-      getState() {
-        return state;
-      },
-      setState(nextState) {
-        state = nextState;
-      }
-    };
-  }
-  var vscode = typeof window.acquireVsCodeApi === "function" ? window.acquireVsCodeApi() : previewApi();
+  var transport = createWebviewTransport();
   var textMeasureContext;
   function measureNodeText(text4, style2) {
     if (textMeasureContext === void 0) {
@@ -49086,7 +49126,7 @@
     }
   }
   function post(message) {
-    vscode.postMessage(simulationTaskDocument && message.type === "editArchDesign" ? { ...message, type: "editSchematic" } : message);
+    transport.postMessage(simulationTaskDocument && message.type === "editArchDesign" ? { ...message, type: "editSchematic" } : message);
   }
   function sendTaskCommand(command, payload) {
     if (!simulationTaskDocument || !currentRevision) return;
@@ -49122,11 +49162,11 @@
     if (!currentLayout || !currentGraph || !currentRevision || applyingLayout) return void 0;
     const moduleKey = currentGraph.moduleKey;
     const layouts = mergeSchematicWebviewLayouts(
-      vscode.getState()?.layouts,
+      transport.getState()?.layouts,
       moduleKey,
       currentLayout
     );
-    vscode.setState({ layouts });
+    transport.setState({ layouts });
     return layouts[moduleKey];
   }
   function scheduleLayoutSave() {
@@ -50327,7 +50367,7 @@
         archDesignLayoutSaveInFlight = false;
         unloadLayoutForwarded = false;
         const preservedSelection = archDesignDocument && currentGraph?.moduleKey === event.graph.moduleKey ? selectedObjectIds(selection.getSelectedCells()) : void 0;
-        const localViewport = event.fitOnFirstRender === true && autoFittedModules.has(event.graph.moduleKey) ? vscode.getState()?.layouts?.[event.graph.moduleKey]?.viewport : void 0;
+        const localViewport = event.fitOnFirstRender === true && autoFittedModules.has(event.graph.moduleKey) ? transport.getState()?.layouts?.[event.graph.moduleKey]?.viewport : void 0;
         const localLayout = queuedArchDesignLayoutSave?.moduleKey === event.graph.moduleKey ? queuedArchDesignLayoutSave.layout : void 0;
         const capturedConnectionLayout = connectionLayoutSnapshot?.moduleKey === event.graph.moduleKey ? connectionLayoutSnapshot.layout : void 0;
         connectionLayoutSnapshot = void 0;
@@ -51227,13 +51267,7 @@ ${choice.description}`
   resizeObserver.observe(dom.canvasRegion);
   window.addEventListener("pagehide", flushLayoutSavesForUnload);
   window.addEventListener("beforeunload", flushLayoutSavesForUnload);
-  window.addEventListener("message", (event) => {
-    if (!event.data || typeof event.data !== "object") return;
-    const type = event.data.type;
-    if (type === "initialize" || type === "graph" || type === "diagnostics" || type === "simulationTaskState" || type === "simulationTaskExecution" || type === "archDesignState" || type === "archDesignLayoutSaved" || type === "archDesignRevisionChanged" || type === "hostError") {
-      handleHostEvent(event.data);
-    }
-  });
+  transport.onMessage(handleHostEvent);
   dom.shell.dataset.runtimeReady = "true";
   post({ type: "ready" });
 })();

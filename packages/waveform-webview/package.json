@@ -6,6 +6,7 @@
     "@veriflow/webview-ui": "1.5.3"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node test/run-tests.cjs"
   }
 }

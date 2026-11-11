@@ -210,7 +210,7 @@ git commit -m "refactor: apply shared UI to schematic workbench"
 - Preserve global `VeriflowWaveCore` exports and `window.waveformTransport` for the existing JavaScript renderer until Task 5 converts it.
 - Preserve memory, VS Code, Qt, request cancellation, state persistence, and listener disposal behavior.
 
-- [ ] **Step 1: Add a focused TypeScript codec regression test**
+- [x] **Step 1: Add a focused TypeScript codec regression test**
 
 ```ts
 import assert from 'node:assert/strict';
@@ -239,21 +239,21 @@ test('decodes packed four-state waveform values', () => {
 });
 ```
 
-- [ ] **Step 2: Add a Node test runner and establish the baseline**
+- [x] **Step 2: Add a Node test runner and establish the baseline**
 
 Add a `test` script to the waveform package. In `test/run-tests.cjs`, bundle `viewerCore.test.ts` with esbuild for Node into a temporary test file, then execute it with `node --test` and remove the temporary file. Initially point the test at the existing `src/viewer-core.js` implementation so this regression test passes before conversion. Run: `npm test --workspace @veriflow/waveform-webview` and `npm run test:task6 --workspace veriflow-vscode`.
 Expected: PASS against the current JavaScript implementation before the file moves.
 
-- [ ] **Step 3: Convert the two modules and type their boundaries**
+- [x] **Step 3: Convert the two modules and type their boundaries**
 
 Add `@veriflow/webview-ui` as a workspace dependency. Keep the UMD/CommonJS test exports and browser globals. Add explicit types for decoded payloads, transport messages, listener callbacks, and cleanup functions. Keep `qt.webChannelTransport` supported through a waveform-specific adapter over the shared host transport.
 
-- [ ] **Step 4: Bundle the TypeScript core in Node tests and run typecheck**
+- [x] **Step 4: Bundle the TypeScript core in Node tests and run typecheck**
 
 Update `test/run-tests.cjs` to bundle `viewer-core.ts` and `viewer-transport.ts` with esbuild for Node. Update `build-web.mjs` to emit browser-global `viewer-core.js` and `viewer-transport.js` from the TypeScript sources. Change `core.test.ts` to evaluate those generated bundles in a `vm` context and assert their globals. Include `src/**/*.ts` in the waveform tsconfig. Run: `npm run build:web`, `npm run typecheck --workspace @veriflow/waveform-webview`, `npm test --workspace @veriflow/waveform-webview`, and `npm run test:task6 --workspace veriflow-vscode`.
 Expected: PASS with existing VCD codec, indexed query, and cancellation tests unchanged.
 
-- [ ] **Step 5: Commit waveform core conversion**
+- [x] **Step 5: Commit waveform core conversion**
 
 ```bash
 git add packages/waveform-webview/src/viewer-core.js packages/waveform-webview/src/viewer-transport.js packages/waveform-webview/src/viewer-core.ts packages/waveform-webview/src/viewer-transport.ts packages/waveform-webview/test/viewerCore.test.ts packages/waveform-webview/test/run-tests.cjs packages/waveform-webview/package.json packages/waveform-webview/tsconfig.json scripts/build-web.mjs package-lock.json veriflow-vscode/src/test/core.test.ts

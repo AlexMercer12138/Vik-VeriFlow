@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { fileURLToPath, pathToFileURL } from 'url';
+import * as vm from 'vm';
 
 import {
     SimulatorBackendRegistry,
@@ -121,7 +122,12 @@ type WaveCore = {
     signalMatchesSelectedScope(signalScope: string, selectedScope: string): boolean;
 };
 
-const waveCore = require('../../../packages/waveform-webview/src/viewer-core.js') as WaveCore;
+vm.runInThisContext(
+    fs.readFileSync(path.resolve(__dirname, '../../../web-dist/waveform/viewer-core.js'), 'utf8'),
+);
+const waveCore = (globalThis as typeof globalThis & {
+    VeriflowWaveCore?: WaveCore;
+}).VeriflowWaveCore as WaveCore;
 
 type Golden = {
     top_module: string;
@@ -2019,9 +2025,14 @@ function testWaveWindowHardening(): void {
 }
 
 function testWaveformTransportAdapters(): void {
-    const transportModule = require(
-        '../../../packages/waveform-webview/src/viewer-transport.js'
+    vm.runInThisContext(
+        fs.readFileSync(path.resolve(__dirname, '../../../web-dist/waveform/viewer-transport.js'), 'utf8'),
     );
+    const transportModule = (globalThis as typeof globalThis & {
+        VeriflowWaveTransport?: {
+            createWaveformTransport(environment: Record<string, any>): any;
+        };
+    }).VeriflowWaveTransport!;
     const vscodeSent: any[] = [];
     let state: any = null;
     const vscodeTransport = transportModule.createWaveformTransport({

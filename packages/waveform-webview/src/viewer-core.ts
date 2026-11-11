@@ -1,10 +1,52 @@
-(function (root, factory) {
-    const api = factory();
-    if (typeof module === 'object' && module.exports) {
-        module.exports = api;
-    }
-    root.VeriflowWaveCore = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+// Keep the existing codec internals stable while exposing a typed renderer API.
+// @ts-nocheck
+type DecodedWaveValue = '0' | '1' | 'x' | 'z';
+type DecodedRawWindow = {
+    kind: 'raw';
+    width: number;
+    changes: Array<{ time: number; value: string }>;
+};
+type DecodedSummaryWindow = {
+    kind: 'summary';
+    width: number;
+    records: Array<{
+        firstTime: number;
+        lastTime: number;
+        firstValue: string;
+        lastValue: string;
+        flags: number;
+    }>;
+};
+type DecodedWindow = DecodedRawWindow | DecodedSummaryWindow;
+interface WaveCoreApi {
+    readonly LAYOUT_VERSION: number;
+    calculateVirtualWindow(totalRows: number, viewportHeight: number, scrollTop: number, rowHeight: number, overscan: number): { firstRow: number; renderedCount: number; totalHeight: number; overflow: boolean };
+    signalMatchesSelectedScope(signalScope: string, selectedScope: string): boolean;
+    WindowCache: new (capacity?: number) => { readonly size: number; has(key: string): boolean; get(key: string): unknown; set(key: string, value: unknown): void; clear(): void };
+    WaveWindowCache: new (capacity?: number) => { readonly size: number; set(entry: Record<string, unknown>): void; find(query: Record<string, unknown>): unknown; clear(): void };
+    effectiveWindowTicksPerPixel(descriptor: Record<string, unknown>, responsePixelWidth: unknown): number;
+    matchPendingRequest(requestId: unknown, pending: Record<string, unknown>): { kind: string; pending: unknown } | null;
+    BoundedRequestRetry: new (maxRetries?: number) => { canStart(kind: string, key: string): boolean; recordFailure(kind: string, key: string, retryCount: number): boolean; recordSuccess(kind: string, key: string): void; clear(): void };
+    windowNeedsRefresh(entry: unknown, viewport: unknown, threshold?: number, bounds?: unknown): boolean;
+    FrameScheduler: new (requestFrame: (callback: () => void) => unknown) => { schedule(callback: () => void): void; cancel(): void };
+    RequestTracker: new () => { generation: number; setGeneration(generation: number): void; next(kind: string): string; cancel(requestId: string): void; accepts(message: unknown): boolean };
+    decodeWindowPayload(payload: unknown): DecodedWindow;
+    prefetchRange(start: number, end: number, minimum: number, maximum: number): { start: number; end: number };
+    validateLayout(value: unknown): Record<string, unknown> | null;
+    describeSignal(signal: Record<string, unknown>, signals: Array<Record<string, unknown>>): Record<string, unknown>;
+    matchSignalDescriptors(descriptors: Array<Record<string, unknown>>, signals: Array<Record<string, unknown>>): Array<number | null>;
+    parseTimescale(value: string): { multiplier: number; unit: string; secondsPerTick: number } | null;
+    formatTicks(ticks: number, timescale: string): string;
+    measureCursors(cursorA: number, cursorB: number | null, timescale: string): { deltaTicks: number | null; deltaText: string; frequencyText: string };
+    parseSearchValue(text: string, width: number): { ok: true; bits: string } | { ok: false; error: string };
+    findSearchMatch(targets: Array<Record<string, unknown>>, cursorTime: number, direction: number, mode: string, query: string): Record<string, unknown>;
+}
+
+declare global {
+    var VeriflowWaveCore: WaveCoreApi | undefined;
+}
+
+const api = (function (): WaveCoreApi {
     'use strict';
 
     const LAYOUT_VERSION = 1;
@@ -62,7 +104,8 @@
         ));
     }
 
-    function decodeWindowPayload(payload) {
+    function decodeWindowPayload(payload: unknown): DecodedWindow {
+        payload = payload as Record<string, any>;
         if (!payload || (payload.kind !== 'raw' && payload.kind !== 'summary')) {
             throw new Error('unsupported waveform window payload');
         }
@@ -731,4 +774,8 @@
         parseSearchValue,
         findSearchMatch,
     };
-});
+})();
+
+if (typeof module === 'object' && module.exports) module.exports = api;
+globalThis.VeriflowWaveCore = api;
+export = api;

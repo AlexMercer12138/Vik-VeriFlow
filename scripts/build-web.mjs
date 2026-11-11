@@ -16,7 +16,11 @@ export const webApplications = [
         sourceRoot: 'packages/waveform-webview/src',
         staticFiles: ['index.html'],
         appStylesheet: 'index.css',
-        legacyScripts: ['viewer-transport.js', 'viewer-core.js', 'index.js'],
+        legacyScripts: ['index.js'],
+        browserGlobals: [
+            { entryPoint: 'viewer-transport.ts', globalName: 'VeriflowWaveTransport', outfile: 'viewer-transport.js' },
+            { entryPoint: 'viewer-core.ts', globalName: 'VeriflowWaveCore', outfile: 'viewer-core.js' },
+        ],
         htmlFragment: true,
     },
     {
@@ -78,6 +82,15 @@ ${body}
             absWorkingDir: root,
             entryPoints: [path.join(sourceRoot, application.entryPoint)],
             outfile: path.join(destinationRoot, 'index.js'),
+        });
+    }
+    for (const browserGlobal of application.browserGlobals ?? []) {
+        await build({
+            ...browserBuildOptions(),
+            absWorkingDir: root,
+            entryPoints: [path.join(sourceRoot, browserGlobal.entryPoint)],
+            globalName: browserGlobal.globalName,
+            outfile: path.join(destinationRoot, browserGlobal.outfile),
         });
     }
 }

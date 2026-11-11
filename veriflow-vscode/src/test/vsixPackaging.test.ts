@@ -53,8 +53,6 @@ const expectedRuntimeEntries = [
     'extension/media/waveform/index.css',
     'extension/media/waveform/index.html',
     'extension/media/waveform/index.js',
-    'extension/media/waveform/viewer-core.js',
-    'extension/media/waveform/viewer-transport.js',
 ].sort();
 
 type ZipEntry = Readonly<{

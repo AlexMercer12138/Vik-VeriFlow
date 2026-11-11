@@ -6,13 +6,7 @@ const root = path.resolve(__dirname, '../../..');
 
 const outputFiles = {
     constraints: ['index.css', 'index.html', 'index.js'],
-    waveform: [
-        'index.css',
-        'index.html',
-        'index.js',
-        'viewer-core.js',
-        'viewer-transport.js',
-    ],
+    waveform: ['index.css', 'index.html', 'index.js'],
     schematic: ['index.css', 'index.html', 'index.js'],
 };
 
@@ -56,7 +50,7 @@ assert.doesNotMatch(
     'renderer source must not contain a host-specific bootstrap marker'
 );
 const waveformHtml = fs.readFileSync(path.join(root, 'web-dist', 'waveform', 'index.html'), 'utf8');
-for (const fileName of ['index.css', 'viewer-transport.js', 'viewer-core.js', 'index.js']) {
+for (const fileName of ['index.css', 'index.js']) {
     assert.ok(waveformHtml.includes(`./${fileName}`), `waveform HTML must reference ${fileName}`);
 }
 

@@ -113,7 +113,7 @@ export class WaveformEditorProvider implements vscode.CustomReadonlyEditorProvid
                 `<meta http-equiv="Content-Security-Policy" content="${csp}">`)
             .replace('href="./index.css"',
                 `href="${webview.asWebviewUri(vscode.Uri.file(path.join(assetsDir, 'index.css')))}"`)
-            .replace(/<script src="\.\/(viewer-transport|viewer-core|index)\.js"><\/script>/g,
+            .replace(/<script src="\.\/(index)\.js"><\/script>/g,
                 (_tag, name: string) => {
                     const scriptPath = path.join(assetsDir, `${name}.js`);
                     const scriptUri = webview.asWebviewUri(vscode.Uri.file(scriptPath));

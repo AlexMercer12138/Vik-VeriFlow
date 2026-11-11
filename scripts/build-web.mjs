@@ -16,11 +16,8 @@ export const webApplications = [
         sourceRoot: 'packages/waveform-webview/src',
         staticFiles: ['index.html'],
         appStylesheet: 'index.css',
-        legacyScripts: ['index.js'],
-        browserGlobals: [
-            { entryPoint: 'viewer-transport.ts', globalName: 'VeriflowWaveTransport', outfile: 'viewer-transport.js' },
-            { entryPoint: 'viewer-core.ts', globalName: 'VeriflowWaveCore', outfile: 'viewer-core.js' },
-        ],
+        entryPoint: 'index.ts',
+        htmlScripts: ['index.js'],
         htmlFragment: true,
     },
     {
@@ -65,9 +62,8 @@ async function buildApplication(application) {
 </head>
 <body>
 ${body}
-<script src="./viewer-transport.js"></script>
-<script src="./viewer-core.js"></script>
-<script src="./index.js"></script>
+${(application.htmlScripts ?? ['viewer-transport.js', 'viewer-core.js', 'index.js'])
+    .map(file => `<script src="./${file}"></script>`).join('\n')}
 </body>
 </html>
 `, 'utf8');

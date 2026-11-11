@@ -1,10 +1,32 @@
-const waveformTransport = globalThis.waveformTransport;
-const vscode = {
-    postMessage(message) { waveformTransport.send(message); },
-    getState() { return waveformTransport.getState(); },
-    setState(value) { waveformTransport.setState(value); },
+// @ts-nocheck
+import waveCoreModule = require('./viewer-core');
+import waveformTransportModule = require('./viewer-transport');
+import { renderIcon } from '@veriflow/webview-ui';
+
+type WaveformRendererMessage = { type: string; [key: string]: unknown };
+type WaveformHostMessage = { type: string; [key: string]: unknown };
+type WaveformLayoutState = { layout?: { version: number; rows: unknown[]; view?: unknown; cursors?: unknown } };
+type WaveformTransport = {
+    kind: string;
+    send(message: WaveformRendererMessage): void;
+    onMessage(listener: (message: WaveformHostMessage) => void): () => void;
+    getState(): WaveformLayoutState | null;
+    setState(state: WaveformLayoutState): void;
 };
-const waveCore = globalThis.VeriflowWaveCore;
+type WaveformViewerCore = {
+    calculateVirtualWindow(...values: number[]): { firstRow: number; renderedCount: number; totalHeight: number; overflow: boolean };
+    measureCursors(cursorA: number, cursorB: number | null, timescale: string): { deltaText: string; frequencyText: string };
+    decodeWindowPayload(payload: unknown): unknown;
+};
+
+declare global {
+    interface Window {
+        __veriflowWaveViewer?: Record<string, (...args: any[]) => any>;
+    }
+}
+
+const waveCore = waveCoreModule as WaveformViewerCore;
+const waveformTransport = waveformTransportModule.createWaveformTransport(window) as WaveformTransport;
 const isVsCodeHost = waveformTransport.kind === 'vscode';
 const canvas = document.getElementById('waveCanvas');
 const ctx = canvas.getContext('2d');
@@ -36,6 +58,10 @@ const indexProgressFill = document.getElementById('indexProgressFill');
 const cancelIndex = document.getElementById('cancelIndex');
 const retryIndex = document.getElementById('retryIndex');
 
+document.querySelectorAll<HTMLElement>('[data-icon]').forEach(slot => {
+    slot.append(renderIcon(slot.dataset.icon!));
+});
+
 const DEFAULT_WAVE_COLOR = '#22e36d';
 const COLORS = [
     { name: 'Green', hex: '#22e36d' },
@@ -57,10 +83,10 @@ const RADIXES = [
     { key: 'octal', label: 'Octal' },
 ];
 const STYLE = {
-    background: getCss('--vscode-editor-background', '#111318'),
-    foreground: getCss('--vscode-editor-foreground', '#d6dde8'),
-    muted: getCss('--vscode-descriptionForeground', '#8b949e'),
-    border: getCss('--vscode-panel-border', '#30363d'),
+    background: getCss('--vf-bg', '#111318'),
+    foreground: getCss('--vf-text', '#d6dde8'),
+    muted: getCss('--vf-muted', '#8b949e'),
+    border: getCss('--vf-border', '#30363d'),
     unknown: '#ff5c5c',
     highZ: '#4cb3ff',
     busText: '#ffffff',
@@ -68,6 +94,8 @@ const STYLE = {
     cursorB: '#4cb3ff',
     selection: 'rgba(96,165,250,0.20)',
 };
+const WAVE_FILL_ALPHA = Math.max(0, Math.min(0.4,
+    Number.parseFloat(getCss('--vf-wave-fill-alpha', '0.14')) || 0));
 
 let vcd = null;
 let currentFileName = '';
@@ -2000,7 +2028,7 @@ function drawGrid(width, height) {
 
 function drawHighFill(x1, x2, highY, lowY, color) {
     if (x2 - x1 <= 0.5) return;
-    ctx.fillStyle = hexAlpha(color, 0.16);
+    ctx.fillStyle = hexAlpha(color, WAVE_FILL_ALPHA);
     ctx.fillRect(x1, highY, x2 - x1, lowY - highY);
 }
 
@@ -3337,8 +3365,8 @@ retryIndex.addEventListener('click', () => {
     indexProgressText.textContent = 'retrying';
 });
 
-window.addEventListener('message', event => {
-    const msg = event.data || {};
+waveformTransport.onMessage(message => {
+    const msg = message || {};
     if (msg.type === 'vcd') {
         setData(msg.fileName, msg.data, msg.layout);
     } else if (msg.type === 'waveformMetadata') {

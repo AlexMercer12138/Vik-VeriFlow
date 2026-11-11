@@ -885,8 +885,6 @@ async function testSchematicAssets(): Promise<void> {
         'media/waveform/index.html',
         'media/waveform/index.css',
         'media/waveform/index.js',
-        'media/waveform/viewer-core.js',
-        'media/waveform/viewer-transport.js',
         'media/schematic/index.html',
         'media/schematic/index.css',
         'media/schematic/index.js',

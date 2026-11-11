@@ -144,13 +144,7 @@ async function run(): Promise<void> {
             fs.rmSync(webDist, { recursive: true, force: true });
             for (const [application, marker, files] of [
                 ['constraints', schematicMarker, ['index.css','index.html','index.js']],
-                ['waveform', waveformMarker, [
-                    'index.css',
-                    'index.html',
-                    'index.js',
-                    'viewer-core.js',
-                    'viewer-transport.js',
-                ]],
+                ['waveform', waveformMarker, ['index.css', 'index.html', 'index.js']],
                 ['schematic', `${schematicMarker}:${schematicCoreMarker}`, [
                     'index.css',
                     'index.html',

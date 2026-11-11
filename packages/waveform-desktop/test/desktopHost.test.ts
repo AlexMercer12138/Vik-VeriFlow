@@ -200,6 +200,11 @@ test('shared waveform renderer draws, reloads, resizes, and exits cleanly', {
             if (message.type() === 'error') rendererErrors.push(message.text());
         });
         await page.locator('#statusText').filter({ hasText: 'Waveform index ready.' }).waitFor();
+        assert.equal(await page.locator('.app.vf-app').count(), 1);
+        assert.equal(await page.locator('.toolbar.vf-toolbar').count(), 1);
+        assert.ok(await page.locator('.toolbar .vf-icon-btn').count() >= 8);
+        assert.equal(await page.locator('#goStart').evaluate(element => getComputedStyle(element).width), '26px');
+        assert.equal(await page.locator('#scopeSelect.vf-select').count(), 1);
 
         const before = await canvasStats(page);
         await page.locator('#signalList .signal-row').first().dblclick();
@@ -219,6 +224,20 @@ test('shared waveform renderer draws, reloads, resizes, and exits cleanly', {
             }
             return current !== checksum;
         }, before.checksum);
+        const levels = await page.locator('#waveCanvas').evaluate((canvas: HTMLCanvasElement) => {
+            const state = (window as any).__veriflowWaveViewer.state();
+            const context = canvas.getContext('2d')!;
+            const scaleX = canvas.width / canvas.clientWidth;
+            const scaleY = canvas.height / canvas.clientHeight;
+            const sample = (time: number) => {
+                const x = Math.floor(((time - state.startTime) / (state.endTime - state.startTime)) * canvas.clientWidth * scaleX);
+                const y = Math.floor((38 + 16) * scaleY);
+                return [...context.getImageData(x, y, 1, 1).data];
+            };
+            return { low: sample(2.5), high: sample(7.5) };
+        });
+        assert.notDeepEqual(levels.high, levels.low, 'a high interval retains its signal-colored background');
+        assert.ok(levels.high[1] > levels.low[1], JSON.stringify(levels));
         const after = await canvasStats(page);
         assert.ok(after.width > 0 && after.height > 0);
         assert.notEqual(after.checksum, before.checksum);

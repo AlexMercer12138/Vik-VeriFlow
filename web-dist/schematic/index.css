@@ -30,6 +30,7 @@
     --vf-success: var(--vscode-testing-iconPassed, #73c991);
     --vf-wave: #3ddc84;
     --vf-wave-soft: rgba(61, 220, 132, .12);
+    --vf-wave-fill-alpha: .14;
     --vf-bus: #b083f0;
     --vf-toolbar-h: 36px;
     --vf-status-h: 24px;
@@ -53,12 +54,13 @@
 html[data-vf-contrast="high"] {
     --vf-wave: var(--vscode-editor-foreground, #ffffff);
     --vf-wave-soft: transparent;
+    --vf-wave-fill-alpha: 0;
     --vf-bus: var(--vscode-editor-foreground, #ffffff);
     --vf-border: var(--vscode-contrastBorder, var(--vscode-panel-border, #ffffff));
 }
 
 @media (forced-colors: active) {
-    :root { --vf-wave: CanvasText; --vf-wave-soft: Canvas; --vf-bus: CanvasText; --vf-focus: Highlight; }
+    :root { --vf-wave: CanvasText; --vf-wave-soft: Canvas; --vf-wave-fill-alpha: 0; --vf-bus: CanvasText; --vf-focus: Highlight; }
 }
 
 * { box-sizing: border-box; }

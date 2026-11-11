@@ -280,25 +280,25 @@ git commit -m "refactor: convert waveform core transport to TypeScript"
 - The renderer consumes `WebviewTransport<WaveformRendererMessage, WaveformHostMessage, WaveformLayoutState>`.
 - Keeps the existing Canvas render loop, wave data structures, persisted layout, and debug test API.
 
-- [ ] **Step 1: Add failing high-level fill and toolbar tests**
+- [x] **Step 1: Add failing high-level fill and toolbar tests**
 
 Use `tests/fixtures/waveform_debug.vcd` in the Electron browser test. Assert toolbar controls have the shared dimensions/classes, and sample a Canvas pixel inside a stable high interval to ensure it differs from the row background while the low interval does not use that fill.
 
-- [ ] **Step 2: Run the focused Electron test and confirm it fails on the shared shell**
+- [x] **Step 2: Run the focused Electron test and confirm it fails on the shared shell**
 
 Run: `npm test --workspace @veriflow/waveform-desktop -- --test-name-pattern="waveform renderer"`
 Expected: FAIL on the new toolbar assertion before the migration.
 
-- [ ] **Step 3: Convert the renderer to TypeScript and shared transport**
+- [x] **Step 3: Convert the renderer to TypeScript and shared transport**
 
 Add `@veriflow/webview-ui` as a workspace dependency. Add explicit types for DOM elements, waveform rows, pointer/keyboard handlers, Canvas drawing helpers, and host messages. Replace hard-coded chrome colors with shared CSS variables. Keep `drawHighFill` calls for raw and summarized digital values and derive its alpha fill from the shared waveform token. Bundle the TypeScript entry with the two TypeScript core modules into one `index.js`; update both host adapters to load that entry without separate core/transport scripts.
 
-- [ ] **Step 4: Verify waveform interactions and pixel fill**
+- [x] **Step 4: Verify waveform interactions and pixel fill**
 
 Run: `npm run typecheck --workspace @veriflow/waveform-webview` and `npm test --workspace @veriflow/waveform-desktop`
 Expected: PASS for opening a VCD, signal selection, cursor measurement, layout persistence, and high-level fill pixel checks.
 
-- [ ] **Step 5: Commit the waveform renderer migration**
+- [x] **Step 5: Commit the waveform renderer migration**
 
 ```bash
 git add packages/waveform-webview/src/index.js packages/waveform-webview/src/index.html packages/waveform-webview/src/index.css packages/waveform-webview/src/index.ts packages/waveform-webview/package.json packages/waveform-webview/tsconfig.json packages/waveform-desktop/test/desktopHost.test.ts scripts/build-web.mjs package-lock.json veriflow-vscode/src/waveformEditorProvider.ts veriflow-vscode/src/test/webDistAssets.test.ts veriflow-vscode/src/test/schematicAssets.test.ts veriflow-vscode/src/test/vsixPackaging.test.ts

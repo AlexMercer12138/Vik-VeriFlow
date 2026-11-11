@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { fileURLToPath, pathToFileURL } from 'url';
-import * as vm from 'vm';
+import { buildSync } from 'esbuild';
 
 import {
     SimulatorBackendRegistry,
@@ -122,12 +122,27 @@ type WaveCore = {
     signalMatchesSelectedScope(signalScope: string, selectedScope: string): boolean;
 };
 
-vm.runInThisContext(
-    fs.readFileSync(path.resolve(__dirname, '../../../web-dist/waveform/viewer-core.js'), 'utf8'),
-);
-const waveCore = (globalThis as typeof globalThis & {
-    VeriflowWaveCore?: WaveCore;
-}).VeriflowWaveCore as WaveCore;
+function loadWaveformModule<T>(entryPoint: string): T {
+    const bundle = buildSync({
+        entryPoints: [entryPoint],
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        write: false,
+    });
+    const moduleValue = { exports: {} as T };
+    new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(
+        moduleValue,
+        moduleValue.exports,
+        require
+    );
+    return moduleValue.exports;
+}
+
+const waveCore = loadWaveformModule<WaveCore>(path.resolve(
+    __dirname,
+    '../../../packages/waveform-webview/src/viewer-core.ts'
+));
 
 type Golden = {
     top_module: string;
@@ -2025,14 +2040,9 @@ function testWaveWindowHardening(): void {
 }
 
 function testWaveformTransportAdapters(): void {
-    vm.runInThisContext(
-        fs.readFileSync(path.resolve(__dirname, '../../../web-dist/waveform/viewer-transport.js'), 'utf8'),
-    );
-    const transportModule = (globalThis as typeof globalThis & {
-        VeriflowWaveTransport?: {
-            createWaveformTransport(environment: Record<string, any>): any;
-        };
-    }).VeriflowWaveTransport!;
+    const transportModule = loadWaveformModule<{
+        createWaveformTransport(environment: Record<string, any>): any;
+    }>(path.resolve(__dirname, '../../../packages/waveform-webview/src/viewer-transport.ts'));
     const vscodeSent: any[] = [];
     let state: any = null;
     const vscodeTransport = transportModule.createWaveformTransport({

@@ -1,9 +1,9 @@
 {
   "name": "@veriflow/waveform-webview",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "private": true,
   "dependencies": {
-    "@veriflow/webview-ui": "1.5.3"
+    "@veriflow/webview-ui": "1.6.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

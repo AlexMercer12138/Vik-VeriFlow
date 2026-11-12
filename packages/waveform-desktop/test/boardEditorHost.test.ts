@@ -36,7 +36,7 @@ test('Electron shared workbench edits a board, binds RTL via drag/drop and keeps
                     rowStatusCount: document.querySelectorAll('.statuscell').length,
                 };
             });
-            assert.ok(layout.toolbarHeight > 0 && layout.toolbarHeight <= 40, 'topbar stays one compact row');
+            assert.ok(layout.toolbarHeight > 0 && layout.toolbarHeight <= 40, `topbar stays one compact row (height=${layout.toolbarHeight}, url=${page.url()})`);
             assert.equal(layout.controlsInsideToolbar, true, 'page controls share the top toolbar row');
             assert.equal(layout.brandCount, 0, 'redundant brand block is removed');
             assert.equal(layout.contextBarCount, 0, 'context controls are not in a second row');
@@ -44,6 +44,7 @@ test('Electron shared workbench edits a board, binds RTL via drag/drop and keeps
             assert.equal(layout.progressCount, 0, 'binding progress is removed');
             assert.equal(layout.rowStatusCount, 0, 'per-row assignment status is removed');
         };
+        await page.locator('.topbar').waitFor({ state: 'visible' });
         await assertCompactLayout();
         await page.locator('#board-context').selectOption('user:carrier');
         await page.locator('#interfaces input[type=checkbox]').first().check();

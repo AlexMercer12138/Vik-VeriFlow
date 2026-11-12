@@ -141,7 +141,12 @@ async function main() {
         await page.getByRole('button',{name:'Port flag0',exact:true}).click({modifiers:['Control']});
         await wideName.click();
         await wideRow.waitFor();
-        await page.getByRole('button',{name:'Port pair[0]',exact:true}).dragTo(wideRow);
+        await page.getByRole('button',{name:'Port pair[0]',exact:true}).hover();
+        await page.mouse.down();
+        // Chromium can require a second target move to dispatch native dragover.
+        await wideRow.hover();
+        await wideRow.hover();
+        await page.mouse.up();
         await wideRow.locator('.port-chip').filter({hasText:'pair[1:0]'}).waitFor();
         assert.deepEqual(last.configuration.bindings.filter((b:any)=>b.source.member.startsWith('wide.')).map((b:any)=>b.port),[{name:'flag0'},{name:'pair',bit:1},{name:'pair',bit:0},{name:'flag1'}]);
         await page.locator('[data-page="library"]').click();

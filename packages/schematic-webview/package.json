@@ -1,6 +1,6 @@
 {
   "name": "@veriflow/schematic-webview",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -9,10 +9,10 @@
     "test:browser": "tsc -p tsconfig.browser-test.json && node --test dist-test/test/schematicWebview.test.js"
   },
   "dependencies": {
-    "@veriflow/hdl-runtime": "1.5.3",
+    "@veriflow/hdl-runtime": "1.6.0",
     "@antv/x6": "3.1.7",
-    "@veriflow/schematic-core": "1.5.3",
-    "@veriflow/webview-ui": "1.5.3",
+    "@veriflow/schematic-core": "1.6.0",
+    "@veriflow/webview-ui": "1.6.0",
     "lucide": "1.28.0",
     "tslib": "2.8.1"
   },

@@ -20,6 +20,8 @@ type DecodedSummaryWindow = {
 type DecodedWindow = DecodedRawWindow | DecodedSummaryWindow;
 interface WaveCoreApi {
     readonly LAYOUT_VERSION: number;
+    majorTickStep(range: number): number;
+    snapSelectionTime(time: number, range: number, minimum: number, maximum: number): number;
     calculateVirtualWindow(totalRows: number, viewportHeight: number, scrollTop: number, rowHeight: number, overscan: number): { firstRow: number; renderedCount: number; totalHeight: number; overflow: boolean };
     signalMatchesSelectedScope(signalScope: string, selectedScope: string): boolean;
     WindowCache: new (capacity?: number) => { readonly size: number; has(key: string): boolean; get(key: string): unknown; set(key: string, value: unknown): void; clear(): void };
@@ -50,6 +52,19 @@ const api = (function (): WaveCoreApi {
     'use strict';
 
     const LAYOUT_VERSION = 1;
+
+    function majorTickStep(range: number): number {
+        const raw = Math.max(1, range) / 8;
+        const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+        const normalized = raw / magnitude;
+        return Math.max(1, (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude);
+    }
+
+    function snapSelectionTime(time: number, range: number, minimum: number, maximum: number): number {
+        const step = Math.max(1, majorTickStep(range) / 4);
+        // Round to a VCD tick when a quarter division falls between samples.
+        return Math.max(minimum, Math.min(maximum, Math.round(Math.round(time / step) * step)));
+    }
     const TIME_UNITS = [
         { unit: 'fs', seconds: 1e-15 },
         { unit: 'ps', seconds: 1e-12 },
@@ -753,6 +768,8 @@ const api = (function (): WaveCoreApi {
 
     return {
         LAYOUT_VERSION,
+        majorTickStep,
+        snapSelectionTime,
         calculateVirtualWindow,
         signalMatchesSelectedScope,
         WindowCache,

@@ -20,6 +20,8 @@ import {
 
 export type CancelCallback = () => boolean;
 
+const IO_BLOCK_BYTES = 256 * 1024;
+
 export type VcdIndexProgress = {
     phase: 'waiting' | 'scan' | 'write' | 'summarize' | 'complete';
     completed: number;
@@ -481,55 +483,64 @@ async function buildSummaryLevels(
         while (sourceCount > 1) {
             const levelOffset = appendOffset;
             let levelCount = 0;
-            for (let groupStart = 0; groupStart < sourceCount; groupStart += 8) {
-                if (groupStart % (8 * 512) === 0) checkCancelled(options.cancelled);
-                const groupCount = Math.min(8, sourceCount - groupStart);
-                const records: Array<RawRecord | SummaryRecord> = [];
-                for (let index = 0; index < groupCount; index++) {
-                    const record = await readExact(
-                        handle,
-                        sourceRecordSize,
-                        sourceOffset + (groupStart + index) * sourceRecordSize,
-                        'waveform index summary source is truncated'
-                    );
-                    records.push(sourceKind === 'raw' ? rawCodec.decode(record) : summaryCodec.decode(record));
-                }
+            // Keep groups of eight intact across blocks, with bounded memory.
+            const blockRecords = Math.max(8, Math.floor(IO_BLOCK_BYTES / sourceRecordSize / 8) * 8);
+            for (let blockStart = 0; blockStart < sourceCount; blockStart += blockRecords) {
+                checkCancelled(options.cancelled);
+                const blockCount = Math.min(blockRecords, sourceCount - blockStart);
+                const sourceBlock = await readExact(
+                    handle, blockCount * sourceRecordSize,
+                    sourceOffset + blockStart * sourceRecordSize,
+                    'waveform index summary source is truncated'
+                );
+                const output: Buffer[] = [];
+                for (let groupStart = 0; groupStart < blockCount; groupStart += 8) {
+                    const groupCount = Math.min(8, blockCount - groupStart);
+                    const records: Array<RawRecord | SummaryRecord> = [];
+                    for (let index = 0; index < groupCount; index++) {
+                        const offset = (groupStart + index) * sourceRecordSize;
+                        const record = sourceBlock.subarray(offset, offset + sourceRecordSize);
+                        records.push(sourceKind === 'raw' ? rawCodec.decode(record) : summaryCodec.decode(record));
+                    }
 
-                let firstTime: number;
-                let lastTime: number;
-                let firstValue: string;
-                let lastValue: string;
-                let flags = 0;
-                if (sourceKind === 'raw') {
-                    const rawRecords = records as RawRecord[];
-                    firstTime = rawRecords[0].timestamp;
-                    lastTime = rawRecords[rawRecords.length - 1].timestamp;
-                    firstValue = rawRecords[0].value;
-                    lastValue = rawRecords[rawRecords.length - 1].value;
-                    let previous = firstValue;
-                    for (const item of rawRecords) {
-                        flags |= logicFlags(item.value);
-                        if (item.value !== previous) flags |= SUMMARY_CHANGED;
-                        previous = item.value;
+                    let firstTime: number;
+                    let lastTime: number;
+                    let firstValue: string;
+                    let lastValue: string;
+                    let flags = 0;
+                    if (sourceKind === 'raw') {
+                        const rawRecords = records as RawRecord[];
+                        firstTime = rawRecords[0].timestamp;
+                        lastTime = rawRecords[rawRecords.length - 1].timestamp;
+                        firstValue = rawRecords[0].value;
+                        lastValue = rawRecords[rawRecords.length - 1].value;
+                        let previous = firstValue;
+                        for (const item of rawRecords) {
+                            flags |= logicFlags(item.value);
+                            if (item.value !== previous) flags |= SUMMARY_CHANGED;
+                            previous = item.value;
+                        }
+                    } else {
+                        const summaryRecords = records as SummaryRecord[];
+                        firstTime = summaryRecords[0].firstTime;
+                        lastTime = summaryRecords[summaryRecords.length - 1].lastTime;
+                        firstValue = summaryRecords[0].firstValue;
+                        lastValue = summaryRecords[summaryRecords.length - 1].lastValue;
+                        let previous = firstValue;
+                        for (const item of summaryRecords) {
+                            flags |= item.flags;
+                            if (item.firstValue !== previous) flags |= SUMMARY_CHANGED;
+                            previous = item.lastValue;
+                        }
                     }
-                } else {
-                    const summaryRecords = records as SummaryRecord[];
-                    firstTime = summaryRecords[0].firstTime;
-                    lastTime = summaryRecords[summaryRecords.length - 1].lastTime;
-                    firstValue = summaryRecords[0].firstValue;
-                    lastValue = summaryRecords[summaryRecords.length - 1].lastValue;
-                    let previous = firstValue;
-                    for (const item of summaryRecords) {
-                        flags |= item.flags;
-                        if (item.firstValue !== previous) flags |= SUMMARY_CHANGED;
-                        previous = item.lastValue;
-                    }
+                    if (groupCount === 8 && (flags & SUMMARY_CHANGED)) flags |= SUMMARY_DENSE;
+                    const encoded = summaryCodec.encode(firstTime, lastTime, firstValue, lastValue, flags);
+                    output.push(encoded);
+                    levelCount += 1;
                 }
-                if (groupCount === 8 && (flags & SUMMARY_CHANGED)) flags |= SUMMARY_DENSE;
-                const encoded = summaryCodec.encode(firstTime, lastTime, firstValue, lastValue, flags);
-                await handle.write(encoded, 0, encoded.length, appendOffset);
-                appendOffset += encoded.length;
-                levelCount += 1;
+                const data = Buffer.concat(output);
+                await handle.write(data, 0, data.length, appendOffset);
+                appendOffset += data.length;
             }
 
             levels.push({ offset: levelOffset, count: levelCount, recordSize: summaryCodec.recordSize });
@@ -693,6 +704,19 @@ export class VcdIndexReader {
         ));
     }
 
+    private *readRecords(
+        offset: number, recordSize: number, start: number, end: number, errorMessage: string
+    ): Generator<Buffer> {
+        const blockRecords = Math.max(1, Math.floor(IO_BLOCK_BYTES / recordSize));
+        for (let index = start; index < end; index += blockRecords) {
+            const count = Math.min(blockRecords, end - index);
+            const block = this.readBuffer(offset + index * recordSize, count * recordSize, errorMessage);
+            for (let i = 0; i < count; i++) {
+                yield block.subarray(i * recordSize, (i + 1) * recordSize);
+            }
+        }
+    }
+
     private lowerBoundRaw(stream: VcdStream, codec: RawRecordCodec, timestamp: number): number {
         let low = 0;
         let high = stream.count;
@@ -750,8 +774,10 @@ export class VcdIndexReader {
         const [, stream] = this.streamForReference(reference);
         const codec = new RawRecordCodec(stream.width);
         const result: Array<[number, string]> = [];
-        for (let index = 0; index < stream.count; index++) {
-            const record = this.readRaw(stream, codec, index);
+        for (const buffer of this.readRecords(
+            stream.rawOffset, codec.recordSize, 0, stream.count, 'waveform index raw stream is truncated'
+        )) {
+            const record = codec.decode(buffer);
             result.push([record.timestamp, record.value]);
         }
         return result;
@@ -778,9 +804,11 @@ export class VcdIndexReader {
         if (rawCount <= maxRecords || !stream.levels.length) {
             const times: number[] = [];
             const values: Buffer[] = [];
-            for (let index = rawStart; index < rawEnd; index++) {
-                if (index % 4096 === 0) checkCancelled(cancelled);
-                const record = this.readRaw(stream, rawCodec, index);
+            for (const buffer of this.readRecords(
+                stream.rawOffset, rawCodec.recordSize, rawStart, rawEnd, 'waveform index raw stream is truncated'
+            )) {
+                if (times.length % 4096 === 0) checkCancelled(cancelled);
+                const record = rawCodec.decode(buffer);
                 times.push(record.timestamp);
                 values.push(packLogicValue(record.value, stream.width));
             }
@@ -809,9 +837,12 @@ export class VcdIndexReader {
         const firstValues: Buffer[] = [];
         const lastValues: Buffer[] = [];
         const flags: number[] = [];
-        for (let index = selectedRange[0]; index < selectedRange[1]; index++) {
+        for (const buffer of this.readRecords(
+            selectedLevel.offset, summaryCodec.recordSize, selectedRange[0], selectedRange[1],
+            'waveform index summary stream is truncated'
+        )) {
             checkCancelled(cancelled);
-            const record = this.readSummary(selectedLevel, summaryCodec, index);
+            const record = summaryCodec.decode(buffer);
             firstTimes.push(record.firstTime);
             lastTimes.push(record.lastTime);
             firstValues.push(packLogicValue(record.firstValue, stream.width));

@@ -246,6 +246,84 @@ async function testWaveformCache(): Promise<void> {
     }
 }
 
+async function testLargeIndexBlockIo(): Promise<void> {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'veriflow-block-'));
+    const source = path.join(root, 'large.vcd');
+    const indexDir = path.join(root, 'index');
+    const count = 40001;
+    const values = ['0', '101010101', 'x', 'z'];
+    const normalized = ['000000000', '101010101', 'xxxxxxxxx', 'zzzzzzzzz'];
+    const lines = [
+        '$timescale 1ns $end', '$scope module top $end',
+        '$var wire 9 ! data [8:0] $end', '$var wire 9 ! alias [8:0] $end',
+        '$var wire 1 ? empty $end', '$upscope $end', '$enddefinitions $end',
+    ];
+    for (let i = 0; i < count; i++) lines.push(`#${2 ** 40 + i * 10}\nb${values[i % 4]} !`);
+    fs.writeFileSync(source, lines.join('\r\n'));
+    const originalOpen = fs.promises.open;
+    let reads = 0;
+    let writes = 0;
+    fs.promises.open = async (...args: Parameters<typeof originalOpen>) => {
+        const handle = await originalOpen(...args);
+        const read = handle.read.bind(handle);
+        const write = handle.write.bind(handle);
+        (handle as any).read = (...params: any[]) => { reads++; return (read as any)(...params); };
+        (handle as any).write = (...params: any[]) => { writes++; return (write as any)(...params); };
+        return handle;
+    };
+    let reader: VcdIndexReader | undefined;
+    try {
+        const manifest = await buildVcdIndex(source, indexDir);
+        assert.ok(reads < 100, `index build made ${reads} reads for ${count} changes`);
+        assert.ok(writes < 100, `index build made ${writes} writes for ${count} changes`);
+        reader = new VcdIndexReader(indexDir);
+        assert.deepStrictEqual(reader.rawChangesForReference('data [8:0]'),
+            Array.from({ length: count }, (_, i) => [2 ** 40 + i * 10, normalized[i % 4]]));
+        assert.strictEqual(reader.valueAt('alias [8:0]', 2 ** 40 + 32768 * 10), normalized[0]);
+        assert.deepStrictEqual(reader.rawChangesForReference('empty'), []);
+        const window = reader.queryWindowForReference('data [8:0]', 2 ** 40 + 32765 * 10, 2 ** 40 + 32772 * 10, 100);
+        assert.strictEqual(window.kind, 'raw');
+        if (window.kind === 'raw') assert.deepStrictEqual(window.times,
+            Array.from({ length: 9 }, (_, i) => 2 ** 40 + (32764 + i) * 10));
+        const nodeFs = require('node:fs') as typeof fs;
+        const originalRead = nodeFs.readSync;
+        let queryReads = 0;
+        (nodeFs as any).readSync = (...args: any[]) => {
+            queryReads++;
+            return (originalRead as any)(...args);
+        };
+        try {
+            const summary = reader.queryWindowForReference('data [8:0]', 0, manifest.endTime, 1000);
+            assert.strictEqual(summary.kind, 'summary');
+            assert.ok(queryReads < 200, `window query made ${queryReads} reads`);
+        } finally {
+            (nodeFs as any).readSync = originalRead;
+        }
+        // Check every summary level against the source, including partial final groups.
+        const data = fs.readFileSync(path.join(indexDir, 'waveform.vfi'));
+        const codec = new SummaryRecordCodec(9);
+        let groupSize = 8;
+        for (const level of manifest.streams[0].levels) {
+            assert.strictEqual(level.count, Math.ceil(count / groupSize));
+            for (let i = 0; i < level.count; i++) {
+                const first = i * groupSize;
+                const last = Math.min(count, first + groupSize) - 1;
+                const record = codec.decode(data.subarray(level.offset + i * codec.recordSize, level.offset + (i + 1) * codec.recordSize));
+                assert.strictEqual(record.firstTime, 2 ** 40 + first * 10);
+                assert.strictEqual(record.lastTime, 2 ** 40 + last * 10);
+                assert.strictEqual(record.firstValue, normalized[first % 4]);
+                assert.strictEqual(record.lastValue, normalized[last % 4]);
+                if (last - first >= 3) assert.strictEqual(record.flags & 7, 7);
+            }
+            groupSize *= 8;
+        }
+    } finally {
+        fs.promises.open = originalOpen;
+        reader?.close();
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+}
+
 async function testMalformedStaleCacheLock(): Promise<void> {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'veriflow-lock-'));
     const lockPath = path.join(root, 'broken.lock');
@@ -374,6 +452,7 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     ['waveform record codecs', testRecordRoundTrips],
     ['waveform manifest validation', testTimestampAndManifestValidation],
     ['waveform index build and query', testBuildAndQueryIndex],
+    ['large waveform index uses block I/O', testLargeIndexBlockIo],
     ['waveform cache', testWaveformCache],
     ['malformed stale waveform cache lock', testMalformedStaleCacheLock],
     ['waveform worker client', testWaveformWorkerClient],

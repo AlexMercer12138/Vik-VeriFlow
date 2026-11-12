@@ -14,6 +14,8 @@ type WaveformTransport = {
     setState(state: WaveformLayoutState): void;
 };
 type WaveformViewerCore = {
+    majorTickStep(range: number): number;
+    snapSelectionTime(time: number, range: number, minimum: number, maximum: number): number;
     calculateVirtualWindow(...values: number[]): { firstRow: number; renderedCount: number; totalHeight: number; overflow: boolean };
     measureCursors(cursorA: number, cursorB: number | null, timescale: string): { deltaText: string; frequencyText: string };
     decodeWindowPayload(payload: unknown): unknown;
@@ -1613,6 +1615,12 @@ function xToTime(x, width) {
     return Math.round(startTime + (x / Math.max(1, width)) * range);
 }
 
+function selectionTimeAtX(x) {
+    const range = Math.max(1, endTime - startTime);
+    const time = startTime + (x / Math.max(1, canvas.clientWidth)) * range;
+    return waveCore.snapSelectionTime(time, range, Number(vcd.startTime) || 0, Number(vcd.endTime) || 1);
+}
+
 function snap(value) {
     return Math.round(value) + 0.5;
 }
@@ -2121,11 +2129,8 @@ function renderWaveInspector() {
 
 function drawGrid(width, height) {
     const range = Math.max(1, endTime - startTime);
-    const raw = range / 8;
-    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const norm = raw / mag;
-    const majorTick = Math.max(1, norm <= 1 ? mag : norm <= 2 ? 2 * mag : norm <= 5 ? 5 * mag : 10 * mag);
-    const minorTick = Math.max(1, Math.floor(majorTick / 5));
+    const majorTick = waveCore.majorTickStep(range);
+    const minorTick = Math.max(1, majorTick / 4);
     const firstMajor = Math.ceil(startTime / majorTick) * majorTick;
     const firstMinor = Math.ceil(startTime / minorTick) * minorTick;
 
@@ -3202,7 +3207,10 @@ function updateSelectionBox(event) {
     const rect = waveCanvasPane.getBoundingClientRect();
     const x1 = boxStart.x;
     const y1 = boxStart.y;
-    const x2 = clamp(event.clientX - rect.left, 0, rect.width);
+    const rawX = clamp(event.clientX - rect.left, 0, rect.width);
+    const x2 = dragMode === 'timeRange'
+        ? clamp(timeToX(selectionTimeAtX(rawX), canvas.clientWidth), 0, rect.width)
+        : rawX;
     const rawY = event.clientY - rect.top;
     const y2 = dragMode === 'timeRange'
         ? rect.height
@@ -3269,8 +3277,12 @@ function finishTimeRangeSelection(event) {
         render();
         return;
     }
-    const nextStart = xToTime(minX, canvas.clientWidth);
-    const nextEnd = xToTime(maxX, canvas.clientWidth);
+    const nextStart = selectionTimeAtX(minX);
+    const nextEnd = selectionTimeAtX(maxX);
+    if (nextStart === nextEnd) {
+        render();
+        return;
+    }
     startTime = clamp(Math.min(nextStart, nextEnd), 0, Math.max(0, vcd.endTime - 1));
     endTime = clamp(Math.max(nextStart, nextEnd), startTime + 1, Math.max(1, vcd.endTime || 1));
     setActiveCursorTime(startTime);
@@ -3316,17 +3328,20 @@ waveCanvasPane.addEventListener('mousedown', (event) => {
     if (!vcd) return;
     dragging = true;
     lastMouseX = event.clientX;
-    const displayItem = displayItemFromOffsetY(event.offsetY);
+    const rect = waveCanvasPane.getBoundingClientRect();
+    const localX = clamp(event.clientX - rect.left, 0, canvas.clientWidth);
+    const localY = event.clientY - rect.top;
+    const displayItem = displayItemFromOffsetY(localY);
     const rowIndex = displayItem?.waveIndex ?? -1;
-    if (event.offsetY < HEADER_HEIGHT) {
+    if (localY < HEADER_HEIGHT) {
         dragMode = 'timeRange';
-        boxStart = { x: clamp(event.offsetX, 0, canvas.clientWidth), y: 0 };
+        boxStart = { x: timeToX(selectionTimeAtX(localX), canvas.clientWidth), y: 0 };
         updateSelectionBox(event);
         return;
     }
     dragMode = 'box';
-    boxStart = { x: clamp(event.offsetX, 0, canvas.clientWidth), y: clamp(event.offsetY, HEADER_HEIGHT, canvas.clientHeight) };
-    setActiveCursorTime(xToTime(event.offsetX, canvas.clientWidth));
+    boxStart = { x: localX, y: clamp(localY, HEADER_HEIGHT, canvas.clientHeight) };
+    setActiveCursorTime(selectionTimeAtX(localX));
     if (isBusBitRow(displayItem)) {
         selectBusBit(displayItem);
     } else if (rowIndex >= 0 && rowIndex < waveSignals.length) {

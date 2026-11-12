@@ -30339,6 +30339,16 @@
       var api = (function() {
         "use strict";
         const LAYOUT_VERSION = 1;
+        function majorTickStep(range) {
+          const raw = Math.max(1, range) / 8;
+          const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+          const normalized = raw / magnitude;
+          return Math.max(1, (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude);
+        }
+        function snapSelectionTime(time, range, minimum, maximum) {
+          const step = Math.max(1, majorTickStep(range) / 4);
+          return Math.max(minimum, Math.min(maximum, Math.round(Math.round(time / step) * step)));
+        }
         const TIME_UNITS2 = [
           { unit: "fs", seconds: 1e-15 },
           { unit: "ps", seconds: 1e-12 },
@@ -30948,6 +30958,8 @@
         }
         return {
           LAYOUT_VERSION,
+          majorTickStep,
+          snapSelectionTime,
           calculateVirtualWindow,
           signalMatchesSelectedScope,
           WindowCache,
@@ -32449,6 +32461,11 @@
     const range = Math.max(1, endTime - startTime);
     return Math.round(startTime + x / Math.max(1, width) * range);
   }
+  function selectionTimeAtX(x) {
+    const range = Math.max(1, endTime - startTime);
+    const time = startTime + x / Math.max(1, canvas.clientWidth) * range;
+    return waveCore.snapSelectionTime(time, range, Number(vcd.startTime) || 0, Number(vcd.endTime) || 1);
+  }
   function snap(value) {
     return Math.round(value) + 0.5;
   }
@@ -32911,11 +32928,8 @@
   }
   function drawGrid(width, height) {
     const range = Math.max(1, endTime - startTime);
-    const raw = range / 8;
-    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const norm = raw / mag;
-    const majorTick = Math.max(1, norm <= 1 ? mag : norm <= 2 ? 2 * mag : norm <= 5 ? 5 * mag : 10 * mag);
-    const minorTick = Math.max(1, Math.floor(majorTick / 5));
+    const majorTick = waveCore.majorTickStep(range);
+    const minorTick = Math.max(1, majorTick / 4);
     const firstMajor = Math.ceil(startTime / majorTick) * majorTick;
     const firstMinor = Math.ceil(startTime / minorTick) * minorTick;
     ctx.save();
@@ -33896,7 +33910,8 @@
     const rect = waveCanvasPane.getBoundingClientRect();
     const x1 = boxStart.x;
     const y1 = boxStart.y;
-    const x2 = clamp(event.clientX - rect.left, 0, rect.width);
+    const rawX = clamp(event.clientX - rect.left, 0, rect.width);
+    const x2 = dragMode === "timeRange" ? clamp(timeToX(selectionTimeAtX(rawX), canvas.clientWidth), 0, rect.width) : rawX;
     const rawY = event.clientY - rect.top;
     const y2 = dragMode === "timeRange" ? rect.height : clamp(rawY, HEADER_HEIGHT, rect.height);
     const top = dragMode === "timeRange" ? 0 : Math.min(y1, y2);
@@ -33959,8 +33974,12 @@
       render();
       return;
     }
-    const nextStart = xToTime(minX, canvas.clientWidth);
-    const nextEnd = xToTime(maxX, canvas.clientWidth);
+    const nextStart = selectionTimeAtX(minX);
+    const nextEnd = selectionTimeAtX(maxX);
+    if (nextStart === nextEnd) {
+      render();
+      return;
+    }
     startTime = clamp(Math.min(nextStart, nextEnd), 0, Math.max(0, vcd.endTime - 1));
     endTime = clamp(Math.max(nextStart, nextEnd), startTime + 1, Math.max(1, vcd.endTime || 1));
     setActiveCursorTime(startTime);
@@ -34004,17 +34023,20 @@
     if (!vcd) return;
     dragging = true;
     lastMouseX = event.clientX;
-    const displayItem = displayItemFromOffsetY(event.offsetY);
+    const rect = waveCanvasPane.getBoundingClientRect();
+    const localX = clamp(event.clientX - rect.left, 0, canvas.clientWidth);
+    const localY = event.clientY - rect.top;
+    const displayItem = displayItemFromOffsetY(localY);
     const rowIndex = displayItem?.waveIndex ?? -1;
-    if (event.offsetY < HEADER_HEIGHT) {
+    if (localY < HEADER_HEIGHT) {
       dragMode = "timeRange";
-      boxStart = { x: clamp(event.offsetX, 0, canvas.clientWidth), y: 0 };
+      boxStart = { x: timeToX(selectionTimeAtX(localX), canvas.clientWidth), y: 0 };
       updateSelectionBox(event);
       return;
     }
     dragMode = "box";
-    boxStart = { x: clamp(event.offsetX, 0, canvas.clientWidth), y: clamp(event.offsetY, HEADER_HEIGHT, canvas.clientHeight) };
-    setActiveCursorTime(xToTime(event.offsetX, canvas.clientWidth));
+    boxStart = { x: localX, y: clamp(localY, HEADER_HEIGHT, canvas.clientHeight) };
+    setActiveCursorTime(selectionTimeAtX(localX));
     if (isBusBitRow(displayItem)) {
       selectBusBit(displayItem);
     } else if (rowIndex >= 0 && rowIndex < waveSignals.length) {

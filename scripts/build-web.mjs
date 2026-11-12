@@ -35,9 +35,10 @@ async function writeApplicationStyles(application, sourceRoot, destinationRoot) 
         readFile(path.join(root, 'packages/webview-ui/src/base.css'), 'utf8'),
         readFile(path.join(sourceRoot, application.appStylesheet), 'utf8'),
     ]);
+    // An embedded BOM would become part of the next stylesheet's first selector.
     await writeFile(
         path.join(destinationRoot, 'index.css'),
-        `${tokens}\n${base}\n${app}`,
+        [tokens, base, app].map(css => css.replace(/^\uFEFF/, '')).join('\n'),
         'utf8'
     );
 }

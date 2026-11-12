@@ -17,6 +17,23 @@ test('bus templates follow actual ascending and negative HDL indices',()=>{
  assert.throws(()=>bindPhysicalSignal(b,[{...ps[0],indices:[0]}],'GPIO','data','data'),/width/i);
  assert.equal(generateConstraints(b,{board:'b',bindings:bs.slice(0,1)},ps).text,undefined);
 });
+test('pin signals accept bus slices and ordered concatenations of scalar and bus ports', () => {
+ const board = createPhysicalBoard({ kind: 'board', extension: '.pcf', pins: { a: 'A {signal name}', b: 'B {signal name}', c: 'C {signal name}', d: 'D {signal name}', e: 'E {signal name}' }, interfaces: [{ id: 'IO', signals: [{ id: 'wide', direction: 'output', pins: ['a','b','c','d'] }, { id: 'single', direction: 'output', pins: ['e'] }] }] });
+ const ports = [{ name: 'flag', direction: 'output' as const }, { name: 'bus', direction: 'output' as const, indices: [3,2,1,0] }];
+ const refs = [{ name: 'flag' }, { name: 'bus', bit: 3 }, { name: 'bus', bit: 2 }, { name: 'bus', bit: 1 }];
+ const wide = bindPhysicalSignal(board, ports, 'IO', 'wide', refs);
+ const single = bindPhysicalSignal(board, ports, 'IO', 'single', [{ name: 'bus', bit: 0 }]);
+ assert.deepEqual(wide.map(b => b.source.member), ['wide.3','wide.2','wide.1','wide.0']);
+ assert.deepEqual(wide.map(b => b.port), refs);
+ assert.equal(generateConstraints(board, { board: 'b', bindings: [...wide,...single] }, ports).text, 'A flag\nB bus[3]\nC bus[2]\nD bus[1]\nE bus[0]');
+ const reversed = bindPhysicalSignal(board, ports, 'IO', 'wide', [{name:'bus',bit:1},{name:'bus',bit:2},{name:'bus',bit:3},{name:'flag'}]);
+ assert.equal(generateConstraints(board, { board: 'b', bindings: reversed }, ports).text, 'A bus[1]\nB bus[2]\nC bus[3]\nD flag');
+ assert.throws(() => bindPhysicalSignal(board, ports, 'IO', 'wide', refs.slice(1)), /width/i);
+ assert.throws(() => bindPhysicalSignal(board, ports, 'IO', 'wide', [...refs.slice(0,3),refs[1]]), /duplicate/i);
+ assert.throws(() => bindPhysicalSignal(board, ports, 'IO', 'single', [{name:'bus',bit:7}]), /port\/bit/i);
+ assert.throws(() => bindPhysicalSignal(board, [{...ports[1], direction:'input'}], 'IO', 'single', [{name:'bus',bit:0}]), /direction/i);
+ assert.equal(generateConstraints(board, {board:'b',bindings:[...wide,{...single[0],port:{name:'bus',bit:1}}]}, ports).text, undefined);
+});
 test('daughtercards bind final positions with independent electrical settings and no board mapping',()=>{
  const b={...uart(),cards:{c:createPhysicalBoard({kind:'daughtercard',extension:'.xdc',pins:{tx:'PIN {pin name} {signal name}\nIO 18 {signal name}'},interfaces:[{id:'U',signals:[{id:'tx',direction:'output',pins:['tx']}]}]}).model}};
  const config={board:'b',cards:[{id:'c',board:'card.json'}],bindings:[{source:{card:'c',interface:'U',member:'tx'},port:{name:'tx'},pin:'A1'}]};

@@ -7,6 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { _electron as electron, type Page } from 'playwright';
+import { createSimulationTask } from '@veriflow/hdl-runtime/simulationTask';
 
 const repositoryRoot = path.resolve(__dirname, '../../../..');
 const mainEntry = path.join(repositoryRoot, 'packages', 'waveform-desktop', 'dist', 'main.js');
@@ -178,6 +179,90 @@ test('Electron host isolates the shared waveform renderer', { timeout: 20_000 },
         await electronApp.close();
         await untrusted.close();
         rmSync(userDataDir, { recursive: true, force: true });
+    }
+});
+
+test('Electron opens the shared schematic renderer for an Arch Design document', { timeout: 20_000 }, async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'veriflow-electron-schematic-'));
+    const userDataDir = path.join(root, 'user-data');
+    const source = path.join(root, 'top.ad');
+    mkdirSync(userDataDir, { recursive: true });
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(source, JSON.stringify({ format: 'vik-veriflow.arch-design', schemaVersion: 1,
+        module: 'top', ports: [], instances: [], connections: [], interfacePorts: [],
+        interfaceOverrides: {}, interfaceConnections: [], defaults: {}, export: {}, presentation: {} }));
+    const electronApp = await electron.launch({
+        args: [mainEntry, '--schematic-editor', source, '--kind=arch-design', `--user-data-dir=${userDataDir}`, '--disable-gpu'],
+        env: electronEnvironment(),
+    });
+    try {
+        const page = await electronApp.firstWindow();
+        page.setDefaultTimeout(8_000);
+        await page.locator('#schematic-shell').waitFor();
+        await page.waitForFunction(() => (document.querySelector('#module-selector') as HTMLSelectElement | null)?.value === 'arch-design:top');
+        const renderer = await page.evaluate(() => ({
+            title: document.title,
+            node: typeof (globalThis as any).process,
+            transport: Object.keys((globalThis as any).__veriflowHost).sort(),
+            kind: (globalThis as any).__veriflowHost.getState(),
+        }));
+        assert.equal(renderer.title, 'VeriFlow Schematic');
+        assert.equal(renderer.node, 'undefined');
+        assert.deepEqual(renderer.transport, ['getState', 'onMessage', 'postMessage', 'setState']);
+        assert.deepEqual(await electronApp.evaluate(({ BrowserWindow }) => {
+            const preferences = (BrowserWindow.getAllWindows()[0].webContents as any).getLastWebPreferences();
+            return { contextIsolation: preferences.contextIsolation, nodeIntegration: preferences.nodeIntegration,
+                sandbox: preferences.sandbox };
+        }), { contextIsolation: true, nodeIntegration: false, sandbox: true });
+    } finally {
+        await electronApp.close();
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('Electron Simulation Task window runs through the shared renderer and enables its waveform', { timeout: 25_000 }, async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'veriflow-electron-task-'));
+    const userDataDir = path.join(root, 'user-data');
+    const source = path.join(root, 'simulation.st');
+    mkdirSync(userDataDir, { recursive: true });
+    const { writeFileSync } = await import('node:fs');
+    const task = createSimulationTask(source);
+    task.settings.duration = 100;
+    writeFileSync(source, JSON.stringify(task));
+    const electronApp = await electron.launch({
+        args: [mainEntry, '--schematic-editor', source, '--kind=simulation-task', `--user-data-dir=${userDataDir}`, '--disable-gpu'],
+        env: electronEnvironment(),
+    });
+    try {
+        const page = await electronApp.firstWindow();
+        page.setDefaultTimeout(8_000);
+        const rendererErrors: string[] = [];
+        const hostEvents: unknown[] = [];
+        page.on('pageerror', error => rendererErrors.push(error.message));
+        await page.locator('#schematic-shell').waitFor();
+        await page.locator('#run-task-button:not([hidden])').waitFor();
+        await page.evaluate(() => (globalThis as any).__veriflowHost.onMessage((message: unknown) => {
+            (globalThis as any).__hostEvents.push(message);
+        }));
+        await page.evaluate(() => { (globalThis as any).__hostEvents = []; });
+        assert.equal(await page.locator('#wave-task-button').isDisabled(), true);
+        await page.locator('#run-task-button').click();
+        await page.waitForTimeout(5_000);
+        const execution = await page.evaluate(() => ({
+            status: document.querySelector('#task-status')?.textContent,
+            detail: document.querySelector('#task-status')?.getAttribute('title'),
+            events: (globalThis as any).__hostEvents,
+        }));
+        assert.equal(await page.locator('#wave-task-button').isDisabled(), false, JSON.stringify(execution));
+        assert.deepEqual(rendererErrors, []);
+        assert.deepEqual(await electronApp.evaluate(({ BrowserWindow }) => {
+            const preferences = (BrowserWindow.getAllWindows()[0].webContents as any).getLastWebPreferences();
+            return { contextIsolation: preferences.contextIsolation, nodeIntegration: preferences.nodeIntegration,
+                sandbox: preferences.sandbox };
+        }), { contextIsolation: true, nodeIntegration: false, sandbox: true });
+    } finally {
+        await electronApp.close();
+        rmSync(root, { recursive: true, force: true });
     }
 });
 

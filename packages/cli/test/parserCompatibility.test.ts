@@ -96,6 +96,7 @@ test('shows Arch Design parent help', async () => {
 positional arguments:
   ACTION
     new       create an Arch Design
+    ui        open the Arch Design editor
     validate  validate an Arch Design
     export    export an Arch Design to RTL
     apply     apply a versioned edit batch

@@ -91,7 +91,8 @@ export class PhysicalPinsPanel {
         const panel = vscode.window.createWebviewPanel('veriflow.constraints', 'Pin constraints', vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media', 'constraints')] });
         this.panel = panel;
         const listener=panel.webview.onDidReceiveMessage(message => { void this.session.dispatch(message); });
-        panel.onDidDispose(() => { listener?.dispose();this.panel = undefined; });
+        const visibility=panel.onDidChangeViewState(event=>{if(event.webviewPanel.active&&event.webviewPanel.visible)void this.session.dispatch({type:'source-refresh'});});
+        panel.onDidDispose(() => { listener?.dispose();visibility.dispose();this.panel = undefined; });
         const root = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'constraints'), css = panel.webview.asWebviewUri(vscode.Uri.joinPath(root, 'index.css')).toString(), script = panel.webview.asWebviewUri(vscode.Uri.joinPath(root, 'index.js')).toString();
         panel.webview.html = constraintWorkbenchHtml(await readFile(vscode.Uri.joinPath(root, 'index.html').fsPath, 'utf8'), css, script, panel.webview.cspSource);
     }

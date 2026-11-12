@@ -115,6 +115,8 @@ type SearchMatch = { cell: Cell; objectId: string; description: string };
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 const SAVE_DELAY_MS = 250;
+const PIN_DRAG_DEBOUNCE_MS = 40;
+const PIN_DRAG_DISTANCE = 4;
 
 const shapeNames: Record<GraphNodeKind, string> = {
     port: 'veriflow-port',
@@ -152,7 +154,14 @@ const dom = {
     canvasRegion: requiredElement<HTMLElement>('canvas-region'),
     canvasState: requiredElement<HTMLDivElement>('canvas-state'),
     canvasStateMessage: requiredElement<HTMLSpanElement>('canvas-state-message'),
+    outline: requiredElement<HTMLElement>('outline'),
+    outlineList: requiredElement<HTMLDivElement>('outline-list'),
+    outlineCount: requiredElement<HTMLSpanElement>('outline-count'),
+    outlineSearch: requiredElement<HTMLInputElement>('outline-search'),
+    outlineIcon: requiredElement<HTMLSpanElement>('outline-icon'),
+    outlineSearchIcon: requiredElement<HTMLSpanElement>('outline-search-icon'),
     moduleSelector: requiredElement<HTMLSelectElement>('module-selector'),
+    moduleContextIcon: requiredElement<HTMLSpanElement>('module-context-icon'),
     fitButton: requiredElement<HTMLButtonElement>('fit-button'),
     zoomResetButton: requiredElement<HTMLButtonElement>('zoom-reset-button'),
     relayoutButton: requiredElement<HTMLButtonElement>('relayout-button'),
@@ -181,6 +190,7 @@ const dom = {
     physicalPinsButton: requiredElement<HTMLButtonElement>('physical-pins-button'),
     deleteButton: requiredElement<HTMLButtonElement>('delete-button'),
     inspector: requiredElement<HTMLElement>('inspector'),
+    inspectorPaneIcon: requiredElement<HTMLSpanElement>('inspector-pane-icon'),
     inspectorTitle: requiredElement<HTMLHeadingElement>('inspector-title'),
     inspectorMode: requiredElement<HTMLSpanElement>('inspector-mode'),
     inspectorProperties: requiredElement<HTMLDListElement>('inspector-properties'),
@@ -290,7 +300,10 @@ function registerShapes(): void {
                     children: [{ tagName: 'text', selector: 'subtitle' }],
                 },
             ],
-            portMarkup: [{ tagName: 'circle', selector: 'portBody' }],
+            portMarkup: [{ tagName: 'g', selector: 'pinRoot', children: [
+                { tagName: 'rect', selector: 'portHitArea' },
+                { tagName: 'circle', selector: 'portBody' },
+            ] }],
             portLabelMarkup: [
                 {
                     tagName: 'g',
@@ -318,9 +331,10 @@ function registerShapes(): void {
                     },
                 } : {}),
                 body: {
+                    class: 'veriflow-node-body',
                     ...(kind === 'port' ? {
                         refD: boundaryBodyPaths.rectangle,
-                        class: boundaryBodyClasses.rectangle,
+                        class: `veriflow-node-body ${boundaryBodyClasses.rectangle}`,
                         pointerEvents: 'none',
                     } : {}),
                     fill: 'var(--schematic-node-fill)',
@@ -464,7 +478,8 @@ function pinItems(
             id: pin.id,
             group: pin.side,
             ...(inoutSemantic === 't' ? {
-                markup: [
+                markup: [{ tagName: 'g', selector: 'pinRoot', children: [
+                    { tagName: 'rect', selector: 'portHitArea' },
                     {
                         tagName: 'circle',
                         selector: 'portHalo',
@@ -474,13 +489,21 @@ function pinItems(
                         },
                     },
                     { tagName: 'circle', selector: 'portBody' },
-                ],
+                ] }],
             } : {}),
             args: {
                 x: pin.anchor.x - rendered.bounds.x,
                 y: pin.anchor.y - rendered.bounds.y,
             },
             attrs: {
+                portHitArea: {
+                    ...pinHitArea(rendered, pin.id),
+                    fill: 'transparent',
+                    stroke: 'none',
+                    pointerEvents: 'all',
+                    magnet: false,
+                    class: 'veriflow-pin-hit-area',
+                },
                 ...(inoutSemantic === 't'
                     ? {
                         portHalo: {
@@ -492,6 +515,17 @@ function pinItems(
                 portBody: {
                     magnet: source !== undefined && pinConnectable(source),
                     strokeDasharray: source?.readOnly ? '2 1' : undefined,
+                    r: source?.interface?.kind === 'aggregate' ? 4 : 3,
+                    fill: source?.interface === undefined
+                        ? 'var(--schematic-node-fill)'
+                        : 'var(--schematic-interface-pin-fill)',
+                    stroke: source?.interface === undefined
+                        ? 'var(--schematic-pin)'
+                        : interfaceColor,
+                    strokeWidth: source?.interface?.kind === 'aggregate' ? 2 : 1.5,
+                },
+                pinRoot: {
+                    magnet: source !== undefined && pinConnectable(source),
                     ...(inoutSemantic === undefined ? {} : {
                         class: [
                             'x6-port-body',
@@ -507,14 +541,6 @@ function pinItems(
                             `veriflow-interface-${source.interface.role}`,
                             `veriflow-interface-${source.interface.kind}`,
                         ].join(' ') }),
-                    r: source?.interface?.kind === 'aggregate' ? 4 : 3,
-                    fill: source?.interface === undefined
-                        ? 'var(--schematic-node-fill)'
-                        : 'var(--schematic-interface-pin-fill)',
-                    stroke: source?.interface === undefined
-                        ? 'var(--schematic-pin)'
-                        : interfaceColor,
-                    strokeWidth: source?.interface?.kind === 'aggregate' ? 2 : 1.5,
                 },
                 portLabelClip: {
                     x: pin.side === 'left' ? 0 : -pin.clipBounds.width,
@@ -601,7 +627,7 @@ function createRenderedNode(
                 strokeDasharray: model.readOnly ? '4 2' : undefined,
                 ...(model.kind === 'port' ? {
                     refD: boundaryBodyPaths[rendered.bodyShape],
-                    class: boundaryBodyClasses[rendered.bodyShape],
+                    class: `veriflow-node-body ${boundaryBodyClasses[rendered.bodyShape]}`,
                 } : {}),
             },
             accent: {
@@ -715,6 +741,7 @@ function renderNetworks(
                             ? { name: 'block', width: 6, height: 6 }
                             : null,
                     },
+                    wrap: { strokeWidth: 12 },
                 },
                 zIndex: 0,
             });
@@ -803,7 +830,7 @@ const graph = new Graph({
         modifiers: null,
     },
     interacting: {
-        nodeMovable: view => cellData(view.cell)?.junction !== true,
+        nodeMovable: view => !connectionModeActive() && cellData(view.cell)?.junction !== true,
         edgeMovable: false,
         edgeLabelMovable: false,
         arrowheadMovable: false,
@@ -831,6 +858,7 @@ let minimapPlugin: MiniMap | undefined;
 let minimapAvailable = false;
 let searchMatches: SearchMatch[] = [];
 let searchIndex = -1;
+const collapsedOutlineGroups = new Set<string>();
 let errors = 0;
 let warnings = 0;
 let nodeMoveGeneration = 0;
@@ -870,6 +898,13 @@ let archDesignGraphRefreshInProgress = false;
 type PendingConnection = Readonly<{ nodeId: string; portId: string }>;
 let pendingConnection: PendingConnection | undefined;
 let pendingConnectionPreview: Edge | undefined;
+let pinGesture: {
+    origin: { x: number; y: number };
+    point: { x: number; y: number };
+    priorConnection: boolean;
+    dragged: boolean;
+    timer?: ReturnType<typeof setTimeout>;
+} | undefined;
 let connectionLayoutSnapshot: Readonly<{
     moduleKey: string;
     layout: SchematicLayout;
@@ -878,8 +913,22 @@ let connectionLayoutSnapshot: Readonly<{
 function connectionAuthoringEnabled(): boolean {
     return archDesignEditable
         && !authoringPending
-        && currentArchDesignState !== undefined
-        && dom.connectButton.getAttribute('aria-pressed') === 'true';
+        && currentArchDesignState !== undefined;
+}
+
+function connectionModeActive(): boolean {
+    return dom.connectButton.getAttribute('aria-pressed') === 'true';
+}
+
+function pinHitArea(rendered: RenderedNodeGeometry, pinId: string) {
+    const pin = rendered.pins.find(candidate => candidate.id === pinId)!;
+    const gap = Math.min(...rendered.pins.filter(candidate =>
+        candidate.id !== pinId && candidate.side === pin.side
+    ).map(candidate => Math.abs(candidate.anchor.y - pin.anchor.y)));
+    // Leave a gap even for densely packed pins; expanding horizontally is safe.
+    const halfHeight = Math.min(connectionModeActive() ? 12 : 8, (gap - 2) / 2);
+    const halfWidth = connectionModeActive() ? 14 : 10;
+    return { x: -halfWidth, y: -halfHeight, width: halfWidth * 2, height: halfHeight * 2 };
 }
 
 function interfaceInspectorForPin(pin: GraphNode['pins'][number]) {
@@ -998,6 +1047,8 @@ function refreshPendingConnectionStyles(): void {
 }
 
 function cancelPendingConnection(): void {
+    if (pinGesture?.timer !== undefined) clearTimeout(pinGesture.timer);
+    pinGesture = undefined;
     if (pendingConnectionPreview && graph.hasCell(pendingConnectionPreview)) {
         graph.removeCell(pendingConnectionPreview);
     }
@@ -1068,7 +1119,7 @@ function postConnection(first: ConnectionTerminal, second: ConnectionTerminal): 
 }
 
 function handleConnectionPinClick(node: Node, portId: string, x: number, y: number): void {
-    if (!connectionAuthoringEnabled()) return;
+    if (!connectionAuthoringEnabled() || !connectionModeActive()) return;
     const terminal = connectionTerminal(node, portId);
     if (!terminal) return;
     if (!pendingConnection) {
@@ -1089,18 +1140,25 @@ function handleConnectionPinClick(node: Node, portId: string, x: number, y: numb
 
 function refreshConnectionMagnets(): void {
     const enabled = connectionAuthoringEnabled();
+    dom.canvas.classList.toggle('veriflow-connection-mode', connectionModeActive());
     for (const cell of graph.getNodes()) {
         const data = cellData(cell);
         if (data?.objectType !== 'node' || !data.node || data.junction) continue;
         const pinsById = new Map(data.node.pins.map(pin => [pin.id, pin]));
+        const rendered = currentRenderModel?.nodes.get(cell.id);
         const view = graph.findViewByCell(cell);
         view?.container.querySelectorAll<SVGGElement>('.x6-port-body[port]').forEach(
             port => {
                 const pin = pinsById.get(port.getAttribute('port') ?? '');
                 const magnet = String(enabled && pin !== undefined && pinConnectable(pin));
                 port.setAttribute('magnet', magnet);
-                port.querySelector('[data-selector="portBody"]')
-                    ?.setAttribute('magnet', magnet);
+                port.querySelector('circle:last-child')?.setAttribute('magnet', magnet);
+                const hitArea = port.querySelector('.veriflow-pin-hit-area');
+                if (hitArea && rendered && pin) {
+                    for (const [name, value] of Object.entries(pinHitArea(rendered, pin.id))) {
+                        hitArea.setAttribute(name, String(value));
+                    }
+                }
             }
         );
     }
@@ -1350,12 +1408,155 @@ function updateSelectionStatus(cells: Cell[], persist = true): void {
     dom.selectionStatus.textContent = summary.statusText;
     refreshPinSelectionStyles();
     renderCurrentInspector(cells);
+    renderOutline();
     if (persist) {
         if (archDesignDocument) {
             persistCurrentLayoutState();
         } else {
             scheduleLayoutSave();
         }
+    }
+}
+
+function outlineIcon(icon: IconNode): SVGElement {
+    return createElement(icon, {
+        width: 13,
+        height: 13,
+        'stroke-width': 1.5,
+        'aria-hidden': 'true',
+    }) as unknown as SVGElement;
+}
+
+function outlineNetworkWidth(network: SchematicNetwork): string {
+    return network.width.kind === 'known' ? `${network.width.bits} bit` : '';
+}
+
+function outlinePortDirection(node: GraphNode): string {
+    const direction = node.pins[0]?.direction;
+    if (direction === 'bidirectional') return 'io';
+    return direction === 'driver' ? 'in' : 'out';
+}
+
+function renderOutline(): void {
+    if (!currentGraph) {
+        dom.outlineList.replaceChildren();
+        dom.outlineCount.textContent = '0';
+        return;
+    }
+    const query = dom.outlineSearch.value.trim().toLowerCase();
+    const matches = (value: string): boolean => !query || value.toLowerCase().includes(query);
+    const selectedId = currentLayout?.selectedObjectId;
+    const ports = currentGraph.nodes.filter(node =>
+        node.kind === 'port'
+        && (matches(node.label) || matches(node.subtitle ?? ''))
+    );
+    const instances = currentGraph.nodes.filter(node =>
+        node.kind === 'instance'
+        && (matches(node.label) || matches(node.subtitle ?? ''))
+    );
+    const logic = currentGraph.nodes.filter(node =>
+        node.kind !== 'port' && node.kind !== 'instance'
+        && (matches(node.label) || matches(node.subtitle ?? ''))
+    );
+    const networks = currentGraph.networks.filter(network => matches(network.name));
+
+    const appendGroup = (
+        title: string,
+        icon: IconNode,
+        rows: ReadonlyArray<{ kind: 'node' | 'net'; id: string; label: string; meta: string; icon: IconNode }>
+    ): void => {
+        if (!rows.length) return;
+        const group = document.createElement('button');
+        group.type = 'button';
+        group.className = 'vf-list-group outline-group';
+        group.dataset.outlineGroup = title;
+        const collapsed = collapsedOutlineGroups.has(title);
+        group.setAttribute('aria-expanded', String(!collapsed));
+        group.append(outlineIcon(ChevronDown), outlineIcon(icon));
+        group.append(title);
+        const spacer = document.createElement('span');
+        spacer.className = 'vf-spacer';
+        const count = document.createElement('span');
+        count.textContent = String(rows.length);
+        group.append(spacer, count);
+        dom.outlineList.append(group);
+        group.addEventListener('click', () => {
+            if (collapsedOutlineGroups.has(title)) collapsedOutlineGroups.delete(title);
+            else collapsedOutlineGroups.add(title);
+            renderOutline();
+            dom.outlineList.querySelector<HTMLButtonElement>(
+                `[data-outline-group="${title}"]`
+            )?.focus();
+        });
+        for (const item of rows) {
+            const row = document.createElement('div');
+            row.className = 'vf-list-row outline-row';
+            row.dataset.outlineKind = item.kind;
+            row.dataset.outlineId = item.id;
+            row.hidden = collapsed;
+            row.setAttribute('role', 'button');
+            row.tabIndex = 0;
+            row.setAttribute('aria-selected', String(selectedId === item.id));
+            row.title = `${item.label}${item.meta ? ` · ${item.meta}` : ''}`;
+            const iconSlot = document.createElement('span');
+            iconSlot.className = 'vf-row-icon';
+            iconSlot.append(outlineIcon(item.icon));
+            const label = document.createElement('span');
+            label.className = 'vf-row-label vf-row-label--mono';
+            label.textContent = item.label;
+            const meta = document.createElement('span');
+            meta.className = 'vf-row-meta';
+            meta.textContent = item.meta;
+            row.append(iconSlot, label, meta);
+            const activate = (): void => {
+                if (item.kind === 'net') {
+                    selectNetwork(item.id);
+                    return;
+                }
+                const cell = graph.getCellById(item.id);
+                if (cell) selection.reset(cell);
+            };
+            row.addEventListener('click', activate);
+            row.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    activate();
+                }
+            });
+            dom.outlineList.append(row);
+        }
+    };
+
+    dom.outlineList.replaceChildren();
+    appendGroup('Ports', Cable, ports.map(node => ({
+        kind: 'node' as const,
+        id: node.id,
+        label: node.label,
+        meta: outlinePortDirection(node),
+        icon: Cable,
+    })));
+    appendGroup('Instances', Component, [...instances, ...logic].map(node => ({
+        kind: 'node' as const,
+        id: node.id,
+        label: node.label,
+        meta: node.subtitle ?? node.kind,
+        icon: node.kind === 'instance' ? Component : CircuitBoard,
+    })));
+    appendGroup('Nets', Workflow, networks.map(network => ({
+        kind: 'net' as const,
+        id: network.id,
+        label: network.name,
+        meta: outlineNetworkWidth(network),
+        icon: Workflow,
+    })));
+    dom.outlineCount.textContent = String(
+        ports.length + instances.length + logic.length + networks.length
+    );
+    if (!dom.outlineList.childElementCount) {
+        const empty = document.createElement('div');
+        empty.className = 'outline-empty';
+        empty.textContent = 'No match';
+        dom.outlineList.append(empty);
     }
 }
 
@@ -2450,7 +2651,10 @@ function handleHostEvent(event: HostEvent): void {
     switch (event.type) {
         case 'simulationTaskExecution':
             if (currentTaskState) currentTaskState = { ...currentTaskState, execution: event.execution };
+            authoringPending = false;
+            archDesignSemanticEditInFlight = false;
             setAuthoringControls();
+            drainArchDesignWrites();
             return;
         case 'simulationTaskState':
             currentRevision = event.revision;
@@ -2473,9 +2677,10 @@ function handleHostEvent(event: HostEvent): void {
                 && currentGraph?.moduleKey === event.graph.moduleKey
                 ? selectedObjectIds(selection.getSelectedCells())
                 : undefined;
+            const localPresentation = transport.getState()?.layouts?.[event.graph.moduleKey];
             const localViewport = event.fitOnFirstRender === true
                 && autoFittedModules.has(event.graph.moduleKey)
-                ? transport.getState()?.layouts?.[event.graph.moduleKey]?.viewport
+                ? localPresentation?.viewport
                 : undefined;
             const localLayout = queuedArchDesignLayoutSave?.moduleKey
                 === event.graph.moduleKey
@@ -2509,7 +2714,7 @@ function handleHostEvent(event: HostEvent): void {
             currentRevision = event.revision;
             renderSchematic(
                 event.graph,
-                layout,
+                { ...layout, minimap: localPresentation?.minimap ?? layout.minimap },
                 pendingAddedNodeId && event.graph.nodes.some(node => node.id === pendingAddedNodeId)
                     ? [pendingAddedNodeId] : preservedSelection,
                 event.fitOnFirstRender === true,
@@ -2616,6 +2821,10 @@ function installIcons(): void {
     for (const [button, icon] of icons) {
         installIcon(button, icon);
     }
+    dom.outlineIcon.append(outlineIcon(Workflow));
+    dom.outlineSearchIcon.append(outlineIcon(SearchIcon));
+    dom.moduleContextIcon.append(outlineIcon(CircuitBoard));
+    dom.inspectorPaneIcon.append(outlineIcon(Component));
     updateInspectorToggle();
 }
 
@@ -2632,6 +2841,8 @@ function installLogicOperationOptions(): void {
 installLogicOperationOptions();
 installIcons();
 renderCurrentInspector();
+renderOutline();
+dom.outlineSearch.addEventListener('input', renderOutline);
 
 dom.inspectorForm.addEventListener('submit', event => {
     event.preventDefault();
@@ -3315,77 +3526,111 @@ function eventClientPoint(event: Event): { x: number; y: number } | undefined {
     return undefined;
 }
 
-function portAtSelectionBoxPoint(box: Element, event: Event): {
+function pinAtClientPoint(point: { x: number; y: number }): {
     node: Node;
     port: string;
     bodyHit: boolean;
-    point: { x: number; y: number };
 } | undefined {
-    const point = eventClientPoint(event);
-    const nodeId = box.getAttribute('data-cell-id');
-    const node = nodeId ? graph.getCellById(nodeId) : undefined;
-    const view = node && graph.findViewByCell(node);
-    if (!point || !node?.isNode() || !view) return undefined;
-    const portBodies = view.container.querySelectorAll<SVGElement>('.x6-port-body[port]');
-    for (let index = 0; index < portBodies.length; index += 1) {
-        const portBody = portBodies[index];
-        const port = portBody.getAttribute('port');
-        if (!port) continue;
-        const label = portBody.parentElement?.querySelector('.x6-port-label');
-        const containsPoint = (target: Element): boolean => {
-            const bounds = target.getBoundingClientRect();
-            return point.x >= bounds.left && point.x <= bounds.right
-                && point.y >= bounds.top && point.y <= bounds.bottom;
-        };
-        const bodyHit = containsPoint(portBody);
-        if (bodyHit || (label !== null && label !== undefined && containsPoint(label))) {
-            return { node, port, bodyHit, point };
+    const containsPoint = (target: Element | null | undefined): boolean => {
+        if (!target) return false;
+        const bounds = target.getBoundingClientRect();
+        return point.x >= bounds.left && point.x <= bounds.right
+            && point.y >= bounds.top && point.y <= bounds.bottom;
+    };
+    for (const node of graph.getNodes()) {
+        if (!cellData(node)?.node) continue;
+        const view = graph.findViewByCell(node);
+        if (!view) continue;
+        for (const portBody of Array.from(
+            view.container.querySelectorAll<SVGElement>('.x6-port-body[port]')
+        )) {
+            const port = portBody.getAttribute('port');
+            if (!port) continue;
+            const bodyHit = containsPoint(portBody.querySelector('.veriflow-pin-hit-area'));
+            const label = portBody.parentElement?.querySelector('.veriflow-pin-label-hit-area');
+            if (bodyHit || containsPoint(label)) return { node, port, bodyHit };
         }
     }
     return undefined;
 }
 
-function selectPinTarget(event: Event): void {
-    if (!(event.target instanceof Element)) return;
-    const label = event.target.closest('.x6-port-label');
-    if (label) {
-        event.stopPropagation();
-        const port = label.parentElement
-            ?.querySelector<SVGElement>('.x6-port-body[port]')
-            ?.getAttribute('port');
-        const nodeId = label.closest('.x6-node[data-cell-id]')?.getAttribute('data-cell-id');
-        const node = nodeId ? graph.getCellById(nodeId) : undefined;
-        if (node) selectPin(node, port);
-        return;
-    }
-    const selectionBox = event.target.closest(
-        '.x6-widget-selection-box[data-cell-id]'
-    );
-    if (!selectionBox) return;
-    const hit = portAtSelectionBoxPoint(selectionBox, event);
+function startPinGesture(event: Event): void {
+    if (!(event.target instanceof Element) || !dom.canvas.contains(event.target)
+        || event.target.closest('.x6-edge')
+        || (event instanceof MouseEvent && event.button !== 0)) return;
+    const point = eventClientPoint(event);
+    const hit = point && pinAtClientPoint(point);
     if (!hit) return;
+    event.preventDefault();
     event.stopPropagation();
     selectPin(hit.node, hit.port);
-    if (hit.bodyHit && (!(event instanceof MouseEvent) || event.button === 0)) {
-        const local = graph.clientToLocal(hit.point.x, hit.point.y);
+    if (!hit.bodyHit || !connectionTerminal(hit.node, hit.port)) return;
+    const gesture: NonNullable<typeof pinGesture> = {
+        origin: point!, point: point!,
+        priorConnection: pendingConnection !== undefined, dragged: false,
+    };
+    const begin = (): void => {
+        const local = graph.clientToLocal(gesture.point.x, gesture.point.y);
+        startPendingConnection(hit.node, hit.port, local.x, local.y);
+        pinGesture = gesture;
+    };
+    if (connectionModeActive()) {
+        if (!pendingConnection) begin();
+    } else {
+        gesture.timer = setTimeout(begin, PIN_DRAG_DEBOUNCE_MS);
+    }
+    pinGesture = gesture;
+}
+
+function movePinGesture(event: Event): void {
+    const point = eventClientPoint(event);
+    if (!point) return;
+    if (pinGesture) {
+        pinGesture.point = point;
+        if (Math.hypot(point.x - pinGesture.origin.x, point.y - pinGesture.origin.y)
+            > PIN_DRAG_DISTANCE) {
+            pinGesture.dragged = true;
+        }
+        if (event.cancelable) event.preventDefault();
+    }
+    if (!pendingConnectionPreview || !graph.hasCell(pendingConnectionPreview)) return;
+    pendingConnectionPreview.setTarget(graph.clientToLocal(point.x, point.y));
+}
+
+function endPinGesture(event: Event): void {
+    const gesture = pinGesture;
+    if (!gesture) return;
+    clearTimeout(gesture.timer);
+    pinGesture = undefined;
+    const point = eventClientPoint(event) ?? gesture.point;
+    const hit = pinAtClientPoint(point);
+    if (gesture.dragged) {
+        const first = pendingConnectionTerminal();
+        const second = hit?.bodyHit ? connectionTerminal(hit.node, hit.port) : undefined;
+        if (!first || !second || !postConnection(first, second)) cancelPendingConnection();
+    } else if (connectionModeActive() && gesture.priorConnection && hit?.bodyHit) {
+        const local = graph.clientToLocal(point.x, point.y);
         handleConnectionPinClick(hit.node, hit.port, local.x, local.y);
+    } else if (!connectionModeActive()) {
+        cancelPendingConnection();
     }
 }
 
-document.addEventListener('mousedown', selectPinTarget, true);
-document.addEventListener('touchstart', selectPinTarget, true);
-
-graph.on('node:port:click', ({ e, node, port, x, y }) => {
-    selectPin(node, port);
-    if (port && e.target instanceof Element && e.target.closest('.x6-port-body')) {
-        handleConnectionPinClick(node, port, x, y);
+document.addEventListener('mousedown', startPinGesture, true);
+document.addEventListener('touchstart', startPinGesture, { capture: true, passive: false });
+document.addEventListener('mousemove', movePinGesture);
+document.addEventListener('touchmove', movePinGesture, { passive: false });
+document.addEventListener('mouseup', endPinGesture);
+document.addEventListener('touchend', endPinGesture);
+document.addEventListener('touchcancel', cancelPendingConnection);
+window.addEventListener('blur', cancelPendingConnection);
+document.addEventListener('click', event => {
+    if (event.target instanceof Element && dom.canvas.contains(event.target)
+        && !event.target.closest('.x6-edge')
+        && pinAtClientPoint({ x: event.clientX, y: event.clientY })) {
+        event.stopPropagation();
     }
-});
-
-document.addEventListener('mousemove', event => {
-    if (!pendingConnectionPreview || !graph.hasCell(pendingConnectionPreview)) return;
-    pendingConnectionPreview.setTarget(graph.clientToLocal(event.clientX, event.clientY));
-});
+}, true);
 
 function editableShortcutTarget(target: EventTarget | null): boolean {
     return target instanceof Element && target.closest(
@@ -3415,7 +3660,7 @@ function openSelectedDefinition(): boolean {
 }
 
 function cancelPendingConnectionShortcut(): boolean {
-    if (!pendingConnection) return false;
+    if (!pendingConnection && !pinGesture) return false;
     cancelPendingConnection();
     return true;
 }

@@ -39,5 +39,6 @@ export async function createBoardEditorWindow(configPath: string, sourceFile?: s
     window.on('close',event=>{if(readyToClose)return;event.preventDefault();void session.close().finally(()=>{readyToClose=true;if(!window.isDestroyed())window.close();});});
     window.on('closed', () => ipcMain.removeListener(BOARD_EDITOR_RENDERER_MESSAGE_CHANNEL, listener));
     await window.loadFile(path.join(__dirname, '..', 'assets', 'constraints', 'index.html'));
+    window.on('focus',()=>{void session.dispatch({type:'source-refresh'});});
     return window;
 }

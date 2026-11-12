@@ -1,64 +1,188 @@
+/* ==========================================================================
+   VeriFlow unified UI · semantic tokens
+
+   One colour source: --vscode-* (injected by VS Code in production). We never
+   define --vscode-* here, so a host theme always wins. The fallbacks below are
+   VS Code "Dark Modern", which is also the theme the CLI / Electron host starts
+   with. Nothing in the UI hard-codes a colour outside this file.
+   ========================================================================== */
+
 :root {
     color-scheme: light dark;
-    --vf-font: var(--vscode-font-family, "Segoe UI", system-ui, sans-serif);
-    --vf-mono: var(--vscode-editor-font-family, Consolas, monospace);
+
+    --vf-font: var(--vscode-font-family, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif);
+    --vf-mono: var(--vscode-editor-font-family, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace);
     --vf-font-size: var(--vscode-font-size, 13px);
     --vf-font-size-sm: 11px;
+    /* One type scale for every Webview. Applications must use these tokens
+       instead of ad-hoc px/em sizes. */
+    --vf-fs-body: var(--vf-font-size);
+    --vf-fs-control: 12px;
+    --vf-fs-row: 11.5px;
+    --vf-fs-mono: 11px;
+    --vf-fs-small: 11px;
+    --vf-fs-meta: 10px;
+    --vf-fs-status: 10.5px;
+    --vf-fs-tiny: 9.5px;
+    --vf-fs-section: 10px;
+
     --vf-bg: var(--vscode-editor-background, #1f1f1f);
     --vf-surface: var(--vscode-sideBar-background, #181818);
-    --vf-surface-2: var(--vscode-editorGroupHeader-tabsBackground, #1f1f1f);
-    --vf-widget: var(--vscode-editorWidget-background, #252526);
-    --vf-input-bg: var(--vscode-input-background, #313131);
-    --vf-input-fg: var(--vscode-input-foreground, var(--vscode-editor-foreground, #cccccc));
-    --vf-input-border: var(--vscode-input-border, var(--vscode-panel-border, #3c3c3c));
+    --vf-surface-2: var(--vscode-editorGroupHeader-tabsBackground, #181818);
+    --vf-widget: var(--vscode-editorWidget-background, #202020);
+    --vf-code-bg: var(--vscode-textCodeBlock-background, #181818);
+
     --vf-text: var(--vscode-editor-foreground, #cccccc);
     --vf-text-2: var(--vscode-foreground, var(--vf-text));
     --vf-muted: var(--vscode-descriptionForeground, #9d9d9d);
+    --vf-faint: var(--vscode-editorLineNumber-foreground, #6e7681);
+
     --vf-border: var(--vscode-panel-border, #2b2b2b);
-    --vf-border-strong: var(--vscode-contrastBorder, var(--vf-border));
-    --vf-hover: var(--vscode-list-hoverBackground, rgba(127, 127, 127, .16));
-    --vf-active: var(--vscode-toolbar-activeBackground, rgba(127, 127, 127, .24));
-    --vf-selection: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, .5));
-    --vf-focus: var(--vscode-focusBorder, #007fd4);
-    --vf-accent: var(--vscode-button-background, #0e639c);
-    --vf-accent-hover: var(--vscode-button-hoverBackground, #1177bb);
+    --vf-border-strong: var(--vscode-widget-border, var(--vscode-editorWidget-border, #454545));
+    --vf-contrast: var(--vscode-contrastBorder, transparent);
+    --vf-focus: var(--vscode-focusBorder, #0078d4);
+    --vf-hover: var(--vscode-list-hoverBackground, #2a2d2e);
+    --vf-active: var(--vscode-toolbar-activeBackground, rgba(99, 102, 103, .31));
+    --vf-selection: var(--vscode-editor-selectionBackground, #264f78);
+    --vf-selected: var(--vscode-list-inactiveSelectionBackground, #37373d);
+    --vf-selected-fg: var(--vscode-list-inactiveSelectionForeground, #cccccc);
+
+    --vf-accent: var(--vscode-button-background, #0078d4);
+    --vf-accent-hover: var(--vscode-button-hoverBackground, #026ec1);
     --vf-on-accent: var(--vscode-button-foreground, #ffffff);
-    --vf-secondary: var(--vscode-button-secondaryBackground, rgba(127, 127, 127, .22));
-    --vf-error: var(--vscode-errorForeground, #f14c4c);
+    --vf-secondary: var(--vscode-button-secondaryBackground, #313131);
+
+    --vf-input-bg: var(--vscode-input-background, #313131);
+    --vf-input-fg: var(--vscode-input-foreground, #cccccc);
+    --vf-input-border: var(--vscode-input-border, #3c3c3c);
+    --vf-placeholder: var(--vscode-input-placeholderForeground, #989898);
+
+    --vf-error: var(--vscode-errorForeground, #f85149);
     --vf-warning: var(--vscode-editorWarning-foreground, #cca700);
     --vf-info: var(--vscode-editorInfo-foreground, #3794ff);
     --vf-success: var(--vscode-testing-iconPassed, #73c991);
+    --vf-port-accent: var(--vscode-charts-green, var(--vf-success));
+    --vf-instance-accent: var(--vscode-charts-blue, var(--vf-info));
+
+    /* Graphics (waveform / schematic). light-dark() follows color-scheme, so
+       theme switches repaint without JS. The plain value before it is a
+       fallback for hosts without light-dark(); VS Code's body classes below
+       cover the same case. */
     --vf-wave: #3ddc84;
-    --vf-wave-soft: rgba(61, 220, 132, .12);
+    --vf-wave: light-dark(#0f7a34, #3ddc84);
+    --vf-wave-soft: #3ddc8420;
+    --vf-wave-soft: light-dark(#0f7a3420, #3ddc8420);
     --vf-wave-fill-alpha: .14;
-    --vf-bus: #b083f0;
+    --vf-bus: #c586f0;
+    --vf-bus: light-dark(#6f42c1, #c586f0);
+    --vf-bus-soft: #c586f01c;
+    --vf-bus-soft: light-dark(#6f42c11c, #c586f01c);
+    --vf-unknown: #e8a33d;
+    --vf-unknown: light-dark(#9a6700, #e8a33d);
+    --vf-cursor-a: #3794ff;
+    --vf-cursor-a: light-dark(#005fb8, #3794ff);
+    --vf-cursor-b: #e8a33d;
+    --vf-cursor-b: light-dark(#a35200, #e8a33d);
+    --vf-wire: var(--vscode-editor-foreground, #cccccc);
+    --vf-pin: var(--vscode-editor-foreground, #cccccc);
+    --vf-node-fill: var(--vscode-editorWidget-background, #202020);
+    --vf-node-border: var(--vf-text);
+    --vf-grid-dot: #ffffff1f;
+    --vf-grid-dot: light-dark(#00000024, #ffffff1f);
+    --vf-code-key: #569cd6;
+    --vf-code-key: light-dark(#0000ff, #569cd6);
+    --vf-code-str: #ce9178;
+    --vf-code-str: light-dark(#a31515, #ce9178);
+    --vf-code-num: #b5cea8;
+    --vf-code-num: light-dark(#098658, #b5cea8);
+    --vf-code-comment: #6a9955;
+    --vf-code-comment: light-dark(#008000, #6a9955);
+
+    /* Metrics: one rhythm across all three views. */
     --vf-toolbar-h: 36px;
     --vf-status-h: 24px;
     --vf-control-h: 26px;
-    --vf-row-h: 28px;
+    --vf-row-h: 26px;
     --vf-radius: 2px;
     --vf-gap: 4px;
     --vf-pad: 8px;
+    --vf-left-w: 236px;
+    --vf-right-w: 252px;
     --vf-sidebar-w: 216px;
-    --vf-inspector-w: 256px;
+    --vf-inspector-w: 252px;
+    --vf-splitter: 4px;
+    --vf-tip-delay: 320ms;
 }
 
-@supports (color: light-dark(#000, #fff)) {
-    :root {
-        --vf-wave: light-dark(#0f7a34, #3ddc84);
-        --vf-wave-soft: light-dark(rgba(15, 122, 52, .13), rgba(61, 220, 132, .13));
-        --vf-bus: light-dark(#6f42c1, #c297ff);
-    }
+/* Fallbacks for VS Code versions without light-dark() support. VS Code adds
+   these classes to the webview body, so light themes still get dark-on-light
+   graphics instead of the dark-theme fallbacks. */
+body.vscode-light {
+    --vf-wave: #0f7a34;
+    --vf-wave-soft: #0f7a3420;
+    --vf-bus: #6f42c1;
+    --vf-bus-soft: #6f42c11c;
+    --vf-unknown: #9a6700;
+    --vf-cursor-a: #005fb8;
+    --vf-cursor-b: #a35200;
+    --vf-grid-dot: #00000024;
+    --vf-code-key: #0000ff;
+    --vf-code-str: #a31515;
+    --vf-code-num: #098658;
+    --vf-code-comment: #008000;
 }
 
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+    --vf-wave: var(--vscode-editor-foreground, #ffffff);
+    --vf-wave-soft: transparent;
+    --vf-wave-fill-alpha: 0;
+    --vf-bus: var(--vscode-editor-foreground, #ffffff);
+    --vf-bus-soft: transparent;
+    --vf-unknown: var(--vscode-editor-foreground, #ffffff);
+    --vf-cursor-a: var(--vscode-editor-foreground, #ffffff);
+    --vf-cursor-b: var(--vscode-editor-foreground, #ffffff);
+    --vf-grid-dot: transparent;
+    --vf-port-accent: var(--vscode-editor-foreground, #ffffff);
+    --vf-instance-accent: var(--vscode-editor-foreground, #ffffff);
+    --vf-border: var(--vscode-contrastBorder, var(--vscode-panel-border, #ffffff));
+}
+
+/* High-contrast themes collapse the graphics onto theme text/borders. */
 html[data-vf-contrast="high"] {
     --vf-wave: var(--vscode-editor-foreground, #ffffff);
     --vf-wave-soft: transparent;
     --vf-wave-fill-alpha: 0;
     --vf-bus: var(--vscode-editor-foreground, #ffffff);
+    --vf-bus-soft: transparent;
+    --vf-unknown: var(--vscode-editor-foreground, #ffffff);
+    --vf-cursor-a: var(--vscode-editor-foreground, #ffffff);
+    --vf-cursor-b: var(--vscode-editor-foreground, #ffffff);
+    --vf-wire: var(--vscode-editor-foreground, #ffffff);
+    --vf-pin: var(--vscode-editor-foreground, #ffffff);
+    --vf-grid-dot: transparent;
+    --vf-port-accent: var(--vscode-editor-foreground, #ffffff);
+    --vf-instance-accent: var(--vscode-editor-foreground, #ffffff);
     --vf-border: var(--vscode-contrastBorder, var(--vscode-panel-border, #ffffff));
+    --vf-border-strong: var(--vscode-contrastBorder, var(--vscode-panel-border, #ffffff));
 }
 
 @media (forced-colors: active) {
-    :root { --vf-wave: CanvasText; --vf-wave-soft: Canvas; --vf-wave-fill-alpha: 0; --vf-bus: CanvasText; --vf-focus: Highlight; }
+    :root {
+        --vf-wave: CanvasText;
+        --vf-wave-soft: Canvas;
+        --vf-wave-fill-alpha: 0;
+        --vf-bus: CanvasText;
+        --vf-bus-soft: Canvas;
+        --vf-unknown: CanvasText;
+        --vf-cursor-a: Highlight;
+        --vf-cursor-b: Highlight;
+        --vf-wire: CanvasText;
+        --vf-pin: CanvasText;
+        --vf-grid-dot: transparent;
+        --vf-focus: Highlight;
+        --vf-selection: Highlight;
+        --vf-port-accent: CanvasText;
+        --vf-instance-accent: CanvasText;
+    }
 }

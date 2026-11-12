@@ -4,8 +4,9 @@ import * as os from 'os';
 import { mkdtemp, rm, writeFile, stat, lstat, readFile } from 'fs/promises';
 import { createHash } from 'crypto';
 import { createSimulationTask, parseSimulationTask, simulationInputFingerprint, validateSimulationTaskValue, type SimulationTaskDocument } from '@veriflow/hdl-runtime/simulationTask';
-import { createSimulationRequest, type SimulatorBackend } from '@veriflow/flow-core';
+import type { SimulatorBackend } from '@veriflow/flow-core';
 import type { PreparedSimulationTask } from '@veriflow/hdl-runtime/simulationTaskWorkspace';
+import { runSimulationTask } from '@veriflow/hdl-runtime/workbench/simulationTaskRunner';
 import type { HdlDefinitionSummary } from '../core';
 import type { InterfaceProtocolCatalog } from '@veriflow/schematic-core/interfaces';
 import { SimulationRunCoordinator } from '../workbench/simulationRunCoordinator';
@@ -169,23 +170,16 @@ export class SimulationTaskController implements vscode.Disposable, TaskEditorSe
                     await this.inputFingerprint(file, inputKey(file) === inputKey(document.uri.fsPath))] as const)));
                 const outputDirectory = await mkdtemp(path.join(os.tmpdir(), 'veriflow-st-wave-'));
                 this.artifactDirectories.add(outputDirectory);
-                const generated = path.join(prepared.temporaryDirectory, `${prepared.generatedTestbench.moduleName}.v`);
-                await writeFile(generated, prepared.generatedTestbench.text);
-                const sources = [generated, ...prepared.additionalSources];
-                const stagedFiles = new Set([...sources, ...prepared.runtimeFiles].map(inputKey));
-                const includeFiles = prepared.inputFiles.filter(file => /\.(v|sv|vh|svh)$/i.test(file) && !stagedFiles.has(inputKey(file)));
                 const wave = path.join(outputDirectory, path.basename(task.settings.waveform.filename));
                 await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Simulation: ${path.basename(document.uri.fsPath)}`, cancellable: true }, async (_progress, token) => {
                     const cancellation = token.onCancellationRequested(() => abort.abort());
                     if (token.isCancellationRequested) abort.abort();
                     try {
-                        const result = await backend.compileAndRun(createSimulationRequest({
-                            files: sources, includeFiles,
-                            includeDirs: prepared.includeDirs, defines: prepared.defines, runtimeFiles: prepared.runtimeFiles,
-                            output: path.join(prepared.temporaryDirectory, 'simulation.vvp'), cwd: prepared.temporaryDirectory,
-                            topModule: prepared.generatedTestbench.moduleName, signal: abort.signal,
-                            artifacts: task.settings.waveform.enabled ? [{ kind: 'vcd', path: task.settings.waveform.filename, destination: wave, required: true }] : [],
-                        }));
+                        const result = await runSimulationTask(prepared, backend, {
+                            signal: abort.signal,
+                            artifactDirectory: outputDirectory,
+                            requireWaveform: true,
+                        });
                         const log = output.appendSimulationResult(result);
                         await writeFile(path.join(outputDirectory, 'simulation.log'), log);
                         const writtenWave = result.artifacts.some(item => item.kind === 'vcd' && item.written) && await stat(wave).then(item => item.isFile()).catch(() => false);

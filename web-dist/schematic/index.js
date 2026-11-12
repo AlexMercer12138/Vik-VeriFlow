@@ -48288,6 +48288,8 @@
   var MIN_ZOOM = 0.1;
   var MAX_ZOOM = 4;
   var SAVE_DELAY_MS = 250;
+  var PIN_DRAG_DEBOUNCE_MS = 40;
+  var PIN_DRAG_DISTANCE = 4;
   var shapeNames = {
     port: "veriflow-port",
     instance: "veriflow-instance",
@@ -48320,7 +48322,14 @@
     canvasRegion: requiredElement("canvas-region"),
     canvasState: requiredElement("canvas-state"),
     canvasStateMessage: requiredElement("canvas-state-message"),
+    outline: requiredElement("outline"),
+    outlineList: requiredElement("outline-list"),
+    outlineCount: requiredElement("outline-count"),
+    outlineSearch: requiredElement("outline-search"),
+    outlineIcon: requiredElement("outline-icon"),
+    outlineSearchIcon: requiredElement("outline-search-icon"),
     moduleSelector: requiredElement("module-selector"),
+    moduleContextIcon: requiredElement("module-context-icon"),
     fitButton: requiredElement("fit-button"),
     zoomResetButton: requiredElement("zoom-reset-button"),
     relayoutButton: requiredElement("relayout-button"),
@@ -48349,6 +48358,7 @@
     physicalPinsButton: requiredElement("physical-pins-button"),
     deleteButton: requiredElement("delete-button"),
     inspector: requiredElement("inspector"),
+    inspectorPaneIcon: requiredElement("inspector-pane-icon"),
     inspectorTitle: requiredElement("inspector-title"),
     inspectorMode: requiredElement("inspector-mode"),
     inspectorProperties: requiredElement("inspector-properties"),
@@ -48445,7 +48455,10 @@
             children: [{ tagName: "text", selector: "subtitle" }]
           }
         ],
-        portMarkup: [{ tagName: "circle", selector: "portBody" }],
+        portMarkup: [{ tagName: "g", selector: "pinRoot", children: [
+          { tagName: "rect", selector: "portHitArea" },
+          { tagName: "circle", selector: "portBody" }
+        ] }],
         portLabelMarkup: [
           {
             tagName: "g",
@@ -48473,9 +48486,10 @@
             }
           } : {},
           body: {
+            class: "veriflow-node-body",
             ...kind === "port" ? {
               refD: boundaryBodyPaths.rectangle,
-              class: boundaryBodyClasses.rectangle,
+              class: `veriflow-node-body ${boundaryBodyClasses.rectangle}`,
               pointerEvents: "none"
             } : {},
             fill: "var(--schematic-node-fill)",
@@ -48598,7 +48612,8 @@
         id: pin2.id,
         group: pin2.side,
         ...inoutSemantic === "t" ? {
-          markup: [
+          markup: [{ tagName: "g", selector: "pinRoot", children: [
+            { tagName: "rect", selector: "portHitArea" },
             {
               tagName: "circle",
               selector: "portHalo",
@@ -48608,13 +48623,21 @@
               }
             },
             { tagName: "circle", selector: "portBody" }
-          ]
+          ] }]
         } : {},
         args: {
           x: pin2.anchor.x - rendered.bounds.x,
           y: pin2.anchor.y - rendered.bounds.y
         },
         attrs: {
+          portHitArea: {
+            ...pinHitArea(rendered, pin2.id),
+            fill: "transparent",
+            stroke: "none",
+            pointerEvents: "all",
+            magnet: false,
+            class: "veriflow-pin-hit-area"
+          },
           ...inoutSemantic === "t" ? {
             portHalo: {
               r: 6,
@@ -48624,6 +48647,13 @@
           portBody: {
             magnet: source !== void 0 && pinConnectable(source),
             strokeDasharray: source?.readOnly ? "2 1" : void 0,
+            r: source?.interface?.kind === "aggregate" ? 4 : 3,
+            fill: source?.interface === void 0 ? "var(--schematic-node-fill)" : "var(--schematic-interface-pin-fill)",
+            stroke: source?.interface === void 0 ? "var(--schematic-pin)" : interfaceColor,
+            strokeWidth: source?.interface?.kind === "aggregate" ? 2 : 1.5
+          },
+          pinRoot: {
+            magnet: source !== void 0 && pinConnectable(source),
             ...inoutSemantic === void 0 ? {} : {
               class: [
                 "x6-port-body",
@@ -48638,11 +48668,7 @@
               "veriflow-interface-pin",
               `veriflow-interface-${source.interface.role}`,
               `veriflow-interface-${source.interface.kind}`
-            ].join(" ") },
-            r: source?.interface?.kind === "aggregate" ? 4 : 3,
-            fill: source?.interface === void 0 ? "var(--schematic-node-fill)" : "var(--schematic-interface-pin-fill)",
-            stroke: source?.interface === void 0 ? "var(--schematic-pin)" : interfaceColor,
-            strokeWidth: source?.interface?.kind === "aggregate" ? 2 : 1.5
+            ].join(" ") }
           },
           portLabelClip: {
             x: pin2.side === "left" ? 0 : -pin2.clipBounds.width,
@@ -48715,7 +48741,7 @@
           strokeDasharray: model.readOnly ? "4 2" : void 0,
           ...model.kind === "port" ? {
             refD: boundaryBodyPaths[rendered.bodyShape],
-            class: boundaryBodyClasses[rendered.bodyShape]
+            class: `veriflow-node-body ${boundaryBodyClasses[rendered.bodyShape]}`
           } : {}
         },
         accent: {
@@ -48798,7 +48824,8 @@
               class: network.interface === void 0 ? void 0 : "veriflow-interface-route",
               sourceMarker: terminatesAtLoad(networkRoute, source) ? { name: "block", width: 6, height: 6 } : null,
               targetMarker: terminatesAtLoad(networkRoute, target) ? { name: "block", width: 6, height: 6 } : null
-            }
+            },
+            wrap: { strokeWidth: 12 }
           },
           zIndex: 0
         });
@@ -48883,7 +48910,7 @@
       modifiers: null
     },
     interacting: {
-      nodeMovable: (view) => cellData(view.cell)?.junction !== true,
+      nodeMovable: (view) => !connectionModeActive() && cellData(view.cell)?.junction !== true,
       edgeMovable: false,
       edgeLabelMovable: false,
       arrowheadMovable: false,
@@ -48910,6 +48937,7 @@
   var minimapAvailable = false;
   var searchMatches = [];
   var searchIndex = -1;
+  var collapsedOutlineGroups = /* @__PURE__ */ new Set();
   var errors = 0;
   var warnings = 0;
   var nodeMoveGeneration = 0;
@@ -48937,9 +48965,22 @@
   var archDesignGraphRefreshInProgress = false;
   var pendingConnection;
   var pendingConnectionPreview;
+  var pinGesture;
   var connectionLayoutSnapshot;
   function connectionAuthoringEnabled() {
-    return archDesignEditable && !authoringPending && currentArchDesignState !== void 0 && dom.connectButton.getAttribute("aria-pressed") === "true";
+    return archDesignEditable && !authoringPending && currentArchDesignState !== void 0;
+  }
+  function connectionModeActive() {
+    return dom.connectButton.getAttribute("aria-pressed") === "true";
+  }
+  function pinHitArea(rendered, pinId) {
+    const pin2 = rendered.pins.find((candidate) => candidate.id === pinId);
+    const gap = Math.min(...rendered.pins.filter(
+      (candidate) => candidate.id !== pinId && candidate.side === pin2.side
+    ).map((candidate) => Math.abs(candidate.anchor.y - pin2.anchor.y)));
+    const halfHeight = Math.min(connectionModeActive() ? 12 : 8, (gap - 2) / 2);
+    const halfWidth = connectionModeActive() ? 14 : 10;
+    return { x: -halfWidth, y: -halfHeight, width: halfWidth * 2, height: halfHeight * 2 };
   }
   function interfaceInspectorForPin(pin2) {
     const identity2 = pin2.interface?.id;
@@ -49025,6 +49066,8 @@
     });
   }
   function cancelPendingConnection() {
+    if (pinGesture?.timer !== void 0) clearTimeout(pinGesture.timer);
+    pinGesture = void 0;
     if (pendingConnectionPreview && graph.hasCell(pendingConnectionPreview)) {
       graph.removeCell(pendingConnectionPreview);
     }
@@ -49090,7 +49133,7 @@
     return true;
   }
   function handleConnectionPinClick(node, portId, x, y) {
-    if (!connectionAuthoringEnabled()) return;
+    if (!connectionAuthoringEnabled() || !connectionModeActive()) return;
     const terminal = connectionTerminal(node, portId);
     if (!terminal) return;
     if (!pendingConnection) {
@@ -49110,17 +49153,25 @@
   }
   function refreshConnectionMagnets() {
     const enabled = connectionAuthoringEnabled();
+    dom.canvas.classList.toggle("veriflow-connection-mode", connectionModeActive());
     for (const cell of graph.getNodes()) {
       const data2 = cellData(cell);
       if (data2?.objectType !== "node" || !data2.node || data2.junction) continue;
       const pinsById = new Map(data2.node.pins.map((pin2) => [pin2.id, pin2]));
+      const rendered = currentRenderModel?.nodes.get(cell.id);
       const view = graph.findViewByCell(cell);
       view?.container.querySelectorAll(".x6-port-body[port]").forEach(
         (port2) => {
           const pin2 = pinsById.get(port2.getAttribute("port") ?? "");
           const magnet = String(enabled && pin2 !== void 0 && pinConnectable(pin2));
           port2.setAttribute("magnet", magnet);
-          port2.querySelector('[data-selector="portBody"]')?.setAttribute("magnet", magnet);
+          port2.querySelector("circle:last-child")?.setAttribute("magnet", magnet);
+          const hitArea = port2.querySelector(".veriflow-pin-hit-area");
+          if (hitArea && rendered && pin2) {
+            for (const [name, value] of Object.entries(pinHitArea(rendered, pin2.id))) {
+              hitArea.setAttribute(name, String(value));
+            }
+          }
         }
       );
     }
@@ -49333,12 +49384,142 @@
     dom.selectionStatus.textContent = summary.statusText;
     refreshPinSelectionStyles();
     renderCurrentInspector(cells);
+    renderOutline();
     if (persist) {
       if (archDesignDocument) {
         persistCurrentLayoutState();
       } else {
         scheduleLayoutSave();
       }
+    }
+  }
+  function outlineIcon(icon) {
+    return createElement2(icon, {
+      width: 13,
+      height: 13,
+      "stroke-width": 1.5,
+      "aria-hidden": "true"
+    });
+  }
+  function outlineNetworkWidth(network) {
+    return network.width.kind === "known" ? `${network.width.bits} bit` : "";
+  }
+  function outlinePortDirection(node) {
+    const direction = node.pins[0]?.direction;
+    if (direction === "bidirectional") return "io";
+    return direction === "driver" ? "in" : "out";
+  }
+  function renderOutline() {
+    if (!currentGraph) {
+      dom.outlineList.replaceChildren();
+      dom.outlineCount.textContent = "0";
+      return;
+    }
+    const query = dom.outlineSearch.value.trim().toLowerCase();
+    const matches = (value) => !query || value.toLowerCase().includes(query);
+    const selectedId = currentLayout?.selectedObjectId;
+    const ports = currentGraph.nodes.filter(
+      (node) => node.kind === "port" && (matches(node.label) || matches(node.subtitle ?? ""))
+    );
+    const instances = currentGraph.nodes.filter(
+      (node) => node.kind === "instance" && (matches(node.label) || matches(node.subtitle ?? ""))
+    );
+    const logic = currentGraph.nodes.filter(
+      (node) => node.kind !== "port" && node.kind !== "instance" && (matches(node.label) || matches(node.subtitle ?? ""))
+    );
+    const networks = currentGraph.networks.filter((network) => matches(network.name));
+    const appendGroup = (title2, icon, rows) => {
+      if (!rows.length) return;
+      const group = document.createElement("button");
+      group.type = "button";
+      group.className = "vf-list-group outline-group";
+      group.dataset.outlineGroup = title2;
+      const collapsed = collapsedOutlineGroups.has(title2);
+      group.setAttribute("aria-expanded", String(!collapsed));
+      group.append(outlineIcon(ChevronDown), outlineIcon(icon));
+      group.append(title2);
+      const spacer = document.createElement("span");
+      spacer.className = "vf-spacer";
+      const count = document.createElement("span");
+      count.textContent = String(rows.length);
+      group.append(spacer, count);
+      dom.outlineList.append(group);
+      group.addEventListener("click", () => {
+        if (collapsedOutlineGroups.has(title2)) collapsedOutlineGroups.delete(title2);
+        else collapsedOutlineGroups.add(title2);
+        renderOutline();
+        dom.outlineList.querySelector(
+          `[data-outline-group="${title2}"]`
+        )?.focus();
+      });
+      for (const item of rows) {
+        const row = document.createElement("div");
+        row.className = "vf-list-row outline-row";
+        row.dataset.outlineKind = item.kind;
+        row.dataset.outlineId = item.id;
+        row.hidden = collapsed;
+        row.setAttribute("role", "button");
+        row.tabIndex = 0;
+        row.setAttribute("aria-selected", String(selectedId === item.id));
+        row.title = `${item.label}${item.meta ? ` · ${item.meta}` : ""}`;
+        const iconSlot = document.createElement("span");
+        iconSlot.className = "vf-row-icon";
+        iconSlot.append(outlineIcon(item.icon));
+        const label = document.createElement("span");
+        label.className = "vf-row-label vf-row-label--mono";
+        label.textContent = item.label;
+        const meta = document.createElement("span");
+        meta.className = "vf-row-meta";
+        meta.textContent = item.meta;
+        row.append(iconSlot, label, meta);
+        const activate = () => {
+          if (item.kind === "net") {
+            selectNetwork(item.id);
+            return;
+          }
+          const cell = graph.getCellById(item.id);
+          if (cell) selection.reset(cell);
+        };
+        row.addEventListener("click", activate);
+        row.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            activate();
+          }
+        });
+        dom.outlineList.append(row);
+      }
+    };
+    dom.outlineList.replaceChildren();
+    appendGroup("Ports", Cable, ports.map((node) => ({
+      kind: "node",
+      id: node.id,
+      label: node.label,
+      meta: outlinePortDirection(node),
+      icon: Cable
+    })));
+    appendGroup("Instances", Component, [...instances, ...logic].map((node) => ({
+      kind: "node",
+      id: node.id,
+      label: node.label,
+      meta: node.subtitle ?? node.kind,
+      icon: node.kind === "instance" ? Component : CircuitBoard
+    })));
+    appendGroup("Nets", Workflow, networks.map((network) => ({
+      kind: "net",
+      id: network.id,
+      label: network.name,
+      meta: outlineNetworkWidth(network),
+      icon: Workflow
+    })));
+    dom.outlineCount.textContent = String(
+      ports.length + instances.length + logic.length + networks.length
+    );
+    if (!dom.outlineList.childElementCount) {
+      const empty2 = document.createElement("div");
+      empty2.className = "outline-empty";
+      empty2.textContent = "No match";
+      dom.outlineList.append(empty2);
     }
   }
   function renderInspector(model) {
@@ -50347,7 +50528,10 @@
     switch (event.type) {
       case "simulationTaskExecution":
         if (currentTaskState) currentTaskState = { ...currentTaskState, execution: event.execution };
+        authoringPending = false;
+        archDesignSemanticEditInFlight = false;
         setAuthoringControls();
+        drainArchDesignWrites();
         return;
       case "simulationTaskState":
         currentRevision = event.revision;
@@ -50367,7 +50551,8 @@
         archDesignLayoutSaveInFlight = false;
         unloadLayoutForwarded = false;
         const preservedSelection = archDesignDocument && currentGraph?.moduleKey === event.graph.moduleKey ? selectedObjectIds(selection.getSelectedCells()) : void 0;
-        const localViewport = event.fitOnFirstRender === true && autoFittedModules.has(event.graph.moduleKey) ? transport.getState()?.layouts?.[event.graph.moduleKey]?.viewport : void 0;
+        const localPresentation = transport.getState()?.layouts?.[event.graph.moduleKey];
+        const localViewport = event.fitOnFirstRender === true && autoFittedModules.has(event.graph.moduleKey) ? localPresentation?.viewport : void 0;
         const localLayout = queuedArchDesignLayoutSave?.moduleKey === event.graph.moduleKey ? queuedArchDesignLayoutSave.layout : void 0;
         const capturedConnectionLayout = connectionLayoutSnapshot?.moduleKey === event.graph.moduleKey ? connectionLayoutSnapshot.layout : void 0;
         connectionLayoutSnapshot = void 0;
@@ -50387,7 +50572,7 @@
         currentRevision = event.revision;
         renderSchematic(
           event.graph,
-          layout,
+          { ...layout, minimap: localPresentation?.minimap ?? layout.minimap },
           pendingAddedNodeId && event.graph.nodes.some((node) => node.id === pendingAddedNodeId) ? [pendingAddedNodeId] : preservedSelection,
           event.fitOnFirstRender === true,
           connectionLayout !== void 0
@@ -50490,6 +50675,10 @@
     for (const [button, icon] of icons) {
       installIcon(button, icon);
     }
+    dom.outlineIcon.append(outlineIcon(Workflow));
+    dom.outlineSearchIcon.append(outlineIcon(Search));
+    dom.moduleContextIcon.append(outlineIcon(CircuitBoard));
+    dom.inspectorPaneIcon.append(outlineIcon(Component));
     updateInspectorToggle();
   }
   function installLogicOperationOptions() {
@@ -50504,6 +50693,8 @@
   installLogicOperationOptions();
   installIcons();
   renderCurrentInspector();
+  renderOutline();
+  dom.outlineSearch.addEventListener("input", renderOutline);
   dom.inspectorForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const control = document.activeElement;
@@ -51100,65 +51291,99 @@ ${choice.description}`
     }
     return void 0;
   }
-  function portAtSelectionBoxPoint(box, event) {
-    const point = eventClientPoint(event);
-    const nodeId = box.getAttribute("data-cell-id");
-    const node = nodeId ? graph.getCellById(nodeId) : void 0;
-    const view = node && graph.findViewByCell(node);
-    if (!point || !node?.isNode() || !view) return void 0;
-    const portBodies = view.container.querySelectorAll(".x6-port-body[port]");
-    for (let index2 = 0; index2 < portBodies.length; index2 += 1) {
-      const portBody = portBodies[index2];
-      const port2 = portBody.getAttribute("port");
-      if (!port2) continue;
-      const label = portBody.parentElement?.querySelector(".x6-port-label");
-      const containsPoint2 = (target) => {
-        const bounds = target.getBoundingClientRect();
-        return point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom;
-      };
-      const bodyHit = containsPoint2(portBody);
-      if (bodyHit || label !== null && label !== void 0 && containsPoint2(label)) {
-        return { node, port: port2, bodyHit, point };
+  function pinAtClientPoint(point) {
+    const containsPoint2 = (target) => {
+      if (!target) return false;
+      const bounds = target.getBoundingClientRect();
+      return point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom;
+    };
+    for (const node of graph.getNodes()) {
+      if (!cellData(node)?.node) continue;
+      const view = graph.findViewByCell(node);
+      if (!view) continue;
+      for (const portBody of Array.from(
+        view.container.querySelectorAll(".x6-port-body[port]")
+      )) {
+        const port2 = portBody.getAttribute("port");
+        if (!port2) continue;
+        const bodyHit = containsPoint2(portBody.querySelector(".veriflow-pin-hit-area"));
+        const label = portBody.parentElement?.querySelector(".veriflow-pin-label-hit-area");
+        if (bodyHit || containsPoint2(label)) return { node, port: port2, bodyHit };
       }
     }
     return void 0;
   }
-  function selectPinTarget(event) {
-    if (!(event.target instanceof Element)) return;
-    const label = event.target.closest(".x6-port-label");
-    if (label) {
-      event.stopPropagation();
-      const port2 = label.parentElement?.querySelector(".x6-port-body[port]")?.getAttribute("port");
-      const nodeId = label.closest(".x6-node[data-cell-id]")?.getAttribute("data-cell-id");
-      const node = nodeId ? graph.getCellById(nodeId) : void 0;
-      if (node) selectPin(node, port2);
-      return;
-    }
-    const selectionBox = event.target.closest(
-      ".x6-widget-selection-box[data-cell-id]"
-    );
-    if (!selectionBox) return;
-    const hit = portAtSelectionBoxPoint(selectionBox, event);
+  function startPinGesture(event) {
+    if (!(event.target instanceof Element) || !dom.canvas.contains(event.target) || event.target.closest(".x6-edge") || event instanceof MouseEvent && event.button !== 0) return;
+    const point = eventClientPoint(event);
+    const hit = point && pinAtClientPoint(point);
     if (!hit) return;
+    event.preventDefault();
     event.stopPropagation();
     selectPin(hit.node, hit.port);
-    if (hit.bodyHit && (!(event instanceof MouseEvent) || event.button === 0)) {
-      const local = graph.clientToLocal(hit.point.x, hit.point.y);
+    if (!hit.bodyHit || !connectionTerminal(hit.node, hit.port)) return;
+    const gesture = {
+      origin: point,
+      point,
+      priorConnection: pendingConnection !== void 0,
+      dragged: false
+    };
+    const begin = () => {
+      const local = graph.clientToLocal(gesture.point.x, gesture.point.y);
+      startPendingConnection(hit.node, hit.port, local.x, local.y);
+      pinGesture = gesture;
+    };
+    if (connectionModeActive()) {
+      if (!pendingConnection) begin();
+    } else {
+      gesture.timer = setTimeout(begin, PIN_DRAG_DEBOUNCE_MS);
+    }
+    pinGesture = gesture;
+  }
+  function movePinGesture(event) {
+    const point = eventClientPoint(event);
+    if (!point) return;
+    if (pinGesture) {
+      pinGesture.point = point;
+      if (Math.hypot(point.x - pinGesture.origin.x, point.y - pinGesture.origin.y) > PIN_DRAG_DISTANCE) {
+        pinGesture.dragged = true;
+      }
+      if (event.cancelable) event.preventDefault();
+    }
+    if (!pendingConnectionPreview || !graph.hasCell(pendingConnectionPreview)) return;
+    pendingConnectionPreview.setTarget(graph.clientToLocal(point.x, point.y));
+  }
+  function endPinGesture(event) {
+    const gesture = pinGesture;
+    if (!gesture) return;
+    clearTimeout(gesture.timer);
+    pinGesture = void 0;
+    const point = eventClientPoint(event) ?? gesture.point;
+    const hit = pinAtClientPoint(point);
+    if (gesture.dragged) {
+      const first = pendingConnectionTerminal();
+      const second = hit?.bodyHit ? connectionTerminal(hit.node, hit.port) : void 0;
+      if (!first || !second || !postConnection(first, second)) cancelPendingConnection();
+    } else if (connectionModeActive() && gesture.priorConnection && hit?.bodyHit) {
+      const local = graph.clientToLocal(point.x, point.y);
       handleConnectionPinClick(hit.node, hit.port, local.x, local.y);
+    } else if (!connectionModeActive()) {
+      cancelPendingConnection();
     }
   }
-  document.addEventListener("mousedown", selectPinTarget, true);
-  document.addEventListener("touchstart", selectPinTarget, true);
-  graph.on("node:port:click", ({ e, node, port: port2, x, y }) => {
-    selectPin(node, port2);
-    if (port2 && e.target instanceof Element && e.target.closest(".x6-port-body")) {
-      handleConnectionPinClick(node, port2, x, y);
+  document.addEventListener("mousedown", startPinGesture, true);
+  document.addEventListener("touchstart", startPinGesture, { capture: true, passive: false });
+  document.addEventListener("mousemove", movePinGesture);
+  document.addEventListener("touchmove", movePinGesture, { passive: false });
+  document.addEventListener("mouseup", endPinGesture);
+  document.addEventListener("touchend", endPinGesture);
+  document.addEventListener("touchcancel", cancelPendingConnection);
+  window.addEventListener("blur", cancelPendingConnection);
+  document.addEventListener("click", (event) => {
+    if (event.target instanceof Element && dom.canvas.contains(event.target) && !event.target.closest(".x6-edge") && pinAtClientPoint({ x: event.clientX, y: event.clientY })) {
+      event.stopPropagation();
     }
-  });
-  document.addEventListener("mousemove", (event) => {
-    if (!pendingConnectionPreview || !graph.hasCell(pendingConnectionPreview)) return;
-    pendingConnectionPreview.setTarget(graph.clientToLocal(event.clientX, event.clientY));
-  });
+  }, true);
   function editableShortcutTarget(target) {
     return target instanceof Element && target.closest(
       'input, select, textarea, [contenteditable]:not([contenteditable="false"])'
@@ -51184,7 +51409,7 @@ ${choice.description}`
     return true;
   }
   function cancelPendingConnectionShortcut() {
-    if (!pendingConnection) return false;
+    if (!pendingConnection && !pinGesture) return false;
     cancelPendingConnection();
     return true;
   }

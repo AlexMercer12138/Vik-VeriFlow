@@ -14,6 +14,7 @@ import {
     type WaveformRouterTransport,
 } from './router';
 import { createBoardEditorWindow } from './boardEditor';
+import { createSchematicEditorWindow, type SchematicEditorKind } from './schematicEditor';
 
 function waveformArgument(argv: string[]): string {
     const index = argv.indexOf('--waveform');
@@ -81,6 +82,25 @@ export async function createWaveformWindow(source: string): Promise<BrowserWindo
 }
 
 async function run(): Promise<void> {
+    const schematicIndex = process.argv.indexOf('--schematic-editor');
+    if (schematicIndex >= 0) {
+        const source = process.argv[schematicIndex + 1];
+        if (!source) throw new Error('missing required --schematic-editor path');
+        const kindArgument = process.argv.find(value => value.startsWith('--kind='))?.slice('--kind='.length);
+        if (kindArgument !== 'arch-design' && kindArgument !== 'simulation-task') {
+            throw new Error('missing or invalid --kind for --schematic-editor');
+        }
+        const argument = (name: string): string | undefined => {
+            const index = process.argv.indexOf(`--${name}`);
+            return index < 0 ? undefined : process.argv[index + 1];
+        };
+        await app.whenReady();
+        await createSchematicEditorWindow(path.resolve(source), kindArgument as SchematicEditorKind, {
+            project: argument('project'), lib: argument('lib')?.split(',').filter(Boolean),
+        });
+        app.on('window-all-closed', () => app.quit());
+        return;
+    }
     const boardIndex = process.argv.indexOf('--board-library');
     if (boardIndex >= 0) {
         const configPath = process.argv[boardIndex + 1];

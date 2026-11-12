@@ -10,9 +10,12 @@
 <body>
     <main id="schematic-shell" class="vf-app" data-testid="schematic-shell">
         <div id="toolbar" class="vf-toolbar" role="toolbar" aria-label="Schematic controls">
-            <select id="module-selector" class="vf-select" aria-label="Module" disabled>
-                <option>Loading</option>
-            </select>
+            <label class="vf-context module-context" title="Module">
+                <span class="vf-context-icon" id="module-context-icon"></span>
+                <select id="module-selector" class="vf-select" aria-label="Module" disabled>
+                    <option>Loading</option>
+                </select>
+            </label>
             <div class="toolbar-actions vf-tool-group">
                 <button id="fit-button" class="icon-button vf-icon-btn" type="button" title="Fit schematic" aria-label="Fit schematic" aria-keyshortcuts="F" disabled><span data-icon-slot></span></button>
                 <button id="zoom-reset-button" class="icon-button vf-icon-btn" type="button" title="Reset zoom to 100%" aria-label="Reset zoom to 100%" aria-keyshortcuts="0" disabled><span data-icon-slot></span></button>
@@ -44,6 +47,19 @@
             </div>
         </div>
         <div id="content-row">
+            <aside id="outline" class="vf-pane" aria-label="Outline">
+                <div class="vf-pane-header">
+                    <span class="vf-pane-icon" id="outline-icon"></span>
+                    <span class="vf-pane-title">Outline</span>
+                    <span class="vf-count" id="outline-count">0</span>
+                </div>
+                <div class="vf-search outline-search">
+                    <span id="outline-search-icon"></span>
+                    <input id="outline-search" type="search" aria-label="Search outline" placeholder="Find port, instance or net" autocomplete="off" spellcheck="false">
+                </div>
+                <div id="outline-list" class="vf-pane-body vf-list"></div>
+            </aside>
+            <div class="outline-splitter" aria-hidden="true"></div>
             <section id="canvas-region" aria-label="Schematic canvas">
                 <div id="canvas" data-testid="schematic-canvas"></div>
                 <div id="minimap" data-testid="schematic-minimap" hidden></div>
@@ -52,6 +68,10 @@
                 </div>
             </section>
             <aside id="inspector" aria-label="Properties">
+                <div class="vf-pane-header">
+                    <span class="vf-pane-icon" id="inspector-pane-icon"></span>
+                    <span class="vf-pane-title">Properties</span>
+                </div>
                 <header class="inspector-header">
                     <h2 id="inspector-title">No selection</h2>
                     <span id="inspector-mode" class="inspector-mode">Read only</span>

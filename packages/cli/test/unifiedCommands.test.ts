@@ -3,6 +3,8 @@ import test from 'node:test';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createEmptyArchDesignText } from '@veriflow/schematic-core/arch-design';
+import { createSimulationTask } from '@veriflow/hdl-runtime/simulationTask';
 import { runCli } from '../src/main';
 
 test('board ui opens the shared editor and rejects the unpublished XDC-only option', async () => {
@@ -19,6 +21,42 @@ test('board ui opens the shared editor and rejects the unpublished XDC-only opti
     stderr = '';
     assert.equal(await runCli(['arch', 'build', 'top.ad', '--xdc-output', 'old.xdc'], environment), 2);
     assert.match(stderr, /unrecognized arguments: --xdc-output/);
+});
+
+test('arch ui and task ui validate files and forward absolute paths to the shared desktop launcher', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'veriflow-editor-ui-'));
+    let stdout = '', stderr = '';
+    const opened: Array<{ kind: string; file: string; options: unknown }> = [];
+    const environment: any = {
+        cwd: dir, homeDir: dir,
+        stdout: (text: string) => { stdout += text; },
+        stderr: (text: string) => { stderr += text; },
+        workbenchEditorLauncher: {
+            openArch: async (file: string, options: unknown) => { opened.push({ kind: 'arch', file, options }); },
+            openTask: async (file: string, options: unknown) => { opened.push({ kind: 'task', file, options }); },
+        },
+    };
+    try {
+        await writeFile(path.join(dir, 'top.ad'), createEmptyArchDesignText('top'));
+        await writeFile(path.join(dir, 'sim.st'), JSON.stringify(createSimulationTask('sim')));
+        await writeFile(path.join(dir, 'project.json'), JSON.stringify({}));
+        assert.equal(await runCli(['arch', 'ui', 'top.ad', '--project', 'project.json', '--lib', 'rtl,ip'], environment), 0, stderr);
+        assert.deepEqual(opened[0], { kind: 'arch', file: path.join(dir, 'top.ad'),
+            options: { project: path.join(dir, 'project.json'), lib: [path.join(dir, 'rtl'), path.join(dir, 'ip')] } });
+        assert.equal(await runCli(['task', 'ui', 'sim.st', '-p', 'project.json'], environment), 0, stderr);
+        assert.deepEqual(opened[1], { kind: 'task', file: path.join(dir, 'sim.st'), options: { project: path.join(dir, 'project.json') } });
+        assert.equal(await runCli(['arch', 'ui', 'sim.st'], environment), 1);
+        assert.match(stderr, /expected a \.ad file/i);
+        assert.equal(opened.length, 2);
+        assert.equal(await runCli(['task', 'ui', 'missing.st'], environment), 1);
+        assert.match(stderr, /simulation task file not found/i);
+        stdout = '';
+        assert.equal(await runCli(['arch', '--help'], environment), 0);
+        assert.match(stdout, /ui\s+open the Arch Design editor/);
+        stdout = '';
+        assert.equal(await runCli(['task', '--help'], environment), 0);
+        assert.match(stdout, /ui\s+open the Simulation Task editor/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test('canonical arch/task authoring builds documents and failed batches preserve the source', async () => {

@@ -31067,6 +31067,21 @@
   var waveCanvasPane = document.getElementById("waveCanvasPane");
   var waveNameList = document.getElementById("waveNameList");
   var signalList = document.getElementById("signalList");
+  var waveInspector = document.getElementById("waveInspector");
+  var inspectorToggleButton = document.getElementById("inspectorToggleButton");
+  var waveInspectorExpanded = true;
+  function updateWaveInspector() {
+    waveInspector.hidden = !waveInspectorExpanded;
+    waveWrap.parentElement?.classList.toggle("inspector-collapsed", !waveInspectorExpanded);
+    inspectorToggleButton.setAttribute("aria-pressed", String(waveInspectorExpanded));
+    const label = waveInspectorExpanded ? "Hide inspector" : "Show inspector";
+    inspectorToggleButton.title = label;
+    inspectorToggleButton.setAttribute("aria-label", label);
+    const slot = inspectorToggleButton.querySelector("[data-icon]");
+    if (slot) {
+      slot.replaceChildren(renderIcon(waveInspectorExpanded ? "panel-right-close" : "panel-right-open"));
+    }
+  }
   var fileTitle = document.getElementById("fileTitle");
   var emptyState = document.getElementById("emptyState");
   var statusText = document.getElementById("statusText");
@@ -31093,9 +31108,20 @@
   document.querySelectorAll("[data-icon]").forEach((slot) => {
     slot.append(renderIcon(slot.dataset.icon));
   });
-  var DEFAULT_WAVE_COLOR = "#22e36d";
+  var colorProbe = document.createElement("span");
+  colorProbe.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:0;height:0;pointer-events:none;";
+  document.body.appendChild(colorProbe);
+  function getCssColor(name, fallback) {
+    const raw = getComputedStyle(document.body).getPropertyValue(name).trim();
+    if (!raw) return fallback;
+    colorProbe.style.color = "var(" + name + ")";
+    const value = getComputedStyle(colorProbe).color;
+    if (!value || value === "rgba(0, 0, 0, 0)" && raw !== "transparent") return fallback;
+    return value;
+  }
+  var DEFAULT_WAVE_COLOR = getCssColor("--vf-wave", "#3ddc84");
   var COLORS = [
-    { name: "Green", hex: "#22e36d" },
+    { name: "Green", hex: DEFAULT_WAVE_COLOR },
     { name: "Cyan", hex: "#19e6c8" },
     { name: "Yellow", hex: "#fad84a" },
     { name: "White", hex: "#f4f7f8" },
@@ -31114,21 +31140,53 @@
     { key: "octal", label: "Octal" }
   ];
   var STYLE = {
-    background: getCss("--vf-bg", "#111318"),
-    foreground: getCss("--vf-text", "#d6dde8"),
-    muted: getCss("--vf-muted", "#8b949e"),
-    border: getCss("--vf-border", "#30363d"),
-    unknown: "#ff5c5c",
-    highZ: "#4cb3ff",
-    busText: "#ffffff",
-    cursorA: "#f6c177",
-    cursorB: "#4cb3ff",
-    selection: "rgba(96,165,250,0.20)"
+    background: getCssColor("--vf-bg", "#1f1f1f"),
+    foreground: getCssColor("--vf-text", "#cccccc"),
+    muted: getCssColor("--vf-muted", "#9d9d9d"),
+    border: getCssColor("--vf-border", "#2b2b2b"),
+    unknown: getCssColor("--vf-unknown", "#e8a33d"),
+    highZ: getCssColor("--vf-bus", "#c586f0"),
+    busText: getCssColor("--vf-text", "#cccccc"),
+    cursorA: getCssColor("--vf-cursor-a", "#3794ff"),
+    cursorB: getCssColor("--vf-cursor-b", "#e8a33d"),
+    selection: hexAlpha(getCss("--vf-selection", "#264f78"), 0.2)
   };
   var WAVE_FILL_ALPHA = Math.max(0, Math.min(
     0.4,
     Number.parseFloat(getCss("--vf-wave-fill-alpha", "0.14")) || 0
   ));
+  function refreshCanvasTheme() {
+    const nextWaveColor = getCssColor("--vf-wave", "#3ddc84");
+    if (nextWaveColor !== DEFAULT_WAVE_COLOR) {
+      const previous = DEFAULT_WAVE_COLOR;
+      allSignals.forEach((signal) => {
+        if (signal.color === previous) signal.color = nextWaveColor;
+      });
+      waveSignals.forEach((signal) => {
+        if (signal.color === previous) signal.color = nextWaveColor;
+      });
+      COLORS[0].hex = nextWaveColor;
+      DEFAULT_WAVE_COLOR = nextWaveColor;
+    }
+    STYLE.background = getCssColor("--vf-bg", "#1f1f1f");
+    STYLE.foreground = getCssColor("--vf-text", "#cccccc");
+    STYLE.muted = getCssColor("--vf-muted", "#9d9d9d");
+    STYLE.border = getCssColor("--vf-border", "#2b2b2b");
+    STYLE.unknown = getCssColor("--vf-unknown", "#e8a33d");
+    STYLE.highZ = getCssColor("--vf-bus", "#c586f0");
+    STYLE.busText = getCssColor("--vf-text", "#cccccc");
+    STYLE.cursorA = getCssColor("--vf-cursor-a", "#3794ff");
+    STYLE.cursorB = getCssColor("--vf-cursor-b", "#e8a33d");
+    render();
+  }
+  if (typeof MutationObserver !== "undefined" && document.body) {
+    queueMicrotask(() => {
+      new MutationObserver(refreshCanvasTheme).observe(document.body, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+    });
+  }
   var vcd = null;
   var currentFileName = "";
   var allSignals = [];
@@ -31179,6 +31237,7 @@
   var activeRequestStatus = "";
   var failedRequestKinds = /* @__PURE__ */ new Set();
   var ROW_HEIGHT = 32;
+  var LIST_ROW_HEIGHT = 26;
   var HEADER_HEIGHT = 38;
   var MAX_WINDOW_PIXEL_WIDTH = 8192;
   var MAX_WINDOW_RECORDS = 32768;
@@ -31186,7 +31245,8 @@
   var TIME_UNITS = ["fs", "ps", "ns", "us", "ms", "s"];
   var LAYOUT_STORAGE_PREFIX = "veriflow.waveform.layout.v1:";
   function getCss(name, fallback) {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const target = document.body || document.documentElement;
+    const value = getComputedStyle(target).getPropertyValue(name).trim();
     return value || fallback;
   }
   function stableSignalKey(signal) {
@@ -31449,6 +31509,7 @@
     cursorB = null;
     activeCursor = "a";
     fileTitle.textContent = "No waveform file opened";
+    if (fileTitle.parentElement) fileTitle.parentElement.title = "No waveform file opened";
     searchInput.value = "";
     changeSearchMode.value = "change";
     changeSearchValue.value = "";
@@ -31473,7 +31534,9 @@
     indexReady = true;
     vcd = data;
     currentFileName = String(fileName || "");
-    fileTitle.textContent = fileName;
+    const displayFileName = String(fileName || "").split(/[\\/]/).pop() || String(fileName || "");
+    fileTitle.textContent = displayFileName;
+    if (fileTitle.parentElement) fileTitle.parentElement.title = String(fileName || "");
     changeSearchMode.value = "change";
     changeSearchValue.value = "";
     allSignals = (data.signals || []).map((signal, index) => ({
@@ -31787,9 +31850,12 @@
     signalList.querySelectorAll(".signal-row").forEach((row) => {
       row.classList.toggle("selected", Number(row.dataset.index) === index);
     });
+    renderWaveInspector();
   }
   function renderSignalList() {
     const savedScrollTop = signalList.scrollTop;
+    const signalCount = document.getElementById("signalCount");
+    if (signalCount) signalCount.textContent = String(vcd ? filteredSignals.length : 0);
     signalList.innerHTML = "";
     if (!vcd) {
       const placeholder = document.createElement("div");
@@ -31798,12 +31864,12 @@
       signalList.appendChild(placeholder);
       return;
     }
-    const viewportHeight = signalList.clientHeight || ROW_HEIGHT * 16;
+    const viewportHeight = signalList.clientHeight || LIST_ROW_HEIGHT * 16;
     const virtualWindow = waveCore.calculateVirtualWindow(
       filteredSignals.length,
       viewportHeight,
       savedScrollTop,
-      ROW_HEIGHT,
+      LIST_ROW_HEIGHT,
       4
     );
     const restoredScrollTop = clamp(
@@ -31818,7 +31884,7 @@
     spacer.style.height = virtualWindow.totalHeight + "px";
     const windowEl = document.createElement("div");
     windowEl.className = "signal-list-window";
-    windowEl.style.transform = "translateY(" + listFirstRow * ROW_HEIGHT + "px)";
+    windowEl.style.transform = "translateY(" + listFirstRow * LIST_ROW_HEIGHT + "px)";
     for (let offset = 0; offset < listRenderedCount; offset++) {
       const index = listFirstRow + offset;
       const signal = filteredSignals[index];
@@ -31826,7 +31892,7 @@
       row.className = "signal-row" + (index === selectedLibraryIndex ? " selected" : "") + (isWaveVisible(signal) ? " visible" : "");
       row.dataset.index = String(index);
       row.draggable = true;
-      row.title = signal.fullName + "\nDrag into the waveform area or right-click to add.";
+      row.title = signal.fullName + "\n" + (signal.scope || "(root)") + " · " + currentValueText(signal) + "\nDrag into the waveform area or right-click to add.";
       row.onclick = () => {
         selectLibrarySignal(index);
       };
@@ -31844,29 +31910,25 @@
       row.ondragend = () => row.classList.remove("dragging");
       const color = document.createElement("div");
       color.className = "signal-color";
-      color.style.background = isWaveVisible(signal) ? DEFAULT_WAVE_COLOR : "transparent";
-      const title = document.createElement("div");
-      title.className = "signal-title";
+      color.style.background = signal.color || DEFAULT_WAVE_COLOR;
+      if (!isWaveVisible(signal)) color.style.opacity = "0.45";
       const name = document.createElement("div");
       name.className = "signal-name";
       name.textContent = signal.reference;
-      const scope = document.createElement("div");
-      scope.className = "signal-scope";
-      scope.textContent = signal.scope || "(root)";
-      const meta = document.createElement("div");
-      meta.className = "signal-meta";
-      const value = document.createElement("div");
-      value.className = "signal-value";
-      value.textContent = currentValueText(signal);
-      const width = document.createElement("div");
-      width.textContent = signalTypeText(signal);
-      title.appendChild(name);
-      title.appendChild(scope);
-      meta.appendChild(value);
-      meta.appendChild(width);
+      const visibility = document.createElement("button");
+      visibility.type = "button";
+      visibility.className = "signal-visibility";
+      visibility.title = isWaveVisible(signal) ? "Hide from waveform" : "Add to waveform";
+      visibility.setAttribute("aria-label", visibility.title);
+      visibility.append(renderIcon(isWaveVisible(signal) ? "eye" : "eye-off"));
+      visibility.onclick = (event) => {
+        event.stopPropagation();
+        if (isWaveVisible(signal)) removeSignalFromWaveform(signal);
+        else addSignalToWaveform(signal);
+      };
       row.appendChild(color);
-      row.appendChild(title);
-      row.appendChild(meta);
+      row.appendChild(name);
+      row.appendChild(visibility);
       windowEl.appendChild(row);
     }
     signalList.appendChild(spacer);
@@ -31973,11 +32035,31 @@
           name.appendChild(toggle);
         }
         const label = document.createElement("span");
+        label.className = "wave-name-main";
         label.textContent = waveNameText(signal);
         name.appendChild(label);
         title.appendChild(name);
         row.appendChild(color);
         row.appendChild(title);
+        if (!isBusBitRow(signal)) {
+          const value = document.createElement("span");
+          value.className = "wave-name-value";
+          value.dataset.waveIndex = String(index);
+          value.textContent = currentValueText(waveSignals[index]);
+          row.appendChild(value);
+          const visibility = document.createElement("button");
+          visibility.type = "button";
+          visibility.className = "wave-eye";
+          visibility.title = "Hide from waveform";
+          visibility.setAttribute("aria-label", "Hide " + waveNameText(signal));
+          visibility.append(renderIcon("eye"));
+          visibility.onclick = (event) => {
+            event.stopPropagation();
+            const base = waveSignals[index];
+            if (base) removeSignalFromWaveform(base);
+          };
+          row.appendChild(visibility);
+        }
       }
       windowEl.appendChild(row);
     });
@@ -32772,6 +32854,61 @@
     if (!value) return "-";
     return signal.width > 1 ? busText(value, signal.width, signal.radix).toUpperCase() : value.toUpperCase();
   }
+  function inspectorValueText(signal, time) {
+    if (!signal || time === null || time === void 0) return "-";
+    const value = valueAt(signal, time);
+    if (!value) return "-";
+    return signal.width > 1 ? busText(value, signal.width, signal.radix).toUpperCase() : value.toUpperCase();
+  }
+  function renderWaveInspector() {
+    const set = (id, text) => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = text;
+    };
+    if (!vcd) {
+      [
+        "inspectorCursorA",
+        "inspectorCursorB",
+        "inspectorDelta",
+        "inspectorFrequency",
+        "inspectorSignalName",
+        "inspectorSignalType",
+        "inspectorSignalScope",
+        "inspectorValueA",
+        "inspectorValueB",
+        "inspectorTransitions",
+        "inspectorRange",
+        "inspectorTimescale"
+      ].forEach((id) => set(id, "-"));
+      return;
+    }
+    const measurement = waveCore.measureCursors(cursorA, cursorB, vcd.timescale || "");
+    set("inspectorCursorA", formatTime(cursorA));
+    set("inspectorCursorB", cursorB === null ? "-" : formatTime(cursorB));
+    set("inspectorDelta", measurement.deltaText);
+    set("inspectorFrequency", measurement.frequencyText);
+    const selected = selectedWaveIndex >= 0 ? waveSignals[selectedWaveIndex] : filteredSignals[selectedLibraryIndex];
+    if (selected) {
+      set("inspectorSignalName", selected.reference || selected.fullName || "-");
+      set("inspectorSignalType", signalTypeText(selected));
+      set("inspectorSignalScope", selected.scope || "(root)");
+      set("inspectorValueA", inspectorValueText(selected, cursorA));
+      set("inspectorValueB", inspectorValueText(selected, cursorB));
+      const changes = Array.isArray(selected.changes) ? selected.changes.length : 0;
+      set("inspectorTransitions", changes > 0 ? String(Math.max(0, changes - 1)) : "-");
+    } else {
+      [
+        "inspectorSignalName",
+        "inspectorSignalType",
+        "inspectorSignalScope",
+        "inspectorValueA",
+        "inspectorValueB",
+        "inspectorTransitions"
+      ].forEach((id) => set(id, "-"));
+    }
+    set("inspectorRange", formatRange(Math.round(startTime), Math.round(endTime)));
+    set("inspectorTimescale", vcd.timescale || "-");
+  }
   function drawGrid(width, height) {
     const range = Math.max(1, endTime - startTime);
     const raw = range / 8;
@@ -32811,12 +32948,23 @@
     ctx.fillStyle = hexAlpha(color, WAVE_FILL_ALPHA);
     ctx.fillRect(x1, highY, x2 - x1, lowY - highY);
   }
-  function hexAlpha(hex, alpha) {
-    const clean = hex.replace("#", "");
-    const r = parseInt(clean.slice(0, 2), 16);
-    const g = parseInt(clean.slice(2, 4), 16);
-    const b = parseInt(clean.slice(4, 6), 16);
-    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+  function hexAlpha(color, alpha) {
+    const value = String(color || "").trim();
+    if (value.startsWith("#")) {
+      const clean = value.replace("#", "");
+      const r = parseInt(clean.slice(0, 2), 16);
+      const g = parseInt(clean.slice(2, 4), 16);
+      const b = parseInt(clean.slice(4, 6), 16);
+      return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+    }
+    const rgb = value.match(/^rgba?\(([^)]+)\)$/i);
+    if (rgb) {
+      const parts = rgb[1].split(/[,\s/]+/).filter(Boolean);
+      if (parts.length >= 3) {
+        return "rgba(" + parts[0] + "," + parts[1] + "," + parts[2] + "," + alpha + ")";
+      }
+    }
+    return value;
   }
   function drawDenseBlock(signal, x1, x2, highY, lowY) {
     ctx.fillStyle = hexAlpha(signal.color, 0.38);
@@ -33153,6 +33301,7 @@
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = STYLE.background;
       ctx.fillRect(0, 0, width, height);
+      renderWaveInspector();
       return;
     }
     const visibleSignals = visibleWaveSignals();
@@ -33170,7 +33319,7 @@
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = STYLE.background;
     ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = getCss("--vscode-sideBar-background", STYLE.background);
+    ctx.fillStyle = getCssColor("--vscode-sideBar-background", STYLE.background);
     ctx.fillRect(0, 0, width, HEADER_HEIGHT);
     drawGrid(width, height);
     if (waveSignals.length) {
@@ -33183,6 +33332,7 @@
     const measurement = waveCore.measureCursors(cursorA, cursorB, vcd.timescale || "");
     cursorText.textContent = "A: " + formatTime(cursorA) + " | B: " + (cursorB === null ? "-" : formatTime(cursorB)) + " | Delta: " + measurement.deltaText + " | Frequency: " + measurement.frequencyText;
     rangeText.textContent = "Range: " + formatRange(Math.round(startTime), Math.round(endTime));
+    renderWaveInspector();
     scheduleLayoutSave();
   }
   function render(renderWaveNames = true) {
@@ -33197,14 +33347,10 @@
     render(false);
   }
   function updateVisibleSignalValues() {
-    const rows = signalList.querySelectorAll(".signal-row");
-    rows.forEach((row) => {
-      const index = Number(row.dataset.index);
-      const signal = filteredSignals[index];
-      const value = row.querySelector(".signal-value");
-      if (signal && value) {
-        value.textContent = currentValueText(signal);
-      }
+    waveNameList.querySelectorAll(".wave-name-value").forEach((element) => {
+      const index = Number(element.dataset.waveIndex);
+      const signal = waveSignals[index];
+      if (signal) element.textContent = currentValueText(signal);
     });
   }
   function updateToolbarState() {
@@ -33420,10 +33566,10 @@
       const request = {
         targets: targets.map((target2) => ({
           reference: target2.reference,
-          bitIndex: target2.bitIndex,
           waveIndex: target2.waveIndex,
           name: target2.name,
-          order: target2.order
+          order: target2.order,
+          ...Number.isInteger(target2.bitIndex) ? { bitIndex: target2.bitIndex } : {}
         })),
         cursorTime: activeCursorTime(),
         direction,
@@ -33831,6 +33977,10 @@
   document.getElementById("fit").onclick = fit;
   document.getElementById("cursorA").onclick = () => activateCursor("a");
   document.getElementById("cursorB").onclick = () => activateCursor("b");
+  inspectorToggleButton.onclick = () => {
+    waveInspectorExpanded = !waveInspectorExpanded;
+    updateWaveInspector();
+  };
   goToTimeButton.onclick = goToTime;
   searchInput.oninput = applyFilter;
   scopeSelect.onchange = applyFilter;
@@ -34342,5 +34492,6 @@
     }
   };
   resizeCanvas();
+  updateWaveInspector();
   waveformTransport.send({ type: "ready" });
 })();

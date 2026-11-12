@@ -96,6 +96,7 @@ export class ConstraintWorkbench {
                 const source = await this.services.source(file), config = source.configuration ? parsePhysicalConfiguration(source.configuration) : { board: '', bindings: [] };
                 this.bindings.set(file, { source, config, active: [], saved: JSON.stringify(config) });
             }
+            else await this.refreshSource(this.bindings.get(file)!);
             this.currentSource = file;
             this.page = 'bindings';
         }
@@ -111,16 +112,23 @@ export class ConstraintWorkbench {
                 return;
             this.error = '';
             this.notice = '';
-            if (command.type === 'ready') this.services.library.cleanInvalidBoards();
+            if (command.type === 'ready') {
+                this.services.library.cleanInvalidBoards();
+                if (this.binding) await this.refreshSource(this.binding);
+            }
             if (command.type !== 'ready')
                 await this.command(command);
             await this.services.persist?.(this.snapshot());
-            await this.publish(command.type === 'board-change' ? 'board-change' : undefined, command.editId);
+            await this.publish(command.type, command.editId);
         }).catch(async (e) => { this.error = e instanceof Error ? e.message : String(e); await this.publish(); });
         return this.tail;
     }
     private get draft(): Draft | undefined { return this.currentBoard ? this.drafts.get(this.currentBoard) : undefined; }
     private get binding(): BindingDraft | undefined { return this.currentSource ? this.bindings.get(this.currentSource) : undefined; }
+    private async refreshSource(state: BindingDraft): Promise<void> {
+        const next = await this.services.source(state.source.path);
+        state.source = { ...next, configurationPath: state.source.configurationPath, configurationText: state.source.configurationText };
+    }
     private async board(config: BindingDraft, inputs: ArtifactPlan['inputs'] = []): Promise<PhysicalBoard | undefined> {
         return config.config.board ? resolvePhysicalConfiguration(config.source.configurationPath, config.config, { library: this.services.library, onInput: (file, text) => inputs.push({ path: file, text }) }) : undefined;
     }
@@ -149,6 +157,7 @@ export class ConstraintWorkbench {
     private async command(c: Record<string, any>): Promise<void> {
         const library = this.services.library;
         if (c.type === 'page') {
+            if (c.page === 'bindings' && this.page !== 'bindings' && this.binding) await this.refreshSource(this.binding);
             this.page = c.page === 'bindings' ? 'bindings' : 'library';
             return;
         }
@@ -256,6 +265,7 @@ export class ConstraintWorkbench {
             return;
         }
         const state = this.binding;
+        if (c.type === 'source-refresh' && !state) return;
         if (!state)
             throw new Error('Open a HDL or AD file first');
         if(c.sourcePath!==undefined&&c.sourcePath!==state.source.path)throw new Error('The current file changed; retry in its binding page');
@@ -264,8 +274,7 @@ export class ConstraintWorkbench {
             return;
         }
         if (c.type === 'source-refresh') {
-            const next = await this.services.source(state.source.path);
-            state.source = {...next,configurationPath:state.source.configurationPath,configurationText:state.source.configurationText};
+            await this.refreshSource(state);
             this.notice = 'Source refreshed; existing bindings retained';
             return;
         }
@@ -297,17 +306,21 @@ export class ConstraintWorkbench {
             return;
         }
         if (c.type === 'select') {
-            const k = key(c.card, c.interface, c.signal);
-            if (c.checked) {
-                if (!state.active.includes(k))
-                    state.active.push(k);
+            const changes = c.changes ?? [c];
+            if (!Array.isArray(changes) || changes.length > 50000) throw new Error('Invalid signal selection');
+            const board = await this.board(state), active = new Set(state.active), removed = new Set<string>();
+            for (const change of changes) {
+                const iface = (change.card ? board?.cards?.[change.card] : board?.model)?.interfaces.find(i => i.id === change.interface);
+                if (!iface?.signals.some(signal => signal.id === change.signal) || typeof change.checked !== 'boolean') throw new Error('Unknown interface signal');
+                const k = key(change.card, change.interface, change.signal);
+                if (change.checked) active.add(k);
+                else {
+                    active.delete(k);
+                    for (const member of physicalSignalMembers(iface, change.signal)) removed.add(key(change.card, change.interface, member));
+                }
             }
-            else {
-                state.active = state.active.filter(v => v !== k);
-                const board = await this.board(state), iface = (c.card ? board?.cards?.[c.card] : board?.model)?.interfaces.find(i => i.id === c.interface);
-                const members = iface ? physicalSignalMembers(iface, c.signal) : [];
-                state.config = { ...state.config, bindings: state.config.bindings.filter(b => b.source.card !== c.card || b.source.interface !== c.interface || !members.includes(b.source.member)) };
-            }
+            state.active = [...active];
+            if (removed.size) state.config = { ...state.config, bindings: state.config.bindings.filter(b => !removed.has(key(b.source.card, b.source.interface, b.source.member))) };
             return;
         }
         if (c.type === 'bind') {
@@ -319,7 +332,8 @@ export class ConstraintWorkbench {
                 throw new Error('Unknown interface');
             const members = physicalSignalMembers(iface, c.signal), previous = state.config.bindings.filter(b => b.source.card === c.card && b.source.interface === c.interface && members.includes(b.source.member));
             const keep = state.config.bindings.filter(b => !previous.includes(b));
-            const next = c.port ? bindPhysicalSignal(board, state.source.ports, c.interface, c.signal, c.port, c.card).map(b => ({ ...b, ...(previous.find(p => p.source.member === b.source.member)?.pin ? { pin: previous.find(p => p.source.member === b.source.member)!.pin } : {}) })) : [];
+            const selection = c.ports ?? c.port;
+            const next = selection && (!Array.isArray(selection) || selection.length) ? bindPhysicalSignal(board, state.source.ports, c.interface, c.signal, selection, c.card).map(b => ({ ...b, ...(previous.find(p => p.source.member === b.source.member)?.pin ? { pin: previous.find(p => p.source.member === b.source.member)!.pin } : {}) })) : [];
             if (next.some(b => keep.some(k => k.port.name === b.port.name && k.port.bit === b.port.bit)))
                 throw new Error('This port is already assigned');
             state.config = { ...state.config, bindings: [...keep, ...next] };

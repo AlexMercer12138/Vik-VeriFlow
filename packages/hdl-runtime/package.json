@@ -123,6 +123,11 @@
       "require": "./dist/hdl/index.js",
       "default": "./dist/hdl/index.js"
     },
+    "./workbench/*": {
+      "types": "./dist/workbench/*.d.ts",
+      "require": "./dist/workbench/*.js",
+      "default": "./dist/workbench/*.js"
+    },
     "./schemas/*": "./schemas/*"
   },
   "typesVersions": {
@@ -183,6 +188,9 @@
       ],
       "hdl": [
         "dist/hdl/index.d.ts"
+      ],
+      "workbench/*": [
+        "dist/workbench/*.d.ts"
       ]
     }
   },

@@ -1,7 +1,11 @@
 <div class="app vf-app">
     <div class="toolbar vf-toolbar">
-        <div class="file-title" id="fileTitle">No waveform loaded</div>
-        <div class="tool-group vf-tool-group" aria-label="Waveform navigation">
+        <div class="vf-context file-context" title="Waveform file">
+            <span class="vf-context-icon" data-icon="file"></span>
+            <span class="vf-context-title" id="fileTitle">No waveform loaded</span>
+        </div>
+        <div class="vf-divider"></div>
+        <div class="tool-group vf-group" aria-label="Waveform navigation">
             <button class="icon-button vf-icon-btn" id="goStart" title="Go to start (Home)" aria-label="Go to start" aria-keyshortcuts="Home"><span data-icon="skip-back"></span>
             </button>
             <button class="icon-button vf-icon-btn" id="goEnd" title="Go to end (End)" aria-label="Go to end" aria-keyshortcuts="End"><span data-icon="skip-forward"></span>
@@ -21,10 +25,12 @@
             <button class="icon-button vf-icon-btn" id="fit" title="Fit to full range (F or Space)" aria-label="Fit to full range" aria-keyshortcuts="F Space"><span data-icon="maximize"></span>
             </button>
         </div>
-        <div class="tool-group cursor-controls vf-tool-group" aria-label="Waveform cursors">
-            <button class="cursor-toggle vf-btn" id="cursorA" title="Activate cursor A (A)" aria-label="Activate cursor A" aria-pressed="true" aria-keyshortcuts="A">A</button>
-            <button class="cursor-toggle vf-btn" id="cursorB" title="Activate cursor B (B)" aria-label="Activate cursor B" aria-pressed="false" aria-keyshortcuts="B">B</button>
+        <div class="vf-divider"></div>
+        <div class="tool-group cursor-controls vf-segmented vf-segmented--letters" aria-label="Waveform cursors">
+            <button class="cursor-toggle" id="cursorA" title="Activate cursor A (A)" aria-label="Activate cursor A" aria-pressed="true" aria-keyshortcuts="A">A</button>
+            <button class="cursor-toggle" id="cursorB" title="Activate cursor B (B)" aria-label="Activate cursor B" aria-pressed="false" aria-keyshortcuts="B">B</button>
         </div>
+        <div class="vf-divider"></div>
         <div class="change-search" aria-label="Waveform condition search">
             <select id="changeSearchMode" class="vf-select" title="Change search condition" aria-label="Change search condition">
                 <option value="change">Any change</option>
@@ -35,11 +41,18 @@
             </select>
             <input id="changeSearchValue" class="vf-input vf-input--mono" type="text" placeholder="value" aria-label="Exact waveform value" disabled />
         </div>
-        <button id="goToTime" class="vf-btn vf-btn--primary">Go to</button>
+        <button id="goToTime" class="vf-btn">Go to</button>
         <input id="timeInput" class="vf-input vf-input--mono" type="text" placeholder="time" aria-label="Time" />
+        <span class="vf-spacer"></span>
+        <button id="inspectorToggleButton" class="icon-button vf-icon-btn inspector-toggle" type="button" title="Hide inspector" aria-label="Hide inspector" aria-pressed="true" aria-controls="waveInspector"><span data-icon="panel-right-close"></span></button>
     </div>
     <div class="main">
         <aside class="sidebar vf-pane">
+            <div class="vf-pane-header">
+                <span class="vf-pane-icon" data-icon="layers"></span>
+                <span class="vf-pane-title">Signals</span>
+                <span class="vf-count" id="signalCount">0</span>
+            </div>
             <div class="search">
                 <input id="searchInput" class="vf-input" type="text" placeholder="Search signals" aria-label="Search signals" />
                 <select id="scopeSelect" class="vf-select" aria-label="Signal scope"></select>
@@ -67,13 +80,41 @@
                 </div>
             </div>
         </main>
+        <aside class="inspector vf-pane vf-pane--right" id="waveInspector" aria-label="Waveform inspector">
+            <div class="vf-pane-header"><span class="vf-pane-icon" data-icon="sliders"></span><span class="vf-pane-title">Inspector</span></div>
+            <div class="inspector-scroll">
+                <div class="vf-section-title">Cursors</div>
+                <dl class="vf-props">
+                    <dt>Cursor A</dt><dd id="inspectorCursorA">-</dd>
+                    <dt>Cursor B</dt><dd id="inspectorCursorB">-</dd>
+                    <dt>Delta</dt><dd id="inspectorDelta">-</dd>
+                    <dt>Frequency</dt><dd id="inspectorFrequency">-</dd>
+                </dl>
+                <div class="vf-section-title">Signal</div>
+                <dl class="vf-props">
+                    <dt>Name</dt><dd id="inspectorSignalName" class="vf-mono">-</dd>
+                    <dt>Type</dt><dd id="inspectorSignalType">-</dd>
+                    <dt>Scope</dt><dd id="inspectorSignalScope">-</dd>
+                    <dt>Value A</dt><dd id="inspectorValueA" class="vf-mono">-</dd>
+                    <dt>Value B</dt><dd id="inspectorValueB" class="vf-mono">-</dd>
+                    <dt>Transitions</dt><dd id="inspectorTransitions">-</dd>
+                </dl>
+                <div class="vf-section-title">View</div>
+                <dl class="vf-props">
+                    <dt>Range</dt><dd id="inspectorRange">-</dd>
+                    <dt>Timescale</dt><dd id="inspectorTimescale">-</dd>
+                </dl>
+            </div>
+        </aside>
     </div>
     <div class="status vf-statusbar">
-        <div class="status-primary">
+        <div class="status-primary vf-status-main">
             <div id="statusText">Ready</div>
         </div>
-        <div id="cursorMeasureText">A: - | B: - | Delta: - | Frequency: -</div>
-        <div id="rangeText">Range: -</div>
+        <div class="status-metrics vf-status-metrics">
+            <div id="cursorMeasureText">A: - | B: - | Delta: - | Frequency: -</div>
+            <div id="rangeText">Range: -</div>
+        </div>
     </div>
     <div class="context-menu" id="contextMenu"></div>
 </div>

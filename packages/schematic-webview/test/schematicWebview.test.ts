@@ -132,6 +132,33 @@ async function verticalNodeOrder(page: Page, nodeIds: readonly string[]): Promis
         || left.nodeId.localeCompare(right.nodeId)).map(entry => entry.nodeId);
 }
 
+async function clickNetwork(page: Page, networkId: string, offset = 0): Promise<void> {
+    const point = await page.locator(
+        `#canvas .x6-edge[data-cell-id^="${networkId}:segment:"] > path:nth-child(2)`
+    ).evaluateAll((elements, { networkId, offset }) => {
+        for (const element of elements) {
+            const path = element as SVGPathElement;
+            const matrix = path.getScreenCTM();
+            if (!matrix) continue;
+            const length = path.getTotalLength();
+            for (const ratio of [0.5, 0.25, 0.75]) {
+                const local = path.getPointAtLength(length * ratio);
+                const next = path.getPointAtLength(Math.min(length, length * ratio + 1));
+                const point = new DOMPoint(local.x, local.y).matrixTransform(matrix);
+                point.x += Math.abs(next.y - local.y) > 0.5 ? offset : 0;
+                point.y += Math.abs(next.x - local.x) > 0.5 ? offset : 0;
+                const hit = document.elementFromPoint(point.x, point.y)?.closest('.x6-edge');
+                if (hit?.getAttribute('data-cell-id')?.startsWith(`${networkId}:segment:`)) {
+                    return { x: point.x, y: point.y };
+                }
+            }
+        }
+        return undefined;
+    }, { networkId, offset });
+    assert.ok(point, `no exposed network segment for ${networkId}`);
+    await page.mouse.click(point.x, point.y);
+}
+
 type VisualPinDirection = 'driver' | 'load';
 
 function visualSchematicFixture() {
@@ -1027,7 +1054,7 @@ async function exerciseArchDesignConnections(page: Page): Promise<void> {
         }).length
     );
     assert.equal(nonOrthogonalSegments, 0);
-    await canonicalSegments.first().click({ force: true });
+    await clickNetwork(page, 'network:net_1');
     await page.locator('#connection-name').fill('payload');
     await page.locator('#connection-name').press('Tab');
     await page.waitForFunction(() => {
@@ -2315,7 +2342,7 @@ test('Arch Design interface pins drive Inspector actions and survive graph refre
             await irqLabelText.evaluate(element => getComputedStyle(element).fontWeight),
             irqLabelWeightBefore
         );
-        assert.notEqual(
+        assert.equal(
             await irqLabelHitArea.evaluate(element => getComputedStyle(element).fill),
             irqLabelBackgroundBefore
         );
@@ -2394,7 +2421,7 @@ test('Arch Design interface pins drive Inspector actions and survive graph refre
             )!;
             const port = node.querySelector(`.x6-port-body[port="${pinId}"]`)!;
             const label = port.parentElement!.querySelector('.veriflow-interface-label')!;
-            const body = port.querySelector('[data-selector="portBody"]') ?? port;
+            const body = port.querySelector('circle:last-child') ?? port;
             return {
                 label: getComputedStyle(label).fill,
                 circleStrokeWidth: getComputedStyle(body).strokeWidth,
@@ -2407,7 +2434,7 @@ test('Arch Design interface pins drive Inspector actions and survive graph refre
             getComputedStyle(element).fill
         );
         assert.notEqual(selectedColors.label, labelStylesBefore.fill);
-        assert.notEqual(selectedLabelBackground, labelBackgroundBefore);
+        assert.equal(selectedLabelBackground, labelBackgroundBefore, 'pin selection colors the pin and text without a frame');
         const aggregateLabelGeometry = await aggregateLabelText.evaluate(element => {
             const clip = element.closest('svg.veriflow-pin-clip');
             const bounds = (element as SVGGraphicsElement).getBBox();
@@ -3192,7 +3219,7 @@ test('Arch Design interfaces render distinct routes and only connect Master to S
             await slaveAggregateLabel.evaluate(element => getComputedStyle(element).fill),
             interfaceColor
         );
-        await route.click({ force: true });
+        await clickNetwork(page, 'network:interface:control');
         await page.locator('#inspector[data-kind="network"]').waitFor();
         assert.equal(await page.locator('#interface-network-protocol').textContent(), 'Project Link');
         assert.equal(
@@ -3220,7 +3247,7 @@ test('Arch Design interfaces render distinct routes and only connect Master to S
                     '#canvas .veriflow-interface-pin'
                 )];
                 const geometryIssues = interfacePins.flatMap(pin => {
-                    const pinBounds = pin.getBoundingClientRect();
+                    const pinBounds = (pin.querySelector('circle:last-child') ?? pin).getBoundingClientRect();
                     const group = pin.parentElement;
                     const node = pin.closest<SVGGraphicsElement>('.x6-node');
                     const label = group?.querySelector<SVGGraphicsElement>('text');
@@ -4904,6 +4931,203 @@ test('Arch Design keyboard shortcuts', {
     }
 });
 
+async function withInteractionPage(run: (page: Page) => Promise<void>): Promise<void> {
+    const fixtureRoot = createElectronFixture();
+    const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'veriflow-interaction-user-'));
+    const app = await electron.launch({
+        args: [fixtureRoot, `--user-data-dir=${userDataDir}`, '--disable-gpu'],
+        env: electronEnvironment(schematicHtml),
+    });
+    try {
+        const page = await app.firstWindow();
+        page.setDefaultTimeout(pageTimeoutMs);
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await waitForSchematicRuntime(page);
+        await page.evaluate(() => {
+            const state = window as unknown as { __veriflowMessages: unknown[] };
+            state.__veriflowMessages = [];
+            window.addEventListener('veriflow:webview-message', event => {
+                state.__veriflowMessages.push((event as CustomEvent).detail);
+            });
+        });
+        await run(page);
+    } finally {
+        await app.close();
+        rmSync(fixtureRoot, { recursive: true, force: true });
+        rmSync(userDataDir, { recursive: true, force: true });
+    }
+}
+
+test('schematic minimap stays closed when the host refreshes its default presentation', {
+    timeout: 30_000,
+}, async () => withInteractionPage(async page => {
+    const fixture = archDesignInteractionFixture();
+    fixture.layout.minimap = true;
+    await publishArchDesignFixture(page, 'fixture:minimap-toggle:1', fixture);
+    await page.locator('#minimap .x6-node').first().waitFor();
+    await page.locator('#minimap-button').click();
+    await page.waitForFunction(() => (window as unknown as {
+        __veriflowMessages: CapturedSaveMessage[];
+    }).__veriflowMessages.some(message => message.type === 'saveLayout'));
+    await publishArchDesignFixture(page, 'fixture:minimap-toggle:2', fixture);
+    assert.equal(await page.locator('#minimap').isHidden(), true);
+    assert.equal(await page.locator('#minimap-button').getAttribute('aria-pressed'), 'false');
+    await page.locator('#minimap-button').click();
+    await page.locator('#minimap .x6-node').first().waitFor();
+    assert.equal(await page.locator('#canvas .x6-node').count(), 2);
+}));
+
+test('schematic outline folds independently and selects the same element colors as the canvas', {
+    timeout: 30_000,
+}, async () => withInteractionPage(async page => {
+    const fixture = archDesignInteractionFixture();
+    fixture.graph.nodes.push({
+        ...fixture.graph.nodes[0], id: 'port:input', kind: 'port', label: 'input', pins: [],
+    });
+    await publishArchDesignFixture(page, 'fixture:outline-selection', fixture);
+    const group = page.locator('[data-outline-group="Ports"]');
+    await group.click();
+    assert.equal(await group.getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('[data-outline-id="port:input"]').isHidden(), true);
+    const sourceRow = page.locator('[data-outline-id="instance:u_source"]');
+    await sourceRow.click();
+    assert.equal(await group.getAttribute('aria-expanded'), 'false');
+    assert.match(await page.locator('[data-outline-id="network:payload"] .vf-row-meta').innerText(), /^1 bit$/);
+    const body = page.locator('#canvas .x6-node[data-cell-id="instance:u_source"] .veriflow-node-body');
+    const color = () => body.evaluate(element => getComputedStyle(element).stroke);
+    const selectedColor = await color();
+    await page.locator('[data-outline-id="instance:u_sink"]').click();
+    assert.notEqual(await color(), selectedColor, 'selection must color the node itself');
+    await body.click();
+    assert.equal(await color(), selectedColor);
+    const boxes = await page.locator('.x6-widget-selection-box, .x6-widget-selection-inner')
+        .evaluateAll(elements => elements.map(element => getComputedStyle(element).borderWidth));
+    assert.ok(boxes.every(border => border === '0px'), 'selection must not draw a frame');
+    await page.locator('[data-outline-id="network:payload"]').click();
+    const wire = page.locator('#canvas .x6-edge > path:nth-child(2)').first();
+    const wireColor = await wire.evaluate(element => getComputedStyle(element).stroke);
+    await sourceRow.click();
+    assert.notEqual(await wire.evaluate(element => getComputedStyle(element).stroke), wireColor);
+    await clickNetwork(page, 'network:payload', 4);
+    assert.equal(await wire.evaluate(element => getComputedStyle(element).stroke), wireColor);
+    await group.click();
+    await page.locator('[data-outline-id="port:input"]').click();
+    const port = page.locator('#canvas [data-cell-id="port:input"] .veriflow-node-body');
+    const portColor = await port.evaluate(element => getComputedStyle(element).stroke);
+    await sourceRow.click();
+    await page.locator('#canvas [data-cell-id="port:input"] [data-selector="bg"], #canvas [data-cell-id="port:input"] > rect').first().click();
+    assert.equal(await port.evaluate(element => getComputedStyle(element).stroke), portColor);
+    mkdirSync(screenshotRoot, { recursive: true });
+    await page.screenshot({ path: path.join(screenshotRoot, 'interaction-selection.png') });
+}));
+
+test('schematic canvas pointer selection does not draw browser focus outlines', {
+    timeout: 30_000,
+}, async () => withInteractionPage(async page => {
+    await publishArchDesignFixture(page, 'fixture:pointer-focus');
+    const node = page.locator('#canvas .x6-node[data-cell-id="instance:u_source"]');
+    await node.locator('.veriflow-node-body').click();
+    const focus = await node.evaluate(element => {
+        return {
+            descendants: [...element.querySelectorAll('*')].filter(item => {
+                const css = getComputedStyle(item);
+                return css.outlineStyle !== 'none' || css.boxShadow !== 'none';
+            }).map(item => ({ tag: item.tagName, class: item.getAttribute('class'),
+                outline: getComputedStyle(item).outline, shadow: getComputedStyle(item).boxShadow })),
+        };
+    });
+    assert.equal(await node.evaluate(element => getComputedStyle(element).outlineStyle), 'none');
+    assert.deepEqual(focus.descendants, []);
+    await node.focus();
+    assert.equal(await node.evaluate(element => getComputedStyle(element).outlineStyle), 'none');
+    await clickNetwork(page, 'network:payload');
+    const edge = page.locator('#canvas .x6-edge').first();
+    await edge.focus();
+    assert.equal(await edge.evaluate(element => getComputedStyle(element).outlineStyle), 'none');
+}));
+
+test('schematic pins support quick dragging and wire mode locks nodes without overlapping pin targets', {
+    timeout: 45_000,
+}, async () => withInteractionPage(async page => {
+    const gestureErrors: string[] = [];
+    page.on('pageerror', error => gestureErrors.push(error.message));
+    const fixture = archDesignInteractionFixture();
+    fixture.graph.networks = [];
+    fixture.design.connections = [];
+    const sourceId = 'instance:u_source';
+    fixture.graph.nodes[0].pins.push({
+        ...fixture.graph.nodes[0].pins[0], id: `${sourceId}:spare`, name: 'spare',
+    });
+    const publish = () => publishArchDesignFixture(page, 'fixture:pin-gestures', fixture);
+    await publish();
+    const pin = (id: string) => page.locator(`#canvas .x6-port-body[port="${id}"] > circle:last-child`);
+    const center = async (id: string) => {
+        const bounds = await pin(id).boundingBox();
+        assert.ok(bounds);
+        return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    };
+    const edits = () => page.evaluate(() => (window as unknown as {
+        __veriflowMessages: Array<{ type?: string; edit?: { type: string; source?: unknown; target?: unknown } }>;
+    }).__veriflowMessages.filter(message => message.type === 'editArchDesign'));
+    const source = await center(`${sourceId}:out`);
+    const target = await center('instance:u_sink:in');
+    await page.mouse.click(source.x + 7, source.y);
+    assert.equal(await page.locator('#inspector-title').innerText(), 'u_source.out');
+    assert.equal((await edits()).length, 0, 'a click must only select the pin');
+    const previewReady = await page.evaluate(async ({ source, target }) => {
+        // Keep the timing inside the renderer so automation latency cannot mask a long hold.
+        const dispatch = (type: string, x: number, y: number) => {
+            (document.elementFromPoint(x, y) ?? document).dispatchEvent(new MouseEvent(type, {
+                bubbles: true, cancelable: true, clientX: x, clientY: y,
+                button: 0, buttons: type === 'mouseup' ? 0 : 1,
+            }));
+        };
+        dispatch('mousedown', source.x + 7, source.y);
+        dispatch('mousemove', source.x + 18, source.y);
+        await new Promise(resolve => setTimeout(resolve, 80));
+        const ready = document.querySelector('.veriflow-connection-pending') !== null;
+        dispatch('mousemove', target.x - 7, target.y);
+        dispatch('mouseup', target.x - 7, target.y);
+        return ready;
+    }, { source, target });
+    assert.equal(previewReady, true, 'drag preview must start within the debounce interval');
+    assert.equal((await edits()).length, 1, 'ordinary mode must support dragging without a long hold');
+    assert.deepEqual((await edits())[0].edit, {
+        type: 'connect',
+        source: { kind: 'instance', instance: 'u_source', port: 'out' },
+        target: { kind: 'instance', instance: 'u_sink', port: 'in' },
+    });
+    await publish();
+    await page.locator('#connect-button').click();
+    const body = page.locator(`#canvas .x6-node[data-cell-id="${sourceId}"] .veriflow-node-body`);
+    await body.click();
+    const before = await body.boundingBox();
+    await dragElement(page, body, 90, 90);
+    assert.deepEqual(await body.boundingBox(), before, 'wire mode must lock selected nodes');
+    const a = await center(`${sourceId}:out`);
+    const b = await center(`${sourceId}:spare`);
+    const hitBoxes = await page.locator(`#canvas .x6-node[data-cell-id="${sourceId}"] .veriflow-pin-hit-area`)
+        .evaluateAll(elements => elements.map(element => {
+            const rect = element.getBoundingClientRect();
+            return { top: rect.top, bottom: rect.bottom };
+        }));
+    assert.equal(hitBoxes.length, 2);
+    assert.ok(hitBoxes[0].bottom < hitBoxes[1].top, 'adjacent pin hit areas must stay separate');
+    await page.mouse.click(b.x + 11, b.y);
+    await page.locator('.veriflow-connection-preview-line').waitFor({ state: 'attached' });
+    assert.equal(await page.locator('.veriflow-connection-preview-line').count(), 1,
+        'wire mode must start at the second pin');
+    await page.mouse.click(target.x + 11, target.y);
+    assert.equal((await edits()).length, 2, 'wire mode must accept two clicks with a wider hit area');
+    await publish();
+    await page.mouse.move(a.x + 11, a.y);
+    await page.mouse.down();
+    await page.mouse.move(target.x + 11, target.y, { steps: 8 });
+    await page.mouse.up();
+    assert.equal((await edits()).length, 3, 'wire mode must support immediate drag');
+    assert.deepEqual(gestureErrors, []);
+}));
+
 test('Arch Design selection stays local and layout acknowledgement preserves cells', {
     timeout: 45_000,
 }, async () => {
@@ -5437,15 +5661,14 @@ test('schematic runtime paints responsive geometry and authors Arch Design conne
         assert.ok(inoutPinCenter('i').x > inoutPinCenter('o').x);
         const inoutMarkers = {
             o: inoutNode.locator(
-                'circle.x6-port-body.veriflow-inout-pin-o'
+                '.x6-port-body.veriflow-inout-pin-o'
                 + '[port="port:visual-inout:shared_io_o"]'
             ),
             t: inoutNode.locator(
-                '.x6-port-body[port="port:visual-inout:shared_io_t"] '
-                + 'circle.veriflow-inout-pin-t'
+                '.x6-port-body.veriflow-inout-pin-t[port="port:visual-inout:shared_io_t"]'
             ),
             i: inoutNode.locator(
-                'circle.x6-port-body.veriflow-inout-pin-i'
+                '.x6-port-body.veriflow-inout-pin-i'
                 + '[port="port:visual-inout:shared_io_i"]'
             ),
         };
@@ -5481,7 +5704,7 @@ test('schematic runtime paints responsive geometry and authors Arch Design conne
         const desktopInspectorBounds = await page.locator('#inspector').boundingBox();
         assert.ok(desktopInspectorBounds);
         assert.ok(
-            desktopInspectorBounds.width >= 270 && desktopInspectorBounds.width <= 290,
+            desktopInspectorBounds.width >= 242 && desktopInspectorBounds.width <= 262,
             JSON.stringify(desktopInspectorBounds)
         );
         const fanoutSegments = page.locator(

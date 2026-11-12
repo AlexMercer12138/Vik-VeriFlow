@@ -26,10 +26,21 @@ flowchart TD
 | `packages/hdl-runtime/src/simulationTask*` | ST 模型、编辑、预设、TB 和工作区来源解析 |
 | `packages/hdl-runtime/src/hdl` | 例化、快捷 TB 的纯文本生成 |
 | `packages/schematic-webview/src` | AD/ST 共用画布；`shared` 提供消息、布局和 UI 辅助 |
+| `packages/webview-ui/src` | 三个 Webview 共享的 VS Code 主题令牌、工具栏/面板/状态栏/表格/属性组件 |
 | `packages/cli/src/commands` | 参数适配、终端输出和退出码 |
 | `veriflow-vscode/src` | 原生编辑器事务、菜单、索引生命周期、Webview 宿主 |
 
 可自动化的能力先写共享 TS API，再接 CLI 和扩展。共享包不能导入扩展源码或 `vscode`。扩展旧模块中的转导出保留调用兼容，业务实现只在共享包维护。画布测试归 `schematic-webview`，独立波形宿主测试归 `waveform-desktop`。
+
+### Webview 统一前端
+
+三个 Webview 共用 `packages/webview-ui/src/tokens.css` 与 `base.css`，`scripts/build-web.mjs` 在构建时把它们分别内联进波形、原理图和约束的 `index.css`。
+
+- **颜色**：只消费 `--vscode-*`；宿主主题始终优先，CLI/Electron 没有注入时使用 VS Code Dark Modern 回退值。不在应用层写死画布颜色；高对比主题把图形收敛为文字色，`forced-colors` 交给系统色。
+- **密度**：36px 工具栏、30px 面板头、26px 行/控件、2px 圆角、24px 状态栏；图标 16px，按钮点击区 26px。
+- **字阶**：统一使用 `--vf-fs-*`：12px 控件、11.5px 行/属性、11px 元信息、10.5px 状态指标、10px 区块标签、9.5px 快捷键/标签。应用 CSS 不再写任意 px 或 `em` 字号。
+- **结构**：统一 `.vf-app` / `.vf-toolbar` / `.vf-pane` / `.vf-statusbar`，工具栏分组、图标按钮、属性面板、表格和底部抽屉共享组件。波形、原理图和约束都是左/中/右三栏，左栏 236px、右栏 252px。约束工作台不再有独立的主题开关或第二套色板。
+- **测试**：波形宿主测试覆盖工具栏/窄屏/画布几何；约束浏览器测试覆盖拖放绑定、板卡库和真实导出；原理图画布测试覆盖 X6 交互与布局。
 
 ## JSON 模型在哪里
 
@@ -70,10 +81,12 @@ Linux 的 Electron 测试需要显示服务，可用 `xvfb-run -a`。`build:pars
 
 ```bash
 veriflow arch new top -o top.ad
+veriflow arch ui top.ad [--project project.json] [--lib rtl,ip]
 veriflow arch apply top.ad --ops arch-edits.json --in-place
 veriflow arch build top.ad -o generated/top.v --constraints-output generated/top.xdc
 
 veriflow task new -o sim.st
+veriflow task ui sim.st [--project project.json]
 veriflow task apply sim.st --ops task-edits.json --in-place
 veriflow task tb sim.st -o generated/sim_tb.v
 veriflow task validate sim.st
@@ -97,7 +110,7 @@ veriflow hdl tb top.v -o top_tb.v
 veriflow hdl run top_tb.v --wave-output results/top.vcd
 ```
 
-`arch build` 无 `physical` 时只生成 RTL，有 `physical` 时校验板卡/子卡绑定并生成 RTL 与模板约束。`--rtl-only` 跳过物理构建。`arch export` 只导出 RTL。约束路径优先级为 CLI `--constraints-output`、`export.constraintsOutput`、实际 RTL 的同名文件加板卡保存的扩展名。`.veriflow.json` 记录约束文件归属与摘要，人工修改会阻止覆盖。`board ui` 启动共享板卡编辑器。
+`arch ui` 与 `task ui` 使用 Electron 启动共享图形编辑器；`.ad` 和 `.st` 共用 schematic renderer。`task run` 与图形化 Simulation Task 使用相同的任务准备、模拟器请求和波形产物规则。`arch build` 无 `physical` 时只生成 RTL，有 `physical` 时校验板卡/子卡绑定并生成 RTL 与模板约束。`--rtl-only` 跳过物理构建。`arch export` 只导出 RTL。约束路径优先级为 CLI `--constraints-output`、`export.constraintsOutput`、实际 RTL 的同名文件加板卡保存的扩展名。`.veriflow.json` 记录约束文件归属与摘要，人工修改会阻止覆盖。`board ui` 启动共享板卡编辑器。
 
 ### AD 操作文件
 

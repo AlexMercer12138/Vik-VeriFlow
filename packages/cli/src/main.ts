@@ -26,12 +26,14 @@ import { runTask, validateTask } from './commands/task';
 import { openWaveform, type WaveViewerLauncher } from './commands/wave';
 import { NodeWaveViewerLauncher } from './runtime/nodeWaveViewerLauncher';
 import { NodeBoardEditorLauncher } from './runtime/nodeBoardEditorLauncher';
+import { NodeWorkbenchEditorLauncher } from './runtime/nodeWorkbenchEditorLauncher';
 import type { CliSimulationBackendOptions } from './runtime/simulationBackends';
 
 export interface CliEnvironment extends CommandEnvironment {
     commandExecutor?: CommandExecutor;
     waveViewerLauncher?: WaveViewerLauncher;
     boardEditorLauncher?: BoardEditorLauncher;
+    workbenchEditorLauncher?: import('@veriflow/waveform-desktop').WorkbenchEditorLauncher;
     simulationBackendOptions?: CliSimulationBackendOptions;
     dependencySessionFactory?: CliDependencySessionFactory;
 }
@@ -127,6 +129,7 @@ const AD_HELP = `usage: veriflow arch [-h] ACTION ...
 positional arguments:
   ACTION
     new       create an Arch Design
+    ui        open the Arch Design editor
     validate  validate an Arch Design
     export    export an Arch Design to RTL
     apply     apply a versioned edit batch
@@ -141,6 +144,7 @@ const TASK_HELP = `usage: veriflow task [-h] ACTION ...
 positional arguments:
   ACTION
     new       create a Simulation Task
+    ui        open the Simulation Task editor
     apply     apply a versioned edit batch
     tb        generate a testbench
     validate  validate a Simulation Task and its HDL dependencies
@@ -440,6 +444,14 @@ function newCommand(name: string, handler: CommandHandler, options: OptionDefini
         help: `usage: veriflow ${name} [-h] ${positional?.toUpperCase() ?? ''} [options]\n\noptions:\n  -h, --help\n${options.map(o => `  ${o.aliases.join(', ')}${o.takesValue === false ? '' : ' VALUE'}`).join('\n')}\n` };
 }
 Object.assign(LEAF_COMMANDS, {
+    'arch ui': newCommand('arch ui', async (options, environment) => {
+        const { archUi } = await import('./commands/editor');
+        return archUi(options, environment);
+    }, [{ key: 'project', aliases: ['--project', '-p'] }, { key: 'lib', aliases: ['--lib', '-L'] }], 'design'),
+    'task ui': newCommand('task ui', async (options, environment) => {
+        const { taskUi } = await import('./commands/editor');
+        return taskUi(options, environment);
+    }, [{ key: 'project', aliases: ['--project', '-p'] }], 'task'),
     'arch apply': newCommand('arch apply', archApply, documentOptions, 'design'),
     'arch build': newCommand('arch build', archBuild, [...outputOptions,
         { key: 'project', aliases: ['--project', '-p'] }, { key: 'lib', aliases: ['--lib', '-L'] },
@@ -480,8 +492,8 @@ const PARENT_ACTIONS: Record<string, string[]> = {
     project: ['new', 'open', 'show'],
     lib: ['add', 'remove', 'list'],
     top: ['set', 'get'],
-    arch: ['new', 'apply', 'validate', 'export', 'build'],
-    task: ['new', 'apply', 'tb', 'validate', 'run'],
+    arch: ['new', 'ui', 'apply', 'validate', 'export', 'build'],
+    task: ['new', 'ui', 'apply', 'tb', 'validate', 'run'],
 };
 
 for (const parent of ['board', 'pins', 'hdl']) {
@@ -749,6 +761,7 @@ if (require.main === module) {
         stderr: text => { process.stderr.write(text); },
         waveViewerLauncher: new NodeWaveViewerLauncher(),
         boardEditorLauncher: new NodeBoardEditorLauncher(),
+        workbenchEditorLauncher: new NodeWorkbenchEditorLauncher(),
     }).then(exitCode => {
         process.exitCode = exitCode;
     });

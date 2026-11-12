@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createSimulationRequest, ProjectStore } from '@veriflow/flow-core';
+import { ProjectStore } from '@veriflow/flow-core';
 import { parseSimulationTask, type SimulationTaskDocument } from '@veriflow/hdl-runtime/simulationTask';
+import { runSimulationTask } from '@veriflow/hdl-runtime/workbench/simulationTaskRunner';
 import type { CliEnvironment } from '../main';
 import { loadInterfaceProtocolCatalog } from '../runtime/interfaceProtocolLoader';
 import { prepareSimulationTaskWorkspace, prepareSimulationTaskSources, type TaskWorkspaceOptions } from '@veriflow/hdl-runtime/simulationTaskWorkspace';
@@ -67,26 +68,15 @@ export async function runTask(options: CommandOptions, environment: CliEnvironme
         const { prepared, project } = await prepare(taskPath, options, environment, controller.signal);
         let artifactDirectory: string | undefined, preserveWave = false;
         try {
-            const generatedPath = path.join(prepared.temporaryDirectory, `${prepared.generatedTestbench.moduleName}.v`);
-            await writeFile(generatedPath, prepared.generatedTestbench.text, { flag: 'wx' });
             const waveform = prepared.task.settings.waveform;
             if (waveform.enabled) artifactDirectory = await mkdtemp(path.join(os.tmpdir(), 'veriflow-st-wave-'));
             const registry = createCliSimulationBackends(project, { ...environment.simulationBackendOptions, commandExecutor: environment.commandExecutor });
             const backend = await registry.resolve(project.simulator);
-            const sourceFiles = new Set(prepared.additionalSources.map(file => path.resolve(file)));
-            const execution = await backend.compileAndRun(createSimulationRequest({
-                cwd: prepared.temporaryDirectory,
-                files: [generatedPath, ...prepared.additionalSources],
-                includeFiles: prepared.inputFiles.filter(file => /\.(?:v|sv|vh|svh)$/i.test(file) && !sourceFiles.has(path.resolve(file))),
-                runtimeFiles: prepared.runtimeFiles,
-                includeDirs: prepared.includeDirs,
-                defines: prepared.defines,
-                topModule: prepared.generatedTestbench.moduleName,
-                output: path.join(prepared.temporaryDirectory, 'simulation.out'),
+            const execution = await runSimulationTask(prepared, backend, {
                 signal: controller.signal,
-                artifacts: artifactDirectory ? [{ kind: 'vcd', path: waveform.filename,
-                    destination: path.join(artifactDirectory, waveform.filename), required: false }] : [],
-            }));
+                artifactDirectory,
+                requireWaveform: false,
+            });
             if (execution.stdout) environment.stdout(execution.stdout.endsWith('\n') ? execution.stdout : `${execution.stdout}\n`);
             if (execution.stderr) environment.stderr(execution.stderr.endsWith('\n') ? execution.stderr : `${execution.stderr}\n`);
             const wave = execution.artifacts.find(artifact => artifact.kind === 'vcd' && artifact.written);

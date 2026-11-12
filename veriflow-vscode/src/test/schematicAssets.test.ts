@@ -227,7 +227,7 @@ function assertRendererCellContracts(source: string): void {
     );
     assert.match(
         source,
-        /nodeMovable: view => cellData\(view\.cell\)\?\.junction !== true,/
+        /nodeMovable: view => !connectionModeActive\(\) && cellData\(view\.cell\)\?\.junction !== true,/
     );
 }
 
@@ -980,7 +980,7 @@ async function testSchematicAssets(): Promise<void> {
         assert.ok(html.includes(expected), `HTML is missing ${expected}`);
     }
     assert.match(html, /id="authoring-actions"[^>]*\shidden(?:\s|>)/);
-    assert.match(html, /<button[^>]+id="physical-pins-button"[^>]+class="icon-button"[^>]*>\s*<span data-icon-slot><\/span>\s*<\/button>/);
+    assert.match(html, /<button[^>]+id="physical-pins-button"[^>]+class="[^"]*\bicon-button\b[^"]*"[^>]*>\s*<span data-icon-slot><\/span>\s*<\/button>/);
     assert.ok(
         html.indexOf('for="instance-module-select"')
             < html.indexOf('for="instance-name-input"'),
@@ -1011,15 +1011,17 @@ async function testSchematicAssets(): Promise<void> {
     assert.doesNotMatch(html, /<svg\b/i);
 
     const css = fs.readFileSync(path.join(webDistRoot, 'index.css'), 'utf8');
-    assert.match(css, /grid-template-rows:\s*36px\s+minmax\(0,\s*1fr\)\s+24px/);
+    assert.match(css, /--vf-toolbar-h:\s*36px/);
+    assert.match(css, /--vf-status-h:\s*24px/);
+    assert.match(css, /grid-template-rows:\s*var\(--vf-toolbar-h\)\s+minmax\(0,\s*1fr\)\s+var\(--vf-status-h\)/);
     assert.match(css, /#content-row\s*{[^}]*display:\s*flex/s);
-    assert.match(css, /#inspector\s*{[^}]*flex:\s*0\s+0\s+280px/s);
+    assert.match(css, /#inspector\s*{[^}]*flex:\s*0\s+0\s+var\(--vf-inspector-w\)/s);
     assert.match(css, /#inspector\[hidden\]\s*{[^}]*display:\s*none/s);
     assert.match(css, /#authoring-actions\[hidden\]\s*{[^}]*display:\s*none/s);
     assert.match(css, /\.inspector-field\s+(?:input|select)/);
     assert.match(css, /--vscode-editor-background/);
     assert.match(css, /--vscode-editor-foreground/);
-    assert.match(css, /font-size:\s*12px/);
+    assert.match(css, /--vf-font-size:\s*var\(--vscode-font-size,\s*13px\)/);
     assert.match(css, /letter-spacing:\s*0/);
     assert.match(css, /:focus-visible/);
     assert.match(css, /\.x6-node:focus-visible/);
@@ -1044,7 +1046,7 @@ async function testSchematicAssets(): Promise<void> {
     assert.match(css, /\.x6-edge\.veriflow-network-selected\s*>\s*path:nth-child\(2\)/);
     assert.match(css, /--schematic-interface-wire:/);
     assert.match(css, /\.veriflow-pin-label\.veriflow-pin-selected/);
-    assert.match(css, /\.veriflow-pin-label-hit-area/);
+    assert.match(css, /\.veriflow-pin-hit-area/);
     assert.doesNotMatch(css, /--schematic-interface-(?:master|slave|unknown):/);
     assert.doesNotMatch(
         css,
@@ -1071,8 +1073,8 @@ async function testSchematicAssets(): Promise<void> {
     assert.match(webviewSource, /\bFileOutput\b/);
     assert.match(webviewSource, /\bTrash2\b/);
     assert.match(webviewSource, /function renderArchDesignInspector\(/);
+    assert.match(webviewSource, /switch \(event\.type\)/);
     assert.match(webviewSource, /case 'archDesignState':/);
-    assert.match(webviewSource, /type === 'archDesignState'/);
     assert.match(webviewSource, /\barchDesignEndpointForPin\(/);
     assert.ok(
         webviewSource.includes("type: 'connectInterface'"),
@@ -1082,7 +1084,7 @@ async function testSchematicAssets(): Promise<void> {
     assert.match(webviewSource, /class: 'veriflow-node-accent veriflow-interface-accent'/);
     assert.match(webviewSource, /class: 'veriflow-pin-label-hit-area'/);
     assert.match(webviewSource, /'veriflow-pin-label veriflow-interface-label'/);
-    assert.match(webviewSource, /function portAtSelectionBoxPoint\(/);
+    assert.match(webviewSource, /function pinAtClientPoint\(/);
     assert.doesNotMatch(webviewSource, /interfaceTag|interfaceTagText/);
     assert.doesNotMatch(
         webviewSource,
@@ -1108,7 +1110,7 @@ async function testSchematicAssets(): Promise<void> {
     }
     assert.match(webviewSource, /magnetConnectable:\s*false/);
     assert.doesNotMatch(webviewSource, /graph\.on\('edge:connected'/);
-    assert.match(webviewSource, /graph\.on\('node:port:click'/);
+    assert.match(webviewSource, /document\.addEventListener\('mouseup', endPinGesture\)/);
     assert.match(webviewSource, /function normalizeConnectionTerminals\(/);
     const completedConnection = sourceSection(
         webviewSource,
@@ -1210,7 +1212,7 @@ async function testSchematicAssets(): Promise<void> {
     assert.match(webviewSource, /portLabelHitArea:\s*{[^}]*pointerEvents: 'all',/s);
     assert.match(
         webviewSource,
-        /document\.addEventListener\('mousedown', selectPinTarget, true\)/
+        /document\.addEventListener\('mousedown', startPinGesture, true\)/
     );
     assert.doesNotMatch(webviewSource, /selector: 'portLabel'/);
     assert.doesNotMatch(webviewSource, /tagName: 'clipPath'/);
@@ -1232,7 +1234,7 @@ async function testSchematicAssets(): Promise<void> {
         '\nfunction scheduleLayoutSave()',
         'local layout persistence'
     );
-    assert.match(localLayoutPersistence, /vscode\.setState\(/);
+    assert.match(localLayoutPersistence, /transport\.setState\(/);
     const scheduledLayoutPersistence = sourceSection(
         webviewSource,
         'function scheduleLayoutSave()',

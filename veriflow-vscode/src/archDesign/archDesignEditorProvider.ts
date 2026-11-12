@@ -583,8 +583,6 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                     }
                     return;
                 }
-                const workspaceEdit = new vscode.WorkspaceEdit();
-                workspaceEdit.replace(document.uri, fullRange(), nextText);
                 if (acknowledgePresentation) {
                     pendingWrite = {
                         expectedText: nextText,
@@ -600,6 +598,8 @@ export class ArchDesignEditorProvider implements vscode.CustomTextEditorProvider
                     };
                 }
                 state.snapshot = undefined;
+                const workspaceEdit = new vscode.WorkspaceEdit();
+                workspaceEdit.replace(document.uri, fullRange(), nextText);
                 const applied = await vscode.workspace.applyEdit(workspaceEdit);
                 if (!applied) throw new Error('Unable to apply Arch Design edit');
             } catch (error) {

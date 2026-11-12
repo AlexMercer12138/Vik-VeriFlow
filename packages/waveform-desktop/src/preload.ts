@@ -1,15 +1,14 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
-import { BOARD_EDITOR_HOST_MESSAGE_CHANNEL, BOARD_EDITOR_RENDERER_MESSAGE_CHANNEL, HOST_MESSAGE_CHANNEL, RENDERER_MESSAGE_CHANNEL } from './ipc';
+import { BOARD_EDITOR_HOST_MESSAGE_CHANNEL, BOARD_EDITOR_RENDERER_MESSAGE_CHANNEL, HOST_MESSAGE_CHANNEL, RENDERER_MESSAGE_CHANNEL, SCHEMATIC_EDITOR_HOST_MESSAGE_CHANNEL, SCHEMATIC_EDITOR_RENDERER_MESSAGE_CHANNEL } from './ipc';
 
 let webviewState: unknown;
 const boardEditorWindow = process.argv.includes('--board-library');
-const rendererChannel = boardEditorWindow
-    ? BOARD_EDITOR_RENDERER_MESSAGE_CHANNEL
-    : RENDERER_MESSAGE_CHANNEL;
-const hostChannel = boardEditorWindow
-    ? BOARD_EDITOR_HOST_MESSAGE_CHANNEL
-    : HOST_MESSAGE_CHANNEL;
+const schematicEditorWindow = process.argv.includes('--veriflow-schematic-editor');
+const rendererChannel = schematicEditorWindow ? SCHEMATIC_EDITOR_RENDERER_MESSAGE_CHANNEL
+    : boardEditorWindow ? BOARD_EDITOR_RENDERER_MESSAGE_CHANNEL : RENDERER_MESSAGE_CHANNEL;
+const hostChannel = schematicEditorWindow ? SCHEMATIC_EDITOR_HOST_MESSAGE_CHANNEL
+    : boardEditorWindow ? BOARD_EDITOR_HOST_MESSAGE_CHANNEL : HOST_MESSAGE_CHANNEL;
 
 contextBridge.exposeInMainWorld('__veriflowHost', Object.freeze({
     postMessage(message: unknown): void {

@@ -5,6 +5,42 @@ import os from 'node:os';
 import path from 'node:path';
 import { ConstraintWorkbench, UserPhysicalBoardLibrary, type ConstraintSource } from '../src/physical';
 import { applyArchDesignEdit, createEmptyArchDesign, parseArchDesignText, serializeArchDesign } from '@veriflow/schematic-core/arch-design';
+test('workbench batches selections, binds concatenations and refreshes retained sources on entry', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vf-workbench-ports-'));
+    try {
+        const library = new UserPhysicalBoardLibrary({configPath:path.join(root,'config.json')});
+        library.saveBoard({id:'b',name:'Board',model:{kind:'board',extension:'.pcf',pins:{a:'A {signal name}',b:'B {signal name}',c:'C {signal name}'},interfaces:[{id:'IO',signals:[{id:'wide',direction:'output',pins:['a','b']},{id:'single',direction:'output',pins:['c']}]}]}});
+        const file = path.join(root,'top.v');
+        let reads = 0, sends = 0, state: any;
+        const ports = [{name:'bus',direction:'output' as const,indices:[1,0]},{name:'flag',direction:'output' as const}];
+        const session = new ConstraintWorkbench({library,source:async()=>({path:file,text:String(++reads),module:'top',isAd:false,ports:[...ports],configurationPath:path.join(root,'top.pins.json'),inputs:[]}),saveAd:async s=>s,openFile:async()=>undefined,saveFile:async()=>undefined,confirmDelete:async()=>false},message=>{state=message;sends++;});
+        await session.open(file);
+        await session.dispatch({type:'choose-board',board:'user:b'});
+        const before = sends;
+        await session.dispatch({type:'select',changes:[{interface:'IO',signal:'wide',checked:true},{interface:'IO',signal:'single',checked:true}]});
+        assert.equal(sends,before+1);
+        assert.equal(state.active.length,2);
+        await session.dispatch({type:'bind',interface:'IO',signal:'wide',ports:[{name:'flag'},{name:'bus',bit:1}]});
+        await session.dispatch({type:'bind',interface:'IO',signal:'single',ports:[{name:'bus',bit:0}]});
+        assert.equal(state.preview,'A flag\nB bus[1]\nC bus[0]');
+        await session.dispatch({type:'bind',interface:'IO',signal:'single',ports:[{name:'bus',bit:1}]});
+        assert.match(state.error,/already assigned/);
+        assert.deepEqual(state.configuration.bindings.map((b:any)=>b.port),[{name:'flag'},{name:'bus',bit:1},{name:'bus',bit:0}]);
+        await session.dispatch({type:'bind',interface:'IO',signal:'wide',ports:[{name:'bus',bit:1},{name:'flag'}]});
+        assert.equal(state.preview,'A bus[1]\nB flag\nC bus[0]');
+        ports.push({name:'newPort',direction:'output'});
+        await session.open(file);
+        assert.equal(reads,2);
+        assert.equal(state.ports.length,3);
+        assert.equal(state.configuration.bindings.length,3);
+        await session.dispatch({type:'page',page:'library'});
+        await session.dispatch({type:'page',page:'bindings'});
+        assert.equal(reads,3);
+        await session.dispatch({type:'select',changes:[{interface:'IO',signal:'wide',checked:false},{interface:'IO',signal:'single',checked:false}]});
+        assert.deepEqual(state.active,[]);
+        assert.deepEqual(state.configuration.bindings,[]);
+    } finally { await rm(root,{recursive:true,force:true}); }
+});
 test('workbench retains board and RTL drafts, generated identities, history, pin values and safe export', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vf-workbench-'));
     try {

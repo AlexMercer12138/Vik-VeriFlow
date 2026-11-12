@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import test from 'node:test';
 
-import { boardLibraryElectronInvocation, waveformElectronInvocation } from '../src/launcher';
+import { boardLibraryElectronInvocation, schematicEditorElectronInvocation, waveformElectronInvocation } from '../src/launcher';
 
 test('loading the desktop launcher does not resolve Electron', () => {
     const launcherPath = require.resolve('../src/launcher');
@@ -41,4 +41,15 @@ test('board editor launcher opens the shared board library UI with its user conf
     const invocation = boardLibraryElectronInvocation(config);
     assert.equal(path.basename(invocation.appEntry), 'main.js');
     assert.deepEqual(invocation.args, [invocation.appEntry, '--board-library', path.resolve(config)]);
+});
+
+test('schematic launcher targets the shared Electron window for both document kinds', () => {
+    const source = path.join('relative', 'top.ad');
+    const invocation = schematicEditorElectronInvocation(source, 'arch-design', {
+        project: 'project.json', lib: ['rtl', 'ip'],
+    });
+    assert.deepEqual(invocation.args, [invocation.appEntry, '--schematic-editor', path.resolve(source),
+        '--kind=arch-design', '--project', 'project.json', '--lib', 'rtl,ip']);
+    assert.deepEqual(schematicEditorElectronInvocation('sim.st', 'simulation-task').args,
+        [invocation.appEntry, '--schematic-editor', path.resolve('sim.st'), '--kind=simulation-task']);
 });

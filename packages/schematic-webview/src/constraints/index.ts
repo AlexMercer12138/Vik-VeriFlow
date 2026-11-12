@@ -1,11 +1,12 @@
 // @ts-nocheck
 import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
+import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './portAssignments';
 
 /* Shared constraint workspace. Hosts send state and own all file operations. */
 (() => {
     'use strict';
     const $=id => document.getElementById(id),esc=value => String(value??'').replace(/[&<>"']/g,c => ({ '&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#39;' }[c]));
-    const iconAliases={ board: 'circuit-board', warning: 'triangle-alert', right: 'undo-2', arrow: 'redo-2', chevron: 'chevron-down', input: 'log-in', output: 'log-out', import: 'download', export: 'upload', grip: 'grip-vertical', edit: 'pencil', trash: 'trash-2' };
+    const iconAliases={ board: 'circuit-board', warning: 'triangle-alert', right: 'undo-2', arrow: 'redo-2', chevron: 'chevron-down', input: 'log-in', output: 'log-out', import: 'download', export: 'upload', grip: 'grip-vertical', edit: 'pencil', trash: 'trash-2', close: 'x' };
     const icon=name => renderIcon(iconAliases[name]??name).outerHTML;
     type WorkbenchMessage = { type: string; sourcePath?: string; [key: string]: unknown };
     type WorkbenchViewState = { section?: string };
@@ -13,7 +14,11 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
     let editId=0;
     const viewState=transport.getState()??{};
     const savedViews=new Map();
-    let state,draft,page='library',section=viewState.section??'pins',pinName='',selectedKey='',dragPort='',pickedPort='',filter='all',toastTimer;
+    let state,draft,page='library',section=viewState.section??'pins',pinName='',selectedKey='',dragPorts=[],filter='all',toastTimer,portAnchor;
+    const pickedPorts=new Set(),expandedPorts=new Set();
+    let allRows=[],rowIndex=new Map(),bindingIndex=new Map(),activeKeys=new Set(),portIndex=new Map(),usedBits=new Map();
+    let librarySignature='',libraryNeedsRender=true,selectionId=0,selectionTimer,expandedSignalPins='';
+    const pendingSelections=new Map();
     const selectedPins=new Set(),expanded=new Set();
     const signalKey=(card,iface,signal) => JSON.stringify([card??'',iface,signal]);
     const post=(type,data={}) => { const snapshot=typeof structuredClone==='function'? structuredClone(data):JSON.parse(JSON.stringify(data)); transport.postMessage({ type,sourcePath:state?.source?.path,...snapshot }); };
@@ -28,12 +33,34 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
     });
     const basename=file => file?.split(/[\\/]/).pop()??'';
     const modelFor=card => state.models?.[card??''];
-    const bindingsFor=row => (state.configuration?.bindings??[]).filter(b => b.source.card===row.card&&b.source.interface===row.iface&&members(row).includes(b.source.member));
+    const bindingsFor=row => members(row).map(member=>bindingIndex.get(signalKey(row.card,row.iface,member))).filter(Boolean);
     const members=row => row.signal.pins.length===1? [row.signal.id]:row.signal.pins.map((_,i) => row.signal.id+'.'+(row.signal.pins.length-1-i));
-    const rows=() => state.interfaces.flatMap(iface => iface.signals.map(signal => ({ card: iface.card,iface: iface.id,signal,key: signalKey(iface.card,iface.id,signal.id) })));
+    const rows=() => allRows;
     const current=() => rows().find(row => row.key===selectedKey)??rows()[0];
-    const active=row => state.active.includes(row.key);
-    const boundName=row => { const bs=bindingsFor(row); return bs.length===row.signal.pins.length&&new Set(bs.map(b => b.port.name)).size===1? bs[0]?.port.name:''; };
+    const active=row => activeKeys.has(row.key);
+    const boundName=row => portGroups(bindingsFor(row).map(b=>b.port)).map(groupLabel).join(', ');
+    function indexBindings() {
+        allRows=state.interfaces.flatMap(iface=>iface.signals.map(signal=>({card:iface.card,iface:iface.id,signal,key:signalKey(iface.card,iface.id,signal.id)})));
+        rowIndex=new Map(allRows.map(row=>[row.key,row]));
+        activeKeys=new Set(state.active);
+        bindingIndex=new Map((state.configuration?.bindings??[]).map(b=>[signalKey(b.source.card,b.source.interface,b.source.member),b]));
+        portIndex=new Map(state.ports.map(port=>[port.name,port]));
+        usedBits=new Map((state.configuration?.bindings??[]).map(b=>[portKey(b.port),b]));
+    }
+    function selectSignals(changes) {
+        const id=++selectionId;
+        for(const change of changes) pendingSelections.set(signalKey(change.card,change.interface,change.signal),{...change,id});
+        applyPendingSelections();
+        indexBindings();
+        renderBindings();
+        clearTimeout(selectionTimer);
+        selectionTimer=setTimeout(()=>post('select',{changes:[...pendingSelections.values()],editId:id}),24);
+    }
+    function applyPendingSelections() {
+        const selected=new Set(state.active);
+        for(const [key,change] of pendingSelections) change.checked?selected.add(key):selected.delete(key);
+        state.active=[...selected];
+    }
     const labelFor=card => {
         if(!card)
             return state.boards.find(b => 'user:'+b.id===state.configuration?.board)?.name??'Board'; const cards=state.configuration?.cards??[],ref=cards.find(c => c.id===card)?.board,same=cards.filter(c => c.board===ref),index=same.findIndex(c => c.id===card); return (state.boards.find(b => 'user:'+b.id===ref)?.name??basename(ref))+(index>0? ' '+(index+1):'');
@@ -49,6 +76,7 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
             const shown=p===page;
             $(p+'-page').classList.toggle('hidden',!shown||(p==='bindings'&&!state.source));
             document.querySelector('[data-page="'+p+'"]').classList.toggle('active',shown);
+            document.querySelector('[data-page="'+p+'"]').setAttribute('aria-pressed',String(shown));
             $(p==='library'? 'library-context':'binding-context').classList.toggle('hidden',!shown);
             $(p==='library'? 'library-actions':'binding-actions').classList.toggle('hidden',!shown);
         } $('binding-empty').classList.toggle('hidden',page!=='bindings'||!!state.source); renderFooter();
@@ -57,6 +85,7 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
         section=next; transport.setState({ section }); for(const p of ['pins','interfaces','details']) {
             $('section-'+p).classList.toggle('hidden',p!==next);
             document.querySelector('[data-section="'+p+'"]').classList.toggle('active',p===next);
+            document.querySelector('[data-section="'+p+'"]').setAttribute('aria-pressed',String(p===next));
         }
     }
     function renderFooter() {
@@ -148,11 +177,61 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
     }
     function renderSelection() { $('selected-pin-count').textContent=selectedPins.size+' pins selected'; $('create-from-pins').disabled=!selectedPins.size; }
     function renderTemplatePreview() {
-        if(!draft)
-            return; const text=draft.model.pins[pinName]??'',signal=$('example-signal').value,pin=$('example-pin').value; const rendered=text.replace(/\{signal name\}|\{pin name\}/g,t => t==='{signal name}'? signal:pin); $('template-preview').textContent=rendered; $('template-preview-label').textContent=signal+(draft.model.kind==='daughtercard'? ' · '+pin:'');
+        if(!draft) return;
+        const text=draft.model.pins[pinName]??'',pin=$('example-pin').value,preview=$('template-preview');
+        preview.replaceChildren();
+        for(const [index,[label,signal]] of [['Single signal','bit'],['Bus bit','bus[0]']].entries()) {
+            const comment=document.createElement('span');
+            comment.className='preview-comment';
+            comment.textContent=(index?(/[\r\n]$/.test(text)?'\n':'\n\n'):'')+'# '+label+': '+signal+'\n';
+            preview.append(comment,document.createTextNode(text.replace(/\{signal name\}|\{pin name\}/g,token=>token==='{signal name}'?signal:pin)));
+        }
+        $('template-preview-label').textContent='bit · bus[0]'+(draft.model.kind==='daughtercard'?' · '+pin:'');
     }
     function field(value,change,type='text') { const el=document.createElement('input'); el.type=type; el.value=String(value); el.onchange=() => change(el.value); return el; }
     function action(label,fn) { const b=document.createElement('button'); b.className='subtle-link'; b.textContent=label; b.onclick=fn; return b; }
+    function pinTemplateSelect(iface,signal,index,onChange) {
+        const select=document.createElement('select');
+        select.setAttribute('aria-label',iface.id+' '+signal.id+' bit '+(signal.pins.length-1-index)+' template');
+        select.add(new Option('Choose template',''));
+        for(const name of Object.keys(draft.model.pins)) select.add(new Option(name,name));
+        select.value=signal.pins[index];
+        select.onchange=()=>{signal.pins[index]=select.value;onChange?.();changeDraft();};
+        return select;
+    }
+    function renderSignalPins(iface,signal,container,updateSummary) {
+        container.replaceChildren();
+        const list=document.createElement('div');
+        list.className='signal-pin-list';list.setAttribute('role','group');list.setAttribute('aria-label','Pin templates for '+iface.id+'.'+signal.id);
+        signal.pins.forEach((pin,index)=>{
+            const label=document.createElement('label'),bit=document.createElement('span');
+            bit.textContent=signal.id+'['+(signal.pins.length-1-index)+']';
+            label.append(bit,pinTemplateSelect(iface,signal,index,updateSummary));list.append(label);
+        });
+        const bulk=document.createElement('details');bulk.className='signal-pin-bulk';
+        const summary=document.createElement('summary');summary.textContent='Paste pin names';
+        const input=document.createElement('textarea');input.className='vf-textarea vf-textarea--mono';input.rows=3;
+        input.setAttribute('aria-label','Pin templates for '+iface.id+'.'+signal.id+', high bit first');
+        input.placeholder='Paste '+signal.pins.length+' template names, separated by commas or lines. High bit first.';
+        const status=document.createElement('div');status.className='signal-pin-error';status.setAttribute('role','status');
+        const apply=action('Apply pin names',()=>{
+            const names=input.value.trim().split(/[,\s]+/).filter(Boolean);
+            const occupied=new Set(iface.signals.filter(other=>other!==signal).flatMap(other=>other.pins).filter(Boolean));
+            let error='';
+            if(names.length!==signal.pins.length) error='Enter exactly '+signal.pins.length+' template names, high bit first.';
+            else if(names.some(name=>!Object.prototype.hasOwnProperty.call(draft.model.pins,name))) error='Unknown template: '+names.find(name=>!Object.prototype.hasOwnProperty.call(draft.model.pins,name));
+            else if(new Set(names).size!==names.length) error='Each bit needs a different pin template.';
+            else if(names.some(name=>occupied.has(name))) error='Template already used in this interface: '+names.find(name=>occupied.has(name));
+            status.textContent=error;input.setAttribute('aria-invalid',String(!!error));
+            if(error)return;
+            signal.pins=names;updateSummary();changeDraft();
+            list.querySelectorAll('select').forEach((select,index)=>select.value=names[index]);
+            status.textContent='Assigned '+names.length+' pins, high bit to low bit.';
+        });
+        apply.className='vf-btn';apply.setAttribute('aria-label','Apply '+iface.id+'.'+signal.id+' pin templates');
+        input.oninput=()=>{status.textContent='';input.removeAttribute('aria-invalid');};
+        bulk.append(summary,input,apply,status);container.append(list,bulk);
+    }
     function renderInterfaceEditors() {
         $('interface-editors').replaceChildren(); if(!draft)
             return; for(const [i,iface] of draft.model.interfaces.entries()) {
@@ -160,7 +239,7 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
                 wrap.className='interface-editor';
                 const heading=document.createElement('div');
                 heading.className='iface-head';
-                const name=field(iface.id,v => { iface.id=v; changeDraft(); });
+                const name=field(iface.id,v => { iface.id=v; changeDraft(); renderInterfaceEditors(); });
                 name.setAttribute('aria-label','Interface name');
                 heading.append(name,action('Remove interface',() => { draft.model.interfaces.splice(i,1); changeDraft(); renderInterfaceEditors(); }));
                 wrap.append(heading);
@@ -171,7 +250,7 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
                 for(const [j,signal] of iface.signals.entries()) {
                     const row=document.createElement('tr');
                     const nameCell=document.createElement('td'),dirCell=document.createElement('td'),widthCell=document.createElement('td'),pinsCell=document.createElement('td'),remove=document.createElement('td');
-                    const signalName=field(signal.id,v => { signal.id=v; changeDraft(); });
+                    const signalName=field(signal.id,v => { signal.id=v; changeDraft(); renderInterfaceEditors(); });
                     signalName.setAttribute('aria-label','Signal name');
                     nameCell.append(signalName);
                     const dir=document.createElement('select');
@@ -189,13 +268,25 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
                     width.max='4096';
                     width.setAttribute('aria-label','Signal width');
                     widthCell.append(width);
-                    signal.pins.forEach((pin,k) => {
-                        const select=document.createElement('select'); select.setAttribute('aria-label',iface.id+' '+signal.id+' bit '+(signal.pins.length-1-k)+' template'); select.add(new Option('Choose template','')); for(const name of Object.keys(draft.model.pins))
-                            select.add(new Option(name,name)); select.value=pin; select.onchange=() => { signal.pins[k]=select.value; changeDraft(); }; pinsCell.append(select);
-                    });
+                    let detail;
+                    if(signal.pins.length===1) pinsCell.append(pinTemplateSelect(iface,signal,0));
+                    else {
+                        const key=JSON.stringify([draft.id,i,j]),edit=action('',()=>{expandedSignalPins=expandedSignalPins===key?'':key;renderInterfaceEditors();});
+                        edit.className='signal-pins-toggle subtle-link';
+                        edit.setAttribute('aria-label','Edit '+iface.id+'.'+signal.id+' pin templates');
+                        edit.setAttribute('aria-expanded',String(expandedSignalPins===key));
+                        const updateSummary=()=>{edit.textContent=signal.pins.filter(pin=>Object.prototype.hasOwnProperty.call(draft.model.pins,pin)).length+'/'+signal.pins.length+' pins · '+(expandedSignalPins===key?'Close':'Edit');};
+                        updateSummary();pinsCell.append(edit);
+                        if(expandedSignalPins===key) {
+                            detail=document.createElement('tr');detail.className='signal-pins-detail';
+                            const cell=document.createElement('td'),editor=document.createElement('div');cell.colSpan=5;editor.className='signal-pin-editor';
+                            renderSignalPins(iface,signal,editor,updateSummary);cell.append(editor);detail.append(cell);
+                        }
+                    }
                     remove.append(action('×',() => { iface.signals.splice(j,1); changeDraft(); renderInterfaceEditors(); }));
                     row.append(nameCell,dirCell,widthCell,pinsCell,remove);
                     body.append(row);
+                    if(detail)body.append(detail);
                 }
                 table.append(body);
                 const footer=document.createElement('div');
@@ -205,21 +296,29 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
                 $('interface-editors').append(wrap);
             }
     }
-    function portValid(row,name) { const port=state.ports.find(p => p.name===name); return !!port&&!port.unresolved&&port.direction===row.signal.direction&&(port.indices?.length??1)===row.signal.pins.length&&!state.configuration.bindings.some(b => b.port.name===name&&!bindingsFor(row).includes(b)); }
-    function markTargets(name) {
-        for(const row of $('binding-rows').querySelectorAll('tr[data-key]')) {
-            const data=rows().find(r => r.key===row.dataset.key);
-            row.classList.toggle('drop-compatible',!!name&&portValid(data,name));
-            row.classList.toggle('drop-incompatible',!!name&&!portValid(data,name));
-            if(!name)
-                row.classList.remove('drop-over');
-        } $('drag-hint').textContent=name? 'Drop '+name+' onto a highlighted row.':'Drag a port to a signal, or select a port then click a row.';
+    function portValid(row,refs) {
+        if(typeof refs==='string') refs=selectedPortBits(state.ports,new Set([portKey({name:refs})]));
+        const previous=new Set(bindingsFor(row));
+        return refs.length===row.signal.pins.length&&refs.every(ref=>{
+            const port=portIndex.get(ref.name),used=usedBits.get(portKey(ref));
+            return port&&!port.unresolved&&port.direction===row.signal.direction&&(port.indices?port.indices.includes(ref.bit):ref.bit===undefined)&&(!used||previous.has(used));
+        });
     }
-    function bind(row,name) {
-        if(name&&!portValid(row,name)) {
-            notice('Direction or width does not match, or this port is already assigned.');
+    function pickedBits() { return selectedPortBits(state.ports,pickedPorts); }
+    function markTargets(refs) {
+        for(const row of $('binding-rows').querySelectorAll('tr[data-key]')) {
+            const data=rowIndex.get(row.dataset.key);
+            row.classList.toggle('drop-compatible',!!refs.length&&portValid(data,refs));
+            row.classList.toggle('drop-incompatible',!!refs.length&&!portValid(data,refs));
+            if(!refs.length)
+                row.classList.remove('drop-over');
+        } $('drag-hint').textContent=refs.length? 'Drop '+refs.length+' selected bit'+(refs.length===1?'':'s')+' onto a highlighted row.':'Select ports or expand a bus, then drag to a signal.';
+    }
+    function bind(row,refs) {
+        if(refs.length&&!portValid(row,refs)) {
+            notice('Total width or direction does not match, or a selected bit is already assigned.');
             return;
-        } pickedPort=''; dragPort=''; post('bind',{ card: row.card,interface: row.iface,signal: row.signal.id,port: name });
+        } pickedPorts.clear(); dragPorts=[]; post('bind',{ card: row.card,interface: row.iface,signal: row.signal.id,ports: refs });
     }
     function renderBindings() {
         const restoredView=state.source?.path&&savedViews.get(state.source.path);
@@ -253,25 +352,26 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
                 title.className='group-line';
                 const box=document.createElement('input');
                 box.type='checkbox';
-                box.checked=iface.signals.length>0&&iface.signals.every(s => state.active.includes(signalKey(card,iface.id,s.id)));
-                box.indeterminate=!box.checked&&iface.signals.some(s => state.active.includes(signalKey(card,iface.id,s.id)));
+                box.checked=iface.signals.length>0&&iface.signals.every(s => activeKeys.has(signalKey(card,iface.id,s.id)));
+                box.indeterminate=!box.checked&&iface.signals.some(s => activeKeys.has(signalKey(card,iface.id,s.id)));
                 box.onchange=() => {
-                    for(const s of iface.signals)
-                        post('select',{ card,interface: iface.id,signal: s.id,checked: box.checked });
+                    selectSignals(iface.signals.map(s=>({card,interface:iface.id,signal:s.id,checked:box.checked})));
                 };
                 title.append(box,document.createTextNode(iface.id));
                 group.append(title);
                 for(const signal of iface.signals.filter(s => (iface.id+'.'+s.id).toLowerCase().includes($('interface-search').value.toLowerCase()))) {
-                    const row=all.find(r => r.key===signalKey(card,iface.id,signal.id));
-                    const label=document.createElement('label');
+                    const row=rowIndex.get(signalKey(card,iface.id,signal.id));
+                    const label=document.createElement('div');
                     label.className='signal-item '+(row.key===selectedKey? 'selected':'');
                     const check=document.createElement('input');
                     check.type='checkbox';
                     check.checked=active(row);
-                    check.onchange=() => post('select',{ card,interface: iface.id,signal: signal.id,checked: check.checked });
+                    check.setAttribute('aria-label','Select signal '+iface.id+'.'+signal.id);
+                    const toggle=checked=>{ selectedKey=row.key; selectSignals([{card,interface:iface.id,signal:signal.id,checked}]); };
+                    check.onchange=() => toggle(check.checked);
                     const button=document.createElement('button');
                     button.textContent=signal.id+(signal.pins.length>1? ' ['+(signal.pins.length-1)+':0]':'');
-                    button.onclick=() => { selectedKey=row.key; renderBindings(); };
+                    button.onclick=() => toggle(!active(row));
                     label.append(check,button);
                     group.append(label);
                 }
@@ -279,36 +379,73 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
             }
         }
         $('binding-rows').replaceChildren();
-        let total=0,ready=0;
-        for(const row of all.filter(active)) {
-            total++;
-            const bs=bindingsFor(row),name=boundName(row),model=modelFor(row.card),needs=row.signal.pins.some(pin => model.pins[pin]?.includes('{pin name}')),complete=!!name&&(!needs||bs.every(b => b.pin?.trim()));
+        const activeRows=all.filter(active);
+        let ready=0;
+        const visibleRows=[];
+        for(const row of activeRows) {
+            const bs=bindingsFor(row),name=boundName(row),model=modelFor(row.card),needs=row.signal.pins.some(pin => model.pins[pin]?.includes('{pin name}')),complete=bs.length===row.signal.pins.length&&(!needs||bs.every(b => b.pin?.trim()));
             if(complete)
                 ready++;
             if(filter==='incomplete'&&complete)
                 continue;
+            visibleRows.push({ row,bs,name,model,needs,complete,label: row.iface+'.'+row.signal.id });
+        }
+        const groupCounts=new Map();
+        for(const item of visibleRows) {
+            const key=(item.row.card??'')+'|'+item.row.iface;
+            groupCounts.set(key,(groupCounts.get(key)??0)+1);
+        }
+        let lastGroup='';
+        for(const item of visibleRows) {
+            const { row,bs,name,model,needs,complete,label }=item;
+            const groupKey=(row.card??'')+'|'+row.iface;
+            if(groupKey!==lastGroup) {
+                lastGroup=groupKey;
+                const groupRow=document.createElement('tr');
+                groupRow.className='cx-group';
+                const groupCell=document.createElement('td');
+                groupCell.colSpan=4;
+                groupCell.className='cx-group-cell';
+                groupCell.innerHTML='<span class="cx-group-icon">'+icon('route')+'</span><span class="cx-group-name">'+esc(row.iface)+'</span><span class="cx-group-source">'+esc(labelFor(row.card))+'</span><span class="vf-spacer"></span><span class="vf-count">'+(groupCounts.get(groupKey)??0)+'</span>';
+                groupRow.append(groupCell);
+                $('binding-rows').append(groupRow);
+            }
             const tr=document.createElement('tr');
             tr.dataset.key=row.key;
             tr.className=(row.key===selectedKey? 'current ':'')+(!complete? 'needs':'');
-            const label=row.iface+'.'+row.signal.id;
-            tr.innerHTML='<td class="row-select"><span class="signal-name">'+esc(label)+'</span><span class="binding-source-type">'+esc(labelFor(row.card))+'</span></td><td><span class="direction '+row.signal.direction+'">'+icon(row.signal.direction==='inout'? 'route':row.signal.direction)+' '+row.signal.direction+'</span><span class="width">'+row.signal.pins.length+'b</span></td><td><div class="port-dropzone '+(name? 'has-port':'empty-port')+'"><button class="port-drop-action" aria-label="Bind '+esc(labelFor(row.card)+' '+label)+'">'+icon(name? 'route':'plus')+'<span>'+esc(name||'Drop port here')+'</span></button>'+(name? '<button class="clear-binding" aria-label="Clear '+esc(label)+'">×</button>':'')+'</div></td><td class="physical-cell"></td>';
+            const dotClass=complete? 'ok':name? 'warn':'';
+            const dir=row.signal.direction;
+            tr.innerHTML='<td class="row-select"><span class="bind-dot '+dotClass+'"></span><span class="signal-name">'+esc(row.signal.id)+'</span><span class="direction '+dir+'" title="'+esc(dir)+'" aria-label="'+esc(dir)+'">'+icon(dir==='inout'? 'route':dir==='input'?'input':'output')+'</span></td><td><span class="width">'+row.signal.pins.length+'</span></td><td><div class="port-dropzone '+(name? 'has-port':'empty-port')+'"><button class="port-drop-action" aria-label="Bind '+esc(labelFor(row.card)+' '+label)+'">'+icon(name? 'route':'plus')+'</button><span class="port-chips"></span>'+(name? '<button class="clear-binding" aria-label="Clear '+esc(label)+'">×</button>':'')+'</div></td><td class="physical-cell"></td>';
+            const groups=portGroups(bs.map(b=>b.port));
+            groups.forEach((group,index)=>{
+                const chip=document.createElement('span');
+                chip.className='port-chip'; chip.textContent=groupLabel(group); chip.draggable=true; chip.tabIndex=0;
+                chip.title='Drag left or right to reorder; Alt+Left / Alt+Right';
+                chip.ondragstart=e=>{e.stopPropagation();dragPorts=[];e.dataTransfer.setData('application/x-veriflow-port-order',JSON.stringify({key:row.key,index}));e.dataTransfer.effectAllowed='move';};
+                const move=target=>{const reordered=groups.slice(),[item]=reordered.splice(index,1);reordered.splice(target,0,item);bind(row,reordered.flat());};
+                chip.onkeydown=e=>{if(e.altKey&&['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();move(Math.max(0,Math.min(groups.length-1,index+(e.key==='ArrowLeft'?-1:1))));}};
+                chip.ondragover=e=>{if(e.dataTransfer.types.includes('application/x-veriflow-port-order')){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';chip.classList.add('reorder-over');}};
+                chip.ondragleave=()=>chip.classList.remove('reorder-over');
+                chip.ondrop=e=>{if(!e.dataTransfer.types.includes('application/x-veriflow-port-order'))return;e.preventDefault();e.stopPropagation();const source=JSON.parse(e.dataTransfer.getData('application/x-veriflow-port-order'));if(source.key!==row.key)return;const reordered=groups.slice(),[item]=reordered.splice(source.index,1);let target=index+(e.clientX>chip.getBoundingClientRect().x+chip.getBoundingClientRect().width/2?1:0);if(source.index<target)target--;reordered.splice(target,0,item);bind(row,reordered.flat());};
+                tr.querySelector('.port-chips').append(chip);
+            });
             tr.querySelector('.row-select').onclick=() => {
                 selectedKey=row.key; if(row.signal.pins.length>1) {
                     expanded.has(row.key)? expanded.delete(row.key):expanded.add(row.key);
                 } renderBindings();
             };
             tr.querySelector('.port-drop-action').onclick=() => {
-                selectedKey=row.key; if(pickedPort)
-                    bind(row,pickedPort);
+                selectedKey=row.key; if(pickedPorts.size)
+                    bind(row,pickedBits());
                 else {
                     renderBindings();
                     $('port-search').focus();
                 }
             };
-            tr.querySelector('.clear-binding')?.addEventListener('click',() => bind(row,''));
+            tr.querySelector('.clear-binding')?.addEventListener('click',() => bind(row,[]));
             const cell=tr.querySelector('.physical-cell');
             if(!row.card||!needs)
-                cell.innerHTML='<span class="fixed-label">'+icon('code')+'Fixed in template</span>';
+                cell.innerHTML='<span class="fixed-label" title="Defined by the board template">'+icon('lock')+'<span class="vf-visually-hidden">Fixed in template</span></span>';
             else if(row.signal.pins.length>1)
                 cell.append(action('Edit '+row.signal.pins.length+' pins',() => { expanded.has(row.key)? expanded.delete(row.key):expanded.add(row.key); renderBindings(); }));
             else {
@@ -320,14 +457,14 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
                 cell.append(input);
             }
             tr.ondragover=e => {
-                if(!dragPort)
-                    return; e.preventDefault(); const valid=portValid(row,dragPort); e.dataTransfer.dropEffect=valid? 'copy':'none'; tr.classList.toggle('drop-over',valid);
+                if(!dragPorts.length)
+                    return; e.preventDefault(); const valid=portValid(row,dragPorts); e.dataTransfer.dropEffect=valid? 'copy':'none'; tr.classList.toggle('drop-over',valid);
             };
             tr.ondragleave=e => {
                 if(!tr.contains(e.relatedTarget))
                     tr.classList.remove('drop-over');
             };
-            tr.ondrop=e => { e.preventDefault(); bind(row,e.dataTransfer.getData('text/plain')); };
+            tr.ondrop=e => { if(!dragPorts.length)return;e.preventDefault();bind(row,dragPorts); };
             $('binding-rows').append(tr);
             if(expanded.has(row.key)&&row.signal.pins.length>1) {
                 const detail=document.createElement('tr');
@@ -347,8 +484,8 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
                 $('binding-rows').append(detail);
             }
         }
-        $('selected-count').textContent=total;
-        $('incomplete-count').textContent=total-ready;
+        $('selected-count').textContent=activeRows.length;
+        $('incomplete-count').textContent=activeRows.length-ready;
         $('interface-count').textContent=state.interfaces.length;
         $('export-preview').textContent=state.preview;
         $('output-filename').textContent=basename(state.output);
@@ -359,35 +496,60 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
         $('card-instance').classList.toggle('hidden',!cards.length);
         cards.forEach(c => { const wrap=document.createElement('div'); wrap.innerHTML='<strong>'+esc(labelFor(c.id))+'</strong>'; wrap.append(action('Remove',() => post('remove-card',{ card: c.id }))); $('card-instance').append(wrap); });
         renderPorts();
-        markTargets(pickedPort||dragPort);
+        markTargets(dragPorts.length?dragPorts:pickedBits());
     }
     function renderPorts() {
         const row=current();
         $('port-list').replaceChildren();
-        const available=state.ports.filter(p => !state.configuration?.bindings.some(b => b.port.name===p.name));
-        $('compatible-count').textContent=available.length+' free';
-        for(const p of [...available,...state.ports.filter(p => !available.includes(p))].filter(p => p.name.toLowerCase().includes($('port-search').value.toLowerCase()))) {
-            const used=state.configuration?.bindings.find(b => b.port.name===p.name),button=document.createElement('button');
+        const entries=state.ports.filter(p=>p.name.toLowerCase().includes($('port-search').value.toLowerCase())).flatMap(p=>[
+            {p,ref:{name:p.name},indices:p.indices},
+            ...(expandedPorts.has(p.name)?(p.indices??[]).map(bit=>({p,ref:{name:p.name,bit},indices:[bit]})):[]),
+        ]);
+        const entryBits=entry=>(entry.indices??[undefined]).map(bit=>({name:entry.p.name,...(bit===undefined?{}:{bit})}));
+        const isUsed=entry=>entryBits(entry).map(ref=>usedBits.get(portKey(ref))).find(Boolean);
+        const togglePort=(entry,checked)=>{
+            if(checked){
+                if(entry.ref.bit===undefined) for(const bit of entry.p.indices??[]) pickedPorts.delete(portKey({name:entry.p.name,bit}));
+                else pickedPorts.delete(portKey({name:entry.p.name}));
+                pickedPorts.add(portKey(entry.ref));
+            }else pickedPorts.delete(portKey(entry.ref));
+        };
+        $('compatible-count').textContent=state.ports.reduce((sum,p)=>sum+(p.indices??[undefined]).filter(bit=>!usedBits.has(portKey({name:p.name,bit}))).length,0)+' bits free';
+        for(const [index,entry] of entries.entries()) {
+            const {p,ref,indices}=entry,key=portKey(ref),used=isUsed(entry),button=document.createElement('button'),wrap=document.createElement('div');
+            wrap.className='port-entry'+(ref.bit!==undefined?' port-bit':'');
+            const check=document.createElement('input');check.type='checkbox';check.checked=pickedPorts.has(key);check.disabled=!!used||p.unresolved;
+            check.setAttribute('aria-label','Select port '+portLabel(p.name,ref.bit===undefined?undefined:[ref.bit]));
+            check.onchange=()=>{togglePort(entry,check.checked);renderPorts();markTargets(pickedBits());};
+            wrap.append(check);
+            if(p.indices&&ref.bit===undefined){
+                const expand=document.createElement('button');expand.className='port-expand vf-icon-btn vf-icon-btn--sm';
+                expand.setAttribute('aria-label',(expandedPorts.has(p.name)?'Collapse':'Expand')+' port '+p.name);
+                expand.setAttribute('aria-expanded',String(expandedPorts.has(p.name)));
+                expand.innerHTML=icon(expandedPorts.has(p.name)?'chevron-down':'chevron-right');
+                expand.onclick=()=>{expandedPorts.has(p.name)?expandedPorts.delete(p.name):expandedPorts.add(p.name);renderPorts();};wrap.append(expand);
+            }
             button.dataset.port=p.name;
-            button.className='port-item '+(used||p.unresolved? 'used-port ':'')+(pickedPort===p.name? 'picked-port':'');
+            if(ref.bit!==undefined)button.dataset.bit=String(ref.bit);
+            button.className='port-item '+(used||p.unresolved?'used-port ':'')+(pickedPorts.has(key)?'picked-port':'');
             button.draggable=!used&&!p.unresolved;
-            button.style.width='100%';
-            button.style.textAlign='left';
-            button.setAttribute('aria-label','Port '+p.name);
-            button.innerHTML=icon(used? 'check':'grip')+'<span><strong>'+esc(p.name+(p.indices? '['+p.indices.join(',')+']':''))+'</strong><small>'+esc(p.direction)+' · '+(p.indices?.length??1)+' bit'+(p.unresolved? ' · unresolved':'')+'</small></span>';
-            button.onclick=() => {
-                if(used) {
-                    const target=rows().find(r => r.card===used.source.card&&r.iface===used.source.interface&&members(r).includes(used.source.member));
-                    if(target)
-                        selectedKey=target.key;
-                    renderBindings();
-                    return;
-                } if(p.unresolved)
-                    return; pickedPort=pickedPort===p.name? '':p.name; renderPorts(); markTargets(pickedPort);
+            button.setAttribute('aria-label','Port '+portLabel(p.name,ref.bit===undefined?undefined:[ref.bit]));
+            button.setAttribute('aria-pressed',String(pickedPorts.has(key)));
+            button.innerHTML=icon(used?'check':'grip')+'<span><strong>'+esc(portLabel(p.name,indices))+'</strong><small>'+esc(p.direction)+' · '+(indices?.length??1)+' bit'+(p.unresolved?' · unresolved':'')+'</small></span>';
+            button.onclick=e=>{
+                if(used){const target=rows().find(r=>r.card===used.source.card&&r.iface===used.source.interface&&members(r).includes(used.source.member));if(target)selectedKey=target.key;renderBindings();return;}
+                if(p.unresolved)return;
+                if(e.shiftKey&&portAnchor!==undefined){for(const item of entries.slice(Math.min(portAnchor,index),Math.max(portAnchor,index)+1))if(!isUsed(item)&&!item.p.unresolved)togglePort(item,true);}
+                else if(e.ctrlKey||e.metaKey)togglePort(entry,!pickedPorts.has(key));
+                else {const selected=pickedPorts.has(key)&&pickedPorts.size===1;pickedPorts.clear();if(!selected)togglePort(entry,true);}
+                portAnchor=index;renderPorts();markTargets(pickedBits());
             };
-            button.ondragstart=e => { dragPort=p.name; pickedPort=''; e.dataTransfer.setData('text/plain',p.name); e.dataTransfer.effectAllowed='copy'; markTargets(dragPort); };
-            button.ondragend=() => { dragPort=''; markTargets(pickedPort); };
-            $('port-list').append(button);
+            button.ondragstart=e=>{
+                if(!pickedPorts.has(key)){pickedPorts.clear();togglePort(entry,true);}
+                dragPorts=pickedBits();e.dataTransfer.setData('text/plain',portGroups(dragPorts).map(groupLabel).join(', '));e.dataTransfer.effectAllowed='copy';markTargets(dragPorts);
+            };
+            button.ondragend=()=>{dragPorts=[];markTargets(pickedBits());};
+            wrap.append(button);$('port-list').append(wrap);
         }
         if(row) {
             const model=modelFor(row.card),text=model?.pins[row.signal.pins[0]]??'';
@@ -405,21 +567,29 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
             return; if(state?.source?.path&&state.source.path!==next.source?.path) {
                 savedViews.set(state.source.path,{ selectedKey });
                 selectedKey='';
-            } state=next; page=state.page; const focused=document.activeElement; const keep=next.reason==='board-change'&&draft?.id===next.draft?.id; if(!keep)
-            draft=structuredClone(next.draft); if(!keep)
-            renderLibrary();
-        else {
+                pickedPorts.clear();expandedPorts.clear();pendingSelections.clear();clearTimeout(selectionTimer);
+            }
+        if(next.reason==='select') for(const [key,change] of pendingSelections)if(change.id<=next.editId)pendingSelections.delete(key);
+        const signature=JSON.stringify([next.draft,next.boards]);
+        if(signature!==librarySignature)libraryNeedsRender=true;
+        librarySignature=signature;
+        state=next;applyPendingSelections();indexBindings();page=state.page; const focused=document.activeElement; const keep=next.reason==='board-change'&&draft?.id===next.draft?.id; if(!keep)
+            draft=structuredClone(next.draft);
+        if(page==='library'&&!keep&&libraryNeedsRender){renderLibrary();libraryNeedsRender=false;}
+        else if(page==='library'&&keep){
             updateLibraryStatus();
             renderBoards();
-        } renderBindings(); applyPage(); if(next.notice)
+            libraryNeedsRender=false;
+        }else updateLibraryStatus();
+        renderBindings(); applyPage(); if(next.notice)
             notice(next.notice); if(keep&&focused?.isConnected)
             focused.focus(); document.querySelector('.library-main').scrollTop=scroll.library; document.querySelector('.main').scrollTop=scroll.main; document.querySelector('#port-browser').scrollTop=scroll.inspector;
     }
     transport.onMessage(receive);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state?.source&&page==='bindings')post('source-refresh');});
     document.querySelectorAll('[data-page]').forEach(b => b.onclick=() => setPage(b.dataset.page));
     document.querySelectorAll('[data-section]').forEach(b => b.onclick=() => setSection(b.dataset.section));
-    document.querySelectorAll('[data-filter]').forEach(b => b.onclick=() => { filter=b.dataset.filter; document.querySelectorAll('[data-filter]').forEach(x => x.classList.toggle('active',x===b)); renderBindings(); });
-    $('theme').onclick=() => { document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'? 'light':'dark'; };
+    document.querySelectorAll('[data-filter]').forEach(b => b.onclick=() => { filter=b.dataset.filter; document.querySelectorAll('[data-filter]').forEach(x => { x.classList.toggle('active',x===b); x.setAttribute('aria-pressed',String(x===b)); }); renderBindings(); });
     $('toggle-interfaces').onclick=() => $('bindings-page').classList.toggle('interfaces-open');
     $('close-interfaces').onclick=() => $('bindings-page').classList.remove('interfaces-open');
     $('board-context').onchange=e => post('choose-board',{ board: e.target.value });
@@ -493,8 +663,7 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
             const input=$('template-text'); if(input.disabled)
                 return; input.setRangeText(token,input.selectionStart,input.selectionEnd,'end'); input.dispatchEvent(new Event('input')); input.focus();
         };
-    for(const id of ['example-signal','example-pin'])
-        $(id).oninput=renderTemplatePreview;
+    $('example-pin').oninput=renderTemplatePreview;
     $('interface-search').oninput=() => state&&renderBindings();
     $('port-search').oninput=() => state&&renderPorts();
     $('board-search').oninput=() => state&&renderBoards();
@@ -513,9 +682,9 @@ import { createWebviewTransport, renderIcon } from '@veriflow/webview-ui';
     document.addEventListener('keydown',e => {
         if(e.key==='Escape') {
             $('bindings-page').classList.remove('interfaces-open');
-            pickedPort='';
-            dragPort='';
-            markTargets('');
+            pickedPorts.clear();
+            dragPorts=[];
+            renderPorts();markTargets([]);
         } if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s') {
             e.preventDefault();
             post(page==='library'? 'board-save':'bindings-save');

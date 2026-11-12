@@ -130,16 +130,25 @@ export function physicalEndpoint(board: PhysicalBoard, source: PhysicalBinding['
     requireValue(iface && signal, 'Unknown interface signal: ' + (source.card ? source.card + '.' : '') + source.interface + '.' + source.member);
     return { signal, pin: signal.pins[physicalSignalMembers(iface, signal.id).indexOf(source.member)] };
 }
-export function bindPhysicalSignal(board: PhysicalBoard, ports: readonly PhysicalPort[], ifaceId: string, signalId: string, portName: string, card?: string): PhysicalBinding[] {
-    const model = card ? board.cards?.[card] : board.model, iface = model?.interfaces.find(i => i.id === ifaceId), port = ports.find(p => p.name === portName);
-    requireValue(iface && port && !port.unresolved, 'Choose a valid signal and resolved port');
+export function bindPhysicalSignal(board: PhysicalBoard, ports: readonly PhysicalPort[], ifaceId: string, signalId: string, selection: string | readonly PhysicalBinding['port'][], card?: string): PhysicalBinding[] {
+    const model = card ? board.cards?.[card] : board.model, iface = model?.interfaces.find(i => i.id === ifaceId);
+    requireValue(iface, 'Choose a valid signal');
     const members = iface.signals.some(s => s.id === signalId) ? physicalSignalMembers(iface, signalId) : [signalId];
-    const indices = port.indices ?? [undefined];
-    requireValue(indices.length === members.length, 'Width mismatch');
+    const selected = typeof selection === 'string' ? [{ name: selection }] : selection;
+    requireValue(Array.isArray(selected) && selected.length > 0 && selected.length <= 4096, 'Choose a valid resolved port');
+    const portIndex = new Map(ports.map(port => [port.name, port]));
+    const refs = selected.flatMap(ref => {
+        const port = portIndex.get(ref?.name);
+        requireValue(port && !port.unresolved, 'Choose a valid resolved port');
+        requireValue(ref.bit === undefined || port.indices?.includes(ref.bit), 'Unknown port/bit');
+        return ref.bit !== undefined ? [{ name: port.name, bit: ref.bit }] : (port.indices ?? [undefined]).map(bit => ({ name: port.name, ...(bit === undefined ? {} : { bit }) }));
+    });
+    requireValue(refs.length === members.length, 'Width mismatch');
+    unique(refs.map(ref => JSON.stringify(ref)), 'port/bit');
     return members.map((member, i) => {
         const source = { ...(card ? { card } : {}), interface: ifaceId, member };
-        requireValue(physicalEndpoint(board, source).signal.direction === port.direction, 'Port direction mismatch');
-        return { source, port: { name: portName, ...(indices[i] === undefined ? {} : { bit: indices[i] }) } };
+        requireValue(physicalEndpoint(board, source).signal.direction === portIndex.get(refs[i].name)!.direction, 'Port direction mismatch');
+        return { source, port: refs[i] };
     });
 }
 export function generateConstraints(board: PhysicalBoard, configuration: PhysicalConfiguration, ports: readonly PhysicalPort[]): {
@@ -204,8 +213,6 @@ export function generateConstraints(board: PhysicalBoard, configuration: Physica
                 const group = config.bindings.filter(b => b.source.card === card && b.source.interface === iface.id && members.includes(b.source.member));
                 if (group.length && group.length !== members.length)
                     error('Assign every bit of ' + iface.id + '.' + signal.id);
-                if (group.length && (new Set(group.map(b => b.port.name)).size !== 1 || (ports.find(p => p.name === group[0].port.name)?.indices?.length ?? 1) !== signal.pins.length))
-                    error('Width mismatch: ' + iface.id + '.' + signal.id);
                 for (const member of members) {
                     const binding = group.find(b => b.source.member === member);
                     if (binding)

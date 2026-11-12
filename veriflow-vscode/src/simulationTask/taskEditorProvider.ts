@@ -11,6 +11,7 @@ import { parseWebviewCommand } from '../schematic/protocol';
 import { archDesignGraphsEqual, archDesignPresentationFromLayout } from '../archDesign/editorSupport';
 import { projectSimulationTask, taskModuleKey } from './taskProjection';
 import { applyTaskEdit } from './taskAuthoring';
+import { VscodeDocumentHost } from '../schematic/vscodeDocumentHost';
 export interface TaskExecutionState { status: 'idle' | 'running' | 'completed' | 'failed' | 'stopped'; canOpenWave: boolean; error?: string }
 export interface TaskEditorServices {
     definitions(uri: vscode.Uri, owner?: object): Promise<readonly HdlDefinitionSummary[]>;
@@ -248,11 +249,9 @@ export async function replaceTaskDocument(document: vscode.TextDocument, task: S
     const text = JSON.stringify(task, null, 2) + '\n', key = document.uri.toString();
     const previous = pendingEdits.get(key) ?? Promise.resolve();
     const operation = previous.catch(() => {}).then(async () => {
+        const host = new VscodeDocumentHost(document);
         if (document.version !== expectedVersion) throw new Error('The task changed; retry this action.');
-        if (document.getText() === text) return;
-        const edit = new vscode.WorkspaceEdit();
-        edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), text);
-        if (!await vscode.workspace.applyEdit(edit)) throw new Error('The task document could not be updated.');
+        await host.replaceText(document.uri.fsPath, String(expectedVersion), text);
     });
     pendingEdits.set(key, operation);
     try { await operation; } finally { if (pendingEdits.get(key) === operation) pendingEdits.delete(key); }

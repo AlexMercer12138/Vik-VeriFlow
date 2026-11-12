@@ -7,7 +7,7 @@
     background: var(--vf-bg);
     --schematic-canvas: var(--vf-bg);
     --schematic-node-fill: var(--vf-widget);
-    --schematic-node-border: var(--vscode-contrastBorder, var(--vf-text));
+    --schematic-node-border: var(--vf-text);
     --schematic-text: var(--vf-text);
     --schematic-muted-text: var(--vf-muted);
     --schematic-pin: var(--vf-text);
@@ -90,6 +90,32 @@ button {
     border-radius: var(--vf-radius);
 }
 
+.module-context {
+    flex: 0 1 220px;
+    max-width: 260px;
+    height: 26px;
+    padding: 0 4px 0 5px;
+    border-color: var(--vf-border);
+}
+
+.module-context .vf-context-icon > svg {
+    width: 14px;
+    height: 14px;
+}
+
+.module-context #module-selector {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 72px;
+    max-width: none;
+    height: 24px;
+    padding: 0 18px 0 3px;
+    color: var(--vf-text);
+    font: var(--vf-fs-row) var(--vf-mono);
+    background: transparent;
+    border: 0;
+}
+
 .toolbar-actions {
     display: flex;
     flex: 0 0 auto;
@@ -160,6 +186,7 @@ button {
     height: 26px;
     padding: 0 6px;
     color: var(--vf-input-fg);
+    font-size: var(--vf-fs-row);
     background: var(--vf-input-bg);
     border: 1px solid var(--vf-input-border);
     border-radius: var(--vf-radius);
@@ -170,10 +197,11 @@ button {
     flex: 0 0 auto;
     align-items: center;
     gap: 8px;
-    height: 28px;
+    height: 26px;
     margin-left: auto;
     padding: 0 4px;
     white-space: nowrap;
+    font: var(--vf-fs-meta) var(--vf-mono);
     font-variant-numeric: tabular-nums;
 }
 
@@ -190,6 +218,90 @@ button {
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+}
+
+#outline {
+    display: flex;
+    flex: 0 0 var(--vf-left-w);
+    flex-direction: column;
+    width: var(--vf-left-w);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--vf-surface);
+    border-right: 1px solid var(--vf-border);
+}
+
+.outline-search {
+    flex: 0 0 26px;
+    margin: 6px 6px 3px;
+}
+
+.outline-search > span {
+    display: inline-flex;
+    flex: 0 0 13px;
+    align-items: center;
+    justify-content: center;
+}
+
+.outline-search > span svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+#outline-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 2px 4px 6px;
+    overflow: auto;
+}
+
+.outline-row {
+    cursor: pointer;
+}
+
+.outline-row[hidden] {
+    display: none;
+}
+
+.outline-group {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+}
+
+.outline-group:hover {
+    background: var(--schematic-hover);
+}
+
+.outline-group[aria-expanded="false"] > svg:first-child {
+    transform: rotate(-90deg);
+}
+
+.outline-empty {
+    padding: 10px 8px;
+    color: var(--vf-muted);
+    font-size: var(--vf-fs-row);
+}
+
+.outline-splitter {
+    flex: 0 0 var(--vf-splitter);
+    width: var(--vf-splitter);
+    background: var(--vf-border);
+}
+
+@media (max-width: 1100px) {
+    #outline,
+    .outline-splitter {
+        display: none;
+    }
 }
 
 #canvas-region {
@@ -238,15 +350,16 @@ button {
 }
 
 #inspector {
-    flex: 0 0 280px;
-    width: 280px;
+    flex: 0 0 var(--vf-inspector-w);
+    width: var(--vf-inspector-w);
     max-width: 45vw;
     min-width: 0;
     min-height: 0;
     overflow: auto;
     color: var(--schematic-text);
+    font-size: var(--vf-fs-row);
     background: var(--schematic-node-fill);
-    border-left: 1px solid var(--schematic-node-border);
+    border-left: 1px solid var(--schematic-border);
 }
 
 #inspector[hidden] {
@@ -255,26 +368,38 @@ button {
 
 .inspector-header {
     position: sticky;
-    top: 0;
-    z-index: 1;
-    padding: 9px 10px 8px;
+    top: 30px;
+    z-index: 2;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    min-height: 34px;
+    padding: 8px 10px 7px;
     background: var(--schematic-node-fill);
     border-bottom: 1px solid var(--schematic-border);
 }
 
+#inspector > .vf-pane-header {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--schematic-node-fill);
+}
+
 #inspector-title {
+    flex: 1 1 auto;
+    min-width: 0;
     margin: 0;
     overflow-wrap: anywhere;
-    font-size: 13px;
+    font-size: var(--vf-fs-control);
     font-weight: 600;
     line-height: 18px;
 }
 
 .inspector-mode {
-    display: block;
-    margin-top: 2px;
+    flex: 0 0 auto;
     color: var(--schematic-muted-text);
-    font-size: 11px;
+    font-size: var(--vf-fs-meta);
     line-height: 16px;
 }
 
@@ -282,15 +407,26 @@ button {
     display: grid;
     grid-template-columns: minmax(82px, auto) minmax(0, 1fr);
     margin: 0;
+    padding: 4px 0;
 }
 
 #inspector-properties dt,
 #inspector-properties dd {
     min-width: 0;
     margin: 0;
-    padding: 7px 10px;
+    padding: 3px 8px;
     overflow-wrap: anywhere;
-    border-bottom: 1px solid var(--schematic-border);
+}
+
+#inspector-properties dt {
+    color: var(--schematic-muted-text);
+    font-size: var(--vf-fs-small);
+}
+
+#inspector-properties dd {
+    color: var(--schematic-text);
+    font-size: var(--vf-fs-row);
+    user-select: text;
 }
 
 #inspector-form[hidden] {
@@ -316,8 +452,11 @@ button {
 .inspector-field label {
     min-width: 0;
     color: var(--schematic-muted-text);
-    overflow-wrap: anywhere;
+    font-size: var(--vf-fs-meta);
     font-weight: 600;
+    letter-spacing: .04em;
+    overflow-wrap: anywhere;
+    text-transform: uppercase;
 }
 
 .inspector-field input,
@@ -327,6 +466,7 @@ button {
     height: 26px;
     padding: 0 6px;
     color: var(--vf-input-fg);
+    font-size: var(--vf-fs-row);
     background: var(--vf-input-bg);
     border: 1px solid var(--vf-input-border);
     border-radius: var(--vf-radius);
@@ -335,6 +475,7 @@ button {
 .inspector-field output {
     min-width: 0;
     color: var(--schematic-text);
+    font-size: var(--vf-fs-row);
     overflow-wrap: anywhere;
     user-select: text;
 }
@@ -353,11 +494,12 @@ button {
     justify-content: flex-start;
     width: 100%;
     min-width: 0;
-    min-height: 30px;
-    padding: 5px 8px;
+    min-height: 28px;
+    padding: 4px 8px;
     gap: 7px;
     overflow-wrap: anywhere;
     color: var(--vf-on-accent);
+    font-size: var(--vf-fs-row);
     text-align: left;
     background: var(--vf-accent);
     border: 1px solid var(--vf-border);
@@ -398,26 +540,31 @@ dialog::backdrop {
     overflow: auto;
     padding: 14px;
     gap: 7px;
+    font-size: var(--vf-fs-row);
 }
 
 .authoring-dialog-form h2 {
     margin: 0 0 5px;
-    font-size: 15px;
+    font-size: var(--vf-fs-control);
     line-height: 20px;
 }
 
 .authoring-dialog-form label {
     color: var(--schematic-muted-text);
+    font-size: var(--vf-fs-meta);
     font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
 }
 
 .authoring-dialog-form input,
 .authoring-dialog-form select {
     width: 100%;
     min-width: 0;
-    height: 28px;
-    padding: 0 7px;
+    height: 26px;
+    padding: 0 6px;
     color: var(--vf-input-fg);
+    font-size: var(--vf-fs-row);
     background: var(--vf-input-bg);
     border: 1px solid var(--vf-input-border);
     border-radius: var(--vf-radius);
@@ -466,9 +613,10 @@ dialog::backdrop {
 }
 
 .dialog-actions button {
-    min-height: 28px;
-    padding: 3px 10px;
+    min-height: 26px;
+    padding: 2px 9px;
     color: var(--vf-on-accent);
+    font-size: var(--vf-fs-row);
     background: var(--vf-accent);
     border: 1px solid var(--vf-border);
     border-radius: var(--vf-radius);
@@ -494,12 +642,13 @@ dialog::backdrop {
     justify-content: space-between;
     min-width: 0;
     height: var(--vf-status-h);
-    padding: 0 7px;
+    padding: 0 6px 0 8px;
     gap: 12px;
     overflow: hidden;
-    color: var(--vf-text-2);
-    background: var(--vf-surface);
+    color: var(--vscode-statusBar-foreground, var(--vf-muted));
+    background: var(--vscode-statusBar-background, var(--vf-surface));
     border-top: 1px solid var(--schematic-border);
+    font-size: var(--vf-fs-small);
 }
 
 #selection-status,
@@ -512,11 +661,34 @@ dialog::backdrop {
 
 #diagnostic-status {
     flex: 0 0 auto;
+    font: var(--vf-fs-status) var(--vf-mono);
     font-variant-numeric: tabular-nums;
 }
 
 .x6-node {
     cursor: move;
+}
+
+.veriflow-connection-mode .x6-node {
+    cursor: default;
+}
+
+.veriflow-pin-hit-area {
+    cursor: pointer;
+}
+
+.veriflow-connection-mode .veriflow-pin-hit-area {
+    cursor: crosshair;
+}
+
+.x6-node.x6-node-selected > .veriflow-node-body {
+    fill: var(--schematic-selection) !important;
+    stroke: var(--schematic-focus) !important;
+    stroke-width: 2px !important;
+}
+
+.x6-node.x6-node-selected .veriflow-node-accent {
+    fill: var(--schematic-focus) !important;
 }
 
 .x6-edge {
@@ -561,14 +733,14 @@ dialog::backdrop {
     vector-effect: non-scaling-stroke;
 }
 
-.x6-port-body.veriflow-pin-selected [data-selector="portBody"],
+.x6-port-body.veriflow-pin-selected > circle:last-child,
 .x6-port-body.veriflow-pin-selected {
     fill: var(--schematic-selection) !important;
     stroke: var(--schematic-focus) !important;
     stroke-width: 3px !important;
 }
 
-.x6-port-body.veriflow-connection-pending [data-selector="portBody"],
+.x6-port-body.veriflow-connection-pending > circle:last-child,
 .x6-port-body.veriflow-connection-pending {
     fill: var(--schematic-wire-selected) !important;
     stroke: var(--schematic-focus) !important;
@@ -581,13 +753,7 @@ dialog::backdrop {
 
 .x6-port-label.veriflow-pin-selected [data-selector="text"],
 .veriflow-pin-label.veriflow-pin-selected {
-    fill: var(--schematic-text) !important;
-}
-
-.x6-port-label.veriflow-pin-selected .veriflow-pin-label-hit-area {
-    fill: var(--schematic-selection) !important;
-    stroke: var(--schematic-focus) !important;
-    stroke-width: 1px !important;
+    fill: var(--schematic-focus) !important;
 }
 
 .x6-node.veriflow-network-selected .veriflow-junction-dot {
@@ -596,8 +762,8 @@ dialog::backdrop {
     stroke-width: 2px !important;
 }
 
-.x6-node:focus-visible,
-.x6-edge:focus-visible {
+.x6-node:focus,
+.x6-edge:focus {
     outline: none;
 }
 
@@ -615,11 +781,17 @@ dialog::backdrop {
 
 .x6-widget-selection-box,
 .x6-widget-selection-inner {
-    margin: -2px 0 0 -2px !important;
-    padding: 1px !important;
-    border: 1px solid var(--schematic-focus) !important;
-    border-radius: 2px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
     box-shadow: none !important;
+}
+
+.veriflow-connection-mode .x6-widget-selection-box,
+.veriflow-connection-mode .x6-widget-selection-inner {
+    pointer-events: none !important;
+    cursor: default !important;
 }
 
 .x6-widget-selection-content {

@@ -388,7 +388,10 @@ export class ConstraintWorkbench {
     private async changeBoard(reference: string): Promise<void> { const b = this.binding!; const next = { board: reference, bindings: [] }; const board = await resolvePhysicalConfiguration(b.source.configurationPath, next, { library: this.services.library }); if (board.model.kind !== 'board')
         throw new Error('Choose a main board'); b.config = next; b.active = []; }
     private outputPath(b: BindingDraft, extension: string): string { return b.source.output ?? (b.source.outputStem ?? b.source.path.slice(0, -path.extname(b.source.path).length)) + extension; }
-    private missingSelected(b: BindingDraft, board: PhysicalBoard): string[] { return [{ model: board.model, card: undefined as string | undefined }, ...Object.entries(board.cards ?? {}).map(([card, model]) => ({ card, model }))].flatMap(({ model, card }) => model.interfaces.flatMap(iface => iface.signals.filter(signal => b.active.includes(key(card, iface.id, signal.id)) && physicalSignalMembers(iface, signal.id).some(member => !b.config.bindings.some(v => v.source.card === card && v.source.interface === iface.id && v.source.member === member))).map(signal => iface.id + '.' + signal.id))); }
+    private missingSelected(b: BindingDraft, board: PhysicalBoard): string[] {
+        const active = new Set(b.active), bound = new Set(b.config.bindings.map(v => key(v.source.card, v.source.interface, v.source.member)));
+        return [{ model: board.model, card: undefined as string | undefined }, ...Object.entries(board.cards ?? {}).map(([card, model]) => ({ card, model }))].flatMap(({ model, card }) => model.interfaces.flatMap(iface => iface.signals.filter(signal => active.has(key(card, iface.id, signal.id)) && signalMembers(signal).some(member => !bound.has(key(card, iface.id, member)))).map(signal => iface.id + '.' + signal.id)));
+    }
     private async saveBindings(b: BindingDraft, saveAs = false): Promise<void> {
         if (!b.config.board)
             throw new Error('Choose a board');
@@ -437,15 +440,17 @@ export class ConstraintWorkbench {
             diagnostics.push({ severity: 'error', message: (e as Error).message });
         }
         const interfaces = board ? [...board.model.interfaces.map(i => ({ ...i, card: undefined as string | undefined })), ...Object.entries(board.cards ?? {}).flatMap(([card, model]) => model.interfaces.map(i => ({ ...i, card })))] : [];
-        if (b)
+        if (b) {
+            const active = new Set(b.active), bound = new Set(b.config.bindings.map(v => key(v.source.card, v.source.interface, v.source.member)));
             for (const iface of interfaces)
                 for (const signal of iface.signals) {
-                    const members = physicalSignalMembers(iface, signal.id);
-                    if (b.config.bindings.some(v => v.source.card === iface.card && v.source.interface === iface.id && members.includes(v.source.member)) && !b.active.includes(key(iface.card, iface.id, signal.id)))
-                        b.active.push(key(iface.card, iface.id, signal.id));
-                    if (b.active.includes(key(iface.card, iface.id, signal.id)) && members.some(member => !b.config.bindings.some(v => v.source.card === iface.card && v.source.interface === iface.id && v.source.member === member)))
+                    const members = signalMembers(signal), signalKey = key(iface.card, iface.id, signal.id);
+                    if (members.some(member => bound.has(key(iface.card, iface.id, member)))) active.add(signalKey);
+                    if (active.has(signalKey) && members.some(member => !bound.has(key(iface.card, iface.id, member))))
                         diagnostics.push({ severity: 'error', message: 'Assign selected signal: ' + iface.id + '.' + signal.id });
                 }
+            b.active = [...active];
+        }
         if (b && board)
             this.publishedBoards.set(b.source.path, JSON.stringify(board));
         const d = this.draft;
@@ -453,4 +458,5 @@ export class ConstraintWorkbench {
         this.send({ type: 'state', revision: ++this.revision, reason, editId, page: this.page, boards: choices, draft: d?.value, dirty: !!d && JSON.stringify(d.value) !== JSON.stringify(d.expected), canUndo: !!d?.undo.length, canRedo: !!d?.redo.length, issues: d ? inspectBoardDraft(d.value).issues : [], source: b ? { path: b.source.path, module: b.source.module, isAd: b.source.isAd } : undefined, configuration: b?.config, bindingsDirty: !!b && b.saved !== JSON.stringify(b.config), ports: b?.source.ports ?? [], active: b?.active ?? [], interfaces, models: board ? { '': board.model, ...board.cards } : undefined, diagnostics, preview, output: b ? this.outputPath(b, board?.model.extension ?? '.xdc') : '', canExport: !!b && !!board && !!b.config.bindings.length && !diagnostics.some(d => d.severity === 'error'), error: this.error, notice: this.notice });
     }
 }
+function signalMembers(signal: { id: string; pins: readonly string[] }): string[] { return signal.pins.length === 1 ? [signal.id] : signal.pins.map((_, i) => signal.id + '.' + (signal.pins.length - 1 - i)); }
 function sameInputs(a: ArtifactPlan['inputs'], b: ArtifactPlan['inputs']): boolean { return a.length === b.length && a.every(input => b.some(other => other.path === input.path && other.text === input.text)); }

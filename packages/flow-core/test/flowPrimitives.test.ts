@@ -11,6 +11,19 @@ import {
     SimulatorConfig,
 } from '@veriflow/flow-core/types';
 
+test('duplicate locations use decoded native Windows and Linux paths', () => {
+    const format = formatDuplicateSummary;
+    const definitions = [{ uri: 'file:///d%3A/repository/fpga-prj/video%20pll/video_pll_sim_netlist.v', declarationLine: 38 }];
+    assert.deepEqual(format([{ name: 'video_pll', definitions }], 'win32').outputLines,
+        ['  video_pll: d:\\repository\\fpga-prj\\video pll\\video_pll_sim_netlist.v:38']);
+    assert.deepEqual(format([{ name: 'video_pll', definitions: [{ uri: 'file:///home/user/FPGA%20%E9%A1%B9%E7%9B%AE/video.v', declarationLine: 38 }] }], 'linux').outputLines,
+        ['  video_pll: /home/user/FPGA 项目/video.v:38']);
+    assert.deepEqual(format([{ name: 'ip', definitions: [{ uri: 'file://server/share/ip%20core/top.v', declarationLine: 5 }] }], 'win32').outputLines,
+        ['  ip: \\\\server\\share\\ip core\\top.v:5']);
+    assert.deepEqual(format([{ name: 'remote', definitions: [{ uri: 'untitled:top.v', declarationLine: 1 }] }], 'linux').outputLines,
+        ['  remote: untitled:top.v:1']);
+});
+
 test('log parser preserves current simulator diagnostic behavior', () => {
     const parser = new LogParser();
     const entries = parser.parse([
@@ -227,10 +240,10 @@ test('shared types and duplicate summary preserve their public shape', () => {
                 { uri: 'file:///a/alu.sv', declarationLine: 1 },
             ],
         },
-    ]), {
+    ], 'linux'), {
         outputLines: [
-            '  alu: file:///a/alu.sv:1',
-            '  alu: file:///b/alu.sv:3',
+            '  alu: /a/alu.sv:1',
+            '  alu: /b/alu.sv:3',
         ],
         statusText: '$(warning) VeriFlow: 1 duplicate module name',
         popupMessage: undefined,

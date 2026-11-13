@@ -212,7 +212,9 @@ async function main() {
         assert.equal(await page.locator('.signal-pin-list select').count(),32);
         const mappings=page.locator('.signal-pin-list');
         assert.ok(await mappings.evaluate((el:any)=>el.scrollHeight>el.clientHeight&&el.clientHeight<=240));
+        await page.getByLabel('DDR data bit 31 template',{exact:true}).focus();
         await page.getByLabel('DDR data bit 31 template',{exact:true}).selectOption('p30');
+        await page.getByLabel('DDR data bit 30 template',{exact:true}).focus();
         await page.getByLabel('DDR data bit 30 template',{exact:true}).selectOption('p31');
         await page.waitForFunction(()=>(globalThis as any).__workbenchState?.draft.model.interfaces[1].signals[0].pins[0]==='p30');
         await page.getByText('Paste pin names',{exact:true}).click();

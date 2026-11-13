@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 export interface DependencyResult {
     topModule: string;
     topDefinitionKey: string;
@@ -107,8 +109,13 @@ export type DuplicatePresentationSummary = {
 };
 
 export function formatDuplicateSummary(
-    groups: DuplicateSummaryInput[]
+    groups: DuplicateSummaryInput[],
+    platform: NodeJS.Platform = process.platform
 ): DuplicatePresentationSummary {
+    const sourcePath = (uri: string): string => {
+        try { return fileURLToPath(uri, { windows: platform === 'win32' }); }
+        catch { return uri; } // Preserve virtual documents and non-local URIs.
+    };
     const sortedGroups = [...groups]
         .map(group => ({
             name: group.name,
@@ -121,7 +128,7 @@ export function formatDuplicateSummary(
     const count = sortedGroups.length;
     return {
         outputLines: sortedGroups.flatMap(group => group.definitions.map(
-            definition => `  ${group.name}: ${definition.uri}:${definition.declarationLine}`
+            definition => `  ${group.name}: ${sourcePath(definition.uri)}:${definition.declarationLine}`
         )),
         statusText: count === 0
             ? '$(circuit-board) VeriFlow'

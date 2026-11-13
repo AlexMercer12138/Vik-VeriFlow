@@ -49,9 +49,10 @@ export function inspectBoardDraft(draft: SavedPhysicalBoard): {
         error((e as Error).message);
     }
     const pins = physicalPins(draft.model);
+    const pinNames = new Set(pins);
     for (const iface of draft.model.interfaces)
         for (const signal of iface.signals)
-            if (signal.pins.some(p => !pins.includes(p)))
+            if (signal.pins.some(p => !pinNames.has(p)))
                 error('Select each pin for ' + iface.id + '.' + signal.id);
     return { issues, summary: { interfaces: draft.model.interfaces.length, pins: pins.length } };
 }

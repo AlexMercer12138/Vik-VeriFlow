@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import Module = require('module');
 import * as path from 'path';
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 import { ExternalWaveViewerLauncher as RealExternalWaveViewerLauncher } from '../core/externalWaveViewerLauncher';
 import {
@@ -168,7 +168,7 @@ function testDuplicateSummaryIsMergedAndHasNoPopup(): void {
         key: 'module:file:///workspace/a/alu.sv:0',
         kind: 'module',
         name: 'alu',
-        uri: 'file:///workspace/a/alu.sv',
+        uri: pathToFileURL(path.resolve('/workspace/a/alu.sv')).toString(),
         declarationStart: 0,
         declarationLine: 1,
         parameters: [],
@@ -179,7 +179,7 @@ function testDuplicateSummaryIsMergedAndHasNoPopup(): void {
     const b: Definition = {
         ...a,
         key: 'module:file:///workspace/b/alu.sv:40',
-        uri: 'file:///workspace/b/alu.sv',
+        uri: pathToFileURL(path.resolve('/workspace/b/alu.sv')).toString(),
         declarationStart: 40,
         declarationLine: 3,
         modelFingerprint: 'b',
@@ -188,8 +188,8 @@ function testDuplicateSummaryIsMergedAndHasNoPopup(): void {
         { name: 'alu', definitions: [a, b] },
     ]);
 
-    assert.ok(summary.outputLines.some(line => line.includes('alu') && line.includes(a.uri)));
-    assert.ok(summary.outputLines.some(line => line.includes('alu') && line.includes(b.uri)));
+    assert.ok(summary.outputLines.some(line => line.includes('alu') && line.includes(fileURLToPath(a.uri))));
+    assert.ok(summary.outputLines.some(line => line.includes('alu') && line.includes(fileURLToPath(b.uri))));
     assert.strictEqual(summary.statusText, '$(warning) VeriFlow: 1 duplicate module name');
     assert.strictEqual(summary.popupMessage, undefined);
 }

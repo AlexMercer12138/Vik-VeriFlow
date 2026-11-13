@@ -118,7 +118,10 @@ export function physicalSignalMembers(iface: PhysicalInterface, name: string): s
     const signal = iface.signals.find(s => s.id === name);
     if (!signal)
         return [];
-    return signal.pins.length === 1 ? [name] : signal.pins.map((_, i) => `${name}.${signal.pins.length - 1 - i}`);
+    return signalMembers(signal);
+}
+function signalMembers(signal: PhysicalSignal): string[] {
+    return signal.pins.length === 1 ? [signal.id] : signal.pins.map((_, i) => `${signal.id}.${signal.pins.length - 1 - i}`);
 }
 export function physicalEndpoint(board: PhysicalBoard, source: PhysicalBinding['source']): {
     pin: string;
@@ -126,9 +129,11 @@ export function physicalEndpoint(board: PhysicalBoard, source: PhysicalBinding['
 } {
     const model = source.card ? board.cards?.[source.card] : board.model;
     const iface = model?.interfaces.find(i => i.id === source.interface);
-    const signal = iface?.signals.find(s => physicalSignalMembers(iface, s.id).includes(source.member));
-    requireValue(iface && signal, 'Unknown interface signal: ' + (source.card ? source.card + '.' : '') + source.interface + '.' + source.member);
-    return { signal, pin: signal.pins[physicalSignalMembers(iface, signal.id).indexOf(source.member)] };
+    const name = source.member.split('.')[0];
+    const signal = iface?.signals.find(s => s.id === name);
+    const index = signal ? signalMembers(signal).indexOf(source.member) : -1;
+    requireValue(iface && signal && index >= 0, 'Unknown interface signal: ' + (source.card ? source.card + '.' : '') + source.interface + '.' + source.member);
+    return { signal, pin: signal.pins[index] };
 }
 export function bindPhysicalSignal(board: PhysicalBoard, ports: readonly PhysicalPort[], ifaceId: string, signalId: string, selection: string | readonly PhysicalBinding['port'][], card?: string): PhysicalBinding[] {
     const model = card ? board.cards?.[card] : board.model, iface = model?.interfaces.find(i => i.id === ifaceId);
@@ -168,6 +173,15 @@ export function generateConstraints(board: PhysicalBoard, configuration: Physica
     const ordered: PhysicalBinding[] = [];
     const seen = new Set<string>(), resources = new Set<string>(), usedPorts = new Set<string>();
     const mounts = new Map((config.cards ?? []).map(c => [c.id, c]));
+    const models = [[undefined, board.model] as const, ...(config.cards ?? []).map(c => [c.id, board.cards?.[c.id]] as const)];
+    const endpointKey = (card: string | undefined, iface: string, member: string) => JSON.stringify([card ?? '', iface, member]);
+    const endpoints = new Map<string, { pin: string; signal: PhysicalSignal }>();
+    for (const [card, model] of models)
+        for (const iface of model?.interfaces ?? [])
+            for (const signal of iface.signals)
+                signalMembers(signal).forEach((member, index) => endpoints.set(endpointKey(card, iface.id, member), { pin: signal.pins[index], signal }));
+    const portIndex = new Map(ports.map(port => [port.name, port]));
+    const bindingIndex = new Map<string, PhysicalBinding>();
     for (const mount of config.cards ?? []) {
         const child = board.cards?.[mount.id];
         if (!child || child.kind !== 'daughtercard')
@@ -181,15 +195,18 @@ export function generateConstraints(board: PhysicalBoard, configuration: Physica
             requireValue(!card || mounts.has(card), 'Daughtercard is not added: ' + card);
             const model = card ? board.cards?.[card] : board.model;
             requireValue(model, 'Missing board model');
-            const { pin, signal } = physicalEndpoint(board, binding.source);
+            const key = endpointKey(card, binding.source.interface, binding.source.member);
+            const endpoint = endpoints.get(key);
+            requireValue(endpoint, 'Unknown interface signal: ' + (card ? card + '.' : '') + binding.source.interface + '.' + binding.source.member);
+            const { pin, signal } = endpoint;
             requireValue(pin && Object.prototype.hasOwnProperty.call(model.pins, pin), 'Unknown pin template: ' + pin);
-            const key = JSON.stringify([card ?? '', binding.source.interface, binding.source.member]);
             requireValue(!seen.has(key), 'Duplicate signal binding');
             seen.add(key);
+            bindingIndex.set(key, binding);
             const resource = JSON.stringify([card ?? '', pin]);
             requireValue(!resources.has(resource), 'Pin template already bound: ' + pin);
             resources.add(resource);
-            const port = ports.find(p => p.name === binding.port.name);
+            const port = portIndex.get(binding.port.name);
             const name = binding.port.name + (binding.port.bit === undefined ? '' : `[${binding.port.bit}]`);
             requireValue(port && !port.unresolved && (port.indices ? port.indices.includes(binding.port.bit!) : binding.port.bit === undefined), 'Unknown or unresolved port/bit: ' + name);
             requireValue(port.direction === signal.direction, 'Port direction mismatch: ' + name);
@@ -203,21 +220,16 @@ export function generateConstraints(board: PhysicalBoard, configuration: Physica
             error((e as Error).message);
         }
     }
-    const models = [[undefined, board.model] as const, ...(config.cards ?? []).map(c => [c.id, board.cards?.[c.id]] as const)];
     for (const [card, model] of models) {
         if (!model)
             continue;
         for (const iface of model.interfaces)
             for (const signal of iface.signals) {
-                const members = physicalSignalMembers(iface, signal.id);
-                const group = config.bindings.filter(b => b.source.card === card && b.source.interface === iface.id && members.includes(b.source.member));
+                const members = signalMembers(signal);
+                const group = members.map(member => bindingIndex.get(endpointKey(card, iface.id, member))).filter((binding): binding is PhysicalBinding => !!binding);
                 if (group.length && group.length !== members.length)
                     error('Assign every bit of ' + iface.id + '.' + signal.id);
-                for (const member of members) {
-                    const binding = group.find(b => b.source.member === member);
-                    if (binding)
-                        ordered.push(binding);
-                }
+                ordered.push(...group);
             }
     }
     if (diagnostics.length)
@@ -225,7 +237,7 @@ export function generateConstraints(board: PhysicalBoard, configuration: Physica
     let text = '';
     for (const binding of ordered) {
         const model = binding.source.card ? board.cards![binding.source.card] : board.model;
-        const { pin } = physicalEndpoint(board, binding.source);
+        const { pin } = endpoints.get(endpointKey(binding.source.card, binding.source.interface, binding.source.member))!;
         const target = binding.port.name + (binding.port.bit === undefined ? '' : `[${binding.port.bit}]`);
         const fragment = model.pins[pin].replace(/\{signal name\}|\{pin name\}/g, token => token === '{signal name}' ? target : binding.pin ?? '');
         text += (text && !/[\r\n]$/.test(text) ? '\n' : '') + fragment;

@@ -7,21 +7,29 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
     'use strict';
     const $=id => document.getElementById(id),esc=value => String(value??'').replace(/[&<>"']/g,c => ({ '&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#39;' }[c]));
     const iconAliases={ board: 'circuit-board', warning: 'triangle-alert', right: 'undo-2', arrow: 'redo-2', chevron: 'chevron-down', input: 'log-in', output: 'log-out', import: 'download', export: 'upload', grip: 'grip-vertical', edit: 'pencil', trash: 'trash-2', close: 'x' };
-    const icon=name => renderIcon(iconAliases[name]??name).outerHTML;
+    const iconMarkup=new Map();
+    const icon=name => {
+        if(!iconMarkup.has(name))iconMarkup.set(name,renderIcon(iconAliases[name]??name).outerHTML);
+        return iconMarkup.get(name);
+    };
     type WorkbenchMessage = { type: string; sourcePath?: string; [key: string]: unknown };
     type WorkbenchViewState = { section?: string };
     const transport=createWebviewTransport<WorkbenchMessage,WorkbenchMessage,WorkbenchViewState>(window);
-    let editId=0,acknowledgedEditId=0;
+    let editId=0,acknowledgedEditId=0,boardChangeTimer,boardChangePending=false;
     const viewState=transport.getState()??{};
     const savedViews=new Map();
     let state,draft,page='library',section=viewState.section??'pins',pinName='',selectedKey='',dragPorts=[],filter='all',toastTimer,portAnchor;
     const pickedPorts=new Set(),expandedPorts=new Set();
     let allRows=[],rowIndex=new Map(),bindingIndex=new Map(),activeKeys=new Set(),portIndex=new Map(),usedBits=new Map();
-    let librarySignature='',libraryNeedsRender=true,selectionId=0,selectionTimer,expandedSignalPins='';
+    let librarySignature='',libraryNeedsRender=true,bindingsSignature='',portsSignature='',selectionId=0,selectionTimer,expandedSignalPins='';
     const pendingSelections=new Map();
     const selectedPins=new Set(),expanded=new Set();
     const signalKey=(card,iface,signal) => JSON.stringify([card??'',iface,signal]);
-    const post=(type,data={}) => { const snapshot=typeof structuredClone==='function'? structuredClone(data):JSON.parse(JSON.stringify(data)); transport.postMessage({ type,sourcePath:state?.source?.path,...snapshot }); };
+    const post=(type,data={}) => {
+        if(type!=='board-change')flushBoardChange();
+        const snapshot=typeof structuredClone==='function'? structuredClone(data):JSON.parse(JSON.stringify(data));
+        transport.postMessage({ type,sourcePath:state?.source?.path,...snapshot });
+    };
     const notice=text => {
         if(!text)
             return; $('toast-text').textContent=text; $('toast').classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(() => $('toast').classList.remove('show'),2600);
@@ -65,12 +73,29 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
         if(!card)
             return state.boards.find(b => 'user:'+b.id===state.configuration?.board)?.name??'Board'; const cards=state.configuration?.cards??[],ref=cards.find(c => c.id===card)?.board,same=cards.filter(c => c.board===ref),index=same.findIndex(c => c.id===card); return (state.boards.find(b => 'user:'+b.id===ref)?.name??basename(ref))+(index>0? ' '+(index+1):'');
     };
-    function changeDraft() { post('board-change',{ draft,editId: ++editId }); renderTemplatePreview(); updateLibraryStatus(); }
+    function flushBoardChange() {
+        clearTimeout(boardChangeTimer);
+        if(!boardChangePending)return;
+        boardChangePending=false;
+        post('board-change',{draft,editId});
+    }
+    function changeDraft() {
+        ++editId;boardChangePending=true;
+        clearTimeout(boardChangeTimer);boardChangeTimer=setTimeout(flushBoardChange,120);
+        state.dirty=true;state.canUndo=true;
+        renderTemplatePreview();updateLibraryStatus();
+    }
     function updateLibraryStatus() {
         if(!state)
             return; $('dirty-dot').classList.toggle('hidden',!state.dirty); $('save-board').disabled=!draft||state.issues.some(i => i.severity==='error'); $('save-board').title=state.issues.map(i => i.message).join('\n'); $('discard').disabled=!state.dirty; $('undo-board').disabled=!state.canUndo; $('redo-board').disabled=!state.canRedo;
+        $('use-board').disabled=!draft||!state.source||draft.model.kind!=='board'||state.dirty;
     }
-    function setPage(next) { page=next; post('page',{ page }); applyPage(); }
+    function setPage(next) {
+        page=next;post('page',{ page });
+        if(page==='library'&&libraryNeedsRender){renderLibrary();libraryNeedsRender=false;}
+        if(page==='bindings')renderBindings(false);
+        applyPage();
+    }
     function applyPage() {
         for(const p of ['library','bindings']) {
             const shown=p===page;
@@ -82,7 +107,10 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
         } $('binding-empty').classList.toggle('hidden',page!=='bindings'||!!state.source); renderFooter();
     }
     function setSection(next) {
-        section=next; transport.setState({ section }); for(const p of ['pins','interfaces','details']) {
+        const changed=section!==next;
+        section=next;
+        if(changed&&draft)renderLibrary();
+        transport.setState({ section }); for(const p of ['pins','interfaces','details']) {
             $('section-'+p).classList.toggle('hidden',p!==next);
             document.querySelector('[data-section="'+p+'"]').classList.toggle('active',p===next);
             document.querySelector('[data-section="'+p+'"]').setAttribute('aria-pressed',String(p===next));
@@ -134,7 +162,6 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
             $(id).style.visibility=empty? 'hidden':'visible';
         $('board-title').textContent=draft?.name||'Create your first board';
         $('board-kind').textContent=draft?.model.kind==='daughtercard'? 'Daughtercard':'Board';
-        $('use-board').disabled=!draft||!state.source||draft.model.kind!=='board'||state.dirty;
         if(!draft) {
             updateLibraryStatus();
             return;
@@ -143,7 +170,7 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
             pinName=Object.keys(draft.model.pins)[0]??'';
         $('pin-count').textContent=Object.keys(draft.model.pins).length;
         $('library-interface-count').textContent=draft.model.interfaces.length;
-        renderPins();
+        if(section==='pins')renderPins();
         $('pin-name').value=pinName;
         $('pin-name').disabled=!pinName;
         $('template-text').value=draft.model.pins[pinName]??'';
@@ -159,17 +186,22 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
         $('detail-name').value=draft.name;
         $('detail-kind').value=draft.model.kind;
         $('detail-extension').value=draft.model.extension;
-        renderInterfaceEditors();
+        if(section==='interfaces')renderInterfaceEditors();
         renderTemplatePreview();
         updateLibraryStatus();
         setSection(section);
     }
     function renderPins() {
+        const usage=new Map();
+        for(const iface of draft?.model.interfaces??[])for(const signal of iface.signals)for(const pin of signal.pins){
+            if(!usage.has(pin))usage.set(pin,[]);
+            usage.get(pin).push(iface.id+'.'+signal.id);
+        }
         $('template-list').replaceChildren(); if(!draft)
             return; for(const name of Object.keys(draft.model.pins).filter(n => n.toLowerCase().includes($('template-search').value.toLowerCase()))) {
                 const item=document.createElement('div');
                 item.className='template-list-item '+(name===pinName? 'selected':'');
-                item.innerHTML='<label><input type="checkbox" '+(selectedPins.has(name)? 'checked':'')+' aria-label="Select template '+esc(name)+'"></label><button aria-label="Edit template '+esc(name)+'"><strong>'+esc(name)+'</strong><small>'+esc(pinUsage(name).join(', ')||'Not grouped')+'</small></button>';
+                item.innerHTML='<label><input type="checkbox" '+(selectedPins.has(name)? 'checked':'')+' aria-label="Select template '+esc(name)+'"></label><button aria-label="Edit template '+esc(name)+'"><strong>'+esc(name)+'</strong><small>'+esc(usage.get(name)?.join(', ')||'Not grouped')+'</small></button>';
                 item.querySelector('button').onclick=() => { pinName=name; renderLibrary(); };
                 item.querySelector('input').onchange=e => { e.target.checked? selectedPins.add(name):selectedPins.delete(name); renderSelection(); };
                 $('template-list').append(item);
@@ -194,8 +226,19 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
         const select=document.createElement('select');
         select.setAttribute('aria-label',iface.id+' '+signal.id+' bit '+(signal.pins.length-1-index)+' template');
         select.add(new Option('Choose template',''));
-        for(const name of Object.keys(draft.model.pins)) select.add(new Option(name,name));
+        const pin=signal.pins[index];
+        if(pin&&Object.prototype.hasOwnProperty.call(draft.model.pins,pin))select.add(new Option(pin,pin));
         select.value=signal.pins[index];
+        // A wide interface must not create pins x bits options before a picker opens.
+        const populate=()=>{
+            const value=select.value;
+            select.replaceChildren(new Option('Choose template',''));
+            const options=document.createDocumentFragment();
+            for(const name of Object.keys(draft.model.pins))options.append(new Option(name,name));
+            select.append(options);select.value=value;
+            select.onfocus=null;select.onpointerdown=null;
+        };
+        select.onfocus=populate;select.onpointerdown=populate;
         select.onchange=()=>{signal.pins[index]=select.value;onChange?.();changeDraft();};
         return select;
     }
@@ -225,7 +268,10 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
             status.textContent=error;input.setAttribute('aria-invalid',String(!!error));
             if(error)return;
             signal.pins=names;updateSummary();changeDraft();
-            list.querySelectorAll('select').forEach((select,index)=>select.value=names[index]);
+            list.querySelectorAll('select').forEach((select,index)=>{
+                if(!Array.from(select.options).some(option=>option.value===names[index]))select.add(new Option(names[index],names[index]));
+                select.value=names[index];
+            });
             status.textContent='Assigned '+names.length+' pins, high bit to low bit.';
         });
         apply.className='vf-btn';apply.setAttribute('aria-label','Apply '+iface.id+'.'+signal.id+' pin templates');
@@ -320,7 +366,11 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
             return;
         } pickedPorts.clear(); dragPorts=[]; post('bind',{ card: row.card,interface: row.iface,signal: row.signal.id,ports: refs });
     }
-    function renderBindings() {
+    function renderBindings(force=true) {
+        if(page!=='bindings')return;
+        const signature=JSON.stringify([state.source,state.boards,state.configuration,state.ports,state.active,state.interfaces,state.models,state.preview,state.output,state.diagnostics]);
+        if(!force&&signature===bindingsSignature)return;
+        bindingsSignature=signature;
         const restoredView=state.source?.path&&savedViews.get(state.source.path);
         if(restoredView&&selectedKey==='') {
             selectedKey=restoredView.selectedKey;
@@ -495,11 +545,14 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
         $('card-instance').replaceChildren();
         $('card-instance').classList.toggle('hidden',!cards.length);
         cards.forEach(c => { const wrap=document.createElement('div'); wrap.innerHTML='<strong>'+esc(labelFor(c.id))+'</strong>'; wrap.append(action('Remove',() => post('remove-card',{ card: c.id }))); $('card-instance').append(wrap); });
-        renderPorts();
+        renderPorts(false);
         markTargets(dragPorts.length?dragPorts:pickedBits());
     }
-    function renderPorts() {
-        const row=current();
+    function renderPorts(force=true) {
+        renderSelectedBinding();
+        const signature=JSON.stringify([state.source?.path,state.ports,state.configuration?.bindings,[...pickedPorts],[...expandedPorts],$('port-search').value]);
+        if(!force&&signature===portsSignature)return;
+        portsSignature=signature;
         $('port-list').replaceChildren();
         const entries=state.ports.filter(p=>p.name.toLowerCase().includes($('port-search').value.toLowerCase())).flatMap(p=>[
             {p,ref:{name:p.name},indices:p.indices},
@@ -551,6 +604,9 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
             button.ondragend=()=>{dragPorts=[];markTargets(pickedBits());};
             wrap.append(button);$('port-list').append(wrap);
         }
+    }
+    function renderSelectedBinding() {
+        const row=current();
         if(row) {
             const model=modelFor(row.card),text=model?.pins[row.signal.pins[0]]??'';
             $('binding-selected-title').textContent=row.iface+'.'+row.signal.id;
@@ -575,20 +631,22 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
         librarySignature=signature;
         if(next.reason==='board-change')acknowledgedEditId=Math.max(acknowledgedEditId,next.editId??0);
         // Host refreshes can arrive while newer local edits are still in flight.
-        state=next;applyPendingSelections();indexBindings();page=state.page; const focused=document.activeElement; const keep=draft?.id===next.draft?.id&&(next.reason==='board-change'||acknowledgedEditId<editId); if(!keep)
+        const previousSignature=JSON.stringify(state?.draft);
+        state=next;applyPendingSelections();indexBindings();page=state.page; const focused=document.activeElement; const keep=draft?.id===next.draft?.id&&(next.reason==='board-change'||acknowledgedEditId<editId||previousSignature===JSON.stringify(next.draft)); if(!keep)
             draft=structuredClone(next.draft);
-        if(page==='library'&&!keep&&libraryNeedsRender){renderLibrary();libraryNeedsRender=false;}
+        if(page==='library'&&libraryNeedsRender&&(!keep||next.reason==='board-open')){renderLibrary();libraryNeedsRender=false;}
         else if(page==='library'&&keep){
             updateLibraryStatus();
             renderBoards();
             libraryNeedsRender=false;
         }else updateLibraryStatus();
-        renderBindings(); applyPage(); if(next.notice)
+        renderBindings(false); applyPage(); if(next.notice)
             notice(next.notice); if(keep&&focused?.isConnected)
             focused.focus(); document.querySelector('.library-main').scrollTop=scroll.library; document.querySelector('.main').scrollTop=scroll.main; document.querySelector('#port-browser').scrollTop=scroll.inspector;
     }
     transport.onMessage(receive);
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state?.source&&page==='bindings')post('source-refresh');});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)flushBoardChange();else if(state?.source&&page==='bindings')post('source-refresh');});
+    window.addEventListener('pagehide',flushBoardChange);
     document.querySelectorAll('[data-page]').forEach(b => b.onclick=() => setPage(b.dataset.page));
     document.querySelectorAll('[data-section]').forEach(b => b.onclick=() => setSection(b.dataset.section));
     document.querySelectorAll('[data-filter]').forEach(b => b.onclick=() => { filter=b.dataset.filter; document.querySelectorAll('[data-filter]').forEach(x => { x.classList.toggle('active',x===b); x.setAttribute('aria-pressed',String(x===b)); }); renderBindings(); });

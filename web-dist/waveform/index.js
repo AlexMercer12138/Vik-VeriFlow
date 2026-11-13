@@ -30345,9 +30345,38 @@
           const normalized = raw / magnitude;
           return Math.max(1, (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude);
         }
-        function snapSelectionTime(time, range, minimum, maximum) {
+        function snapSelectionTime(time, range, minimum, maximum, pixelWidth) {
           const step = Math.max(1, majorTickStep(range) / 4);
-          return Math.max(minimum, Math.min(maximum, Math.round(Math.round(time / step) * step)));
+          const snapped = Math.round(Math.round(time / step) * step);
+          const nearGrid = Number.isFinite(pixelWidth) && pixelWidth > 0 && Math.abs(snapped - time) <= 3 * Math.max(1, range) / pixelWidth;
+          return Math.max(minimum, Math.min(maximum, nearGrid ? snapped : Math.round(time)));
+        }
+        function nearestTransitionTime(series, time, minimum, maximum, bitIndex) {
+          if (!series) return null;
+          const raw = series.kind === "raw";
+          const records = raw ? series.changes : series.records;
+          if (records.length < 2) return null;
+          const timeAt = (index) => raw ? records[index].time : records[index].firstTime;
+          let lo = 0;
+          let hi = records.length;
+          while (lo < hi) {
+            const mid = Math.floor((lo + hi) / 2);
+            if (timeAt(mid) < time) lo = mid + 1;
+            else hi = mid;
+          }
+          let left = lo - 1;
+          let right = Math.max(1, lo);
+          const target = { bitIndex };
+          while (left >= 1 || right < records.length) {
+            const leftDistance = left >= 1 && timeAt(left) >= minimum ? time - timeAt(left) : Infinity;
+            const rightDistance = right < records.length && timeAt(right) <= maximum ? timeAt(right) - time : Infinity;
+            if (leftDistance === Infinity && rightDistance === Infinity) break;
+            const index = leftDistance <= rightDistance ? left-- : right++;
+            const current = raw ? records[index].value : records[index].firstValue;
+            const previous = raw ? records[index - 1].value : records[index - 1].lastValue;
+            if (targetValue(target, current) !== targetValue(target, previous)) return timeAt(index);
+          }
+          return null;
         }
         const TIME_UNITS2 = [
           { unit: "fs", seconds: 1e-15 },
@@ -30960,6 +30989,7 @@
           LAYOUT_VERSION,
           majorTickStep,
           snapSelectionTime,
+          nearestTransitionTime,
           calculateVirtualWindow,
           signalMatchesSelectedScope,
           WindowCache,
@@ -32125,7 +32155,6 @@
       ...signal,
       kind: "bus-bit",
       key: signal.key + "__bit_" + bitIndex,
-      reference: "[" + bitIndex + "]",
       displayName: "[" + bitIndex + "]",
       fullName: signal.fullName + "[" + bitIndex + "]",
       width: 1,
@@ -32461,10 +32490,37 @@
     const range = Math.max(1, endTime - startTime);
     return Math.round(startTime + x / Math.max(1, width) * range);
   }
-  function selectionTimeAtX(x) {
+  function selectionTimeAtX(x, y = void 0) {
     const range = Math.max(1, endTime - startTime);
     const time = startTime + x / Math.max(1, canvas.clientWidth) * range;
-    return waveCore.snapSelectionTime(time, range, Number(vcd.startTime) || 0, Number(vcd.endTime) || 1);
+    if (y >= HEADER_HEIGHT && y < canvas.clientHeight) {
+      const radius = 6 * range / Math.max(1, canvas.clientWidth);
+      const minimum = Math.max(startTime, time - radius);
+      const maximum = Math.min(endTime, time + radius);
+      const items = displayedWaveItems();
+      const clickedRow = Math.floor((y - HEADER_HEIGHT + waveScrollTop) / ROW_HEIGHT);
+      const edgeForRow = (row) => !row || isGroupRow(row) ? null : waveCore.nearestTransitionTime(
+        seriesForSignal(row),
+        time,
+        minimum,
+        maximum,
+        isBusBitRow(row) ? row.bitIndex : void 0
+      );
+      const preferred = edgeForRow(items[clickedRow]);
+      if (preferred !== null) return preferred;
+      const first = Math.floor(waveScrollTop / ROW_HEIGHT);
+      const last = Math.min(items.length, Math.ceil((waveScrollTop + canvas.clientHeight - HEADER_HEIGHT) / ROW_HEIGHT));
+      let nearest = null;
+      for (let row = first; row < last; row++) {
+        if (row === clickedRow) continue;
+        const candidate = edgeForRow(items[row]);
+        if (candidate !== null && (nearest === null || Math.abs(candidate - time) < Math.abs(nearest - time))) {
+          nearest = candidate;
+        }
+      }
+      if (nearest !== null) return nearest;
+    }
+    return waveCore.snapSelectionTime(time, range, Number(vcd.startTime) || 0, Number(vcd.endTime) || 1, canvas.clientWidth);
   }
   function snap(value) {
     return Math.round(value) + 0.5;
@@ -34036,7 +34092,7 @@
     }
     dragMode = "box";
     boxStart = { x: localX, y: clamp(localY, HEADER_HEIGHT, canvas.clientHeight) };
-    setActiveCursorTime(selectionTimeAtX(localX));
+    setActiveCursorTime(selectionTimeAtX(localX, localY));
     if (isBusBitRow(displayItem)) {
       selectBusBit(displayItem);
     } else if (rowIndex >= 0 && rowIndex < waveSignals.length) {

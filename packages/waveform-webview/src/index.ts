@@ -15,7 +15,8 @@ type WaveformTransport = {
 };
 type WaveformViewerCore = {
     majorTickStep(range: number): number;
-    snapSelectionTime(time: number, range: number, minimum: number, maximum: number): number;
+    snapSelectionTime(time: number, range: number, minimum: number, maximum: number, pixelWidth: number): number;
+    nearestTransitionTime(series: unknown, time: number, minimum: number, maximum: number, bitIndex?: number): number | null;
     calculateVirtualWindow(...values: number[]): { firstRow: number; renderedCount: number; totalHeight: number; overflow: boolean };
     measureCursors(cursorA: number, cursorB: number | null, timescale: string): { deltaText: string; frequencyText: string };
     decodeWindowPayload(payload: unknown): unknown;
@@ -1205,7 +1206,6 @@ function makeBusBitRow(signal, waveIndex, bitIndex) {
         ...signal,
         kind: 'bus-bit',
         key: signal.key + '__bit_' + bitIndex,
-        reference: '[' + bitIndex + ']',
         displayName: '[' + bitIndex + ']',
         fullName: signal.fullName + '[' + bitIndex + ']',
         width: 1,
@@ -1615,10 +1615,34 @@ function xToTime(x, width) {
     return Math.round(startTime + (x / Math.max(1, width)) * range);
 }
 
-function selectionTimeAtX(x) {
+function selectionTimeAtX(x, y = undefined) {
     const range = Math.max(1, endTime - startTime);
     const time = startTime + (x / Math.max(1, canvas.clientWidth)) * range;
-    return waveCore.snapSelectionTime(time, range, Number(vcd.startTime) || 0, Number(vcd.endTime) || 1);
+    if (y >= HEADER_HEIGHT && y < canvas.clientHeight) {
+        const radius = 6 * range / Math.max(1, canvas.clientWidth);
+        const minimum = Math.max(startTime, time - radius);
+        const maximum = Math.min(endTime, time + radius);
+        const items = displayedWaveItems();
+        const clickedRow = Math.floor((y - HEADER_HEIGHT + waveScrollTop) / ROW_HEIGHT);
+        const edgeForRow = row => !row || isGroupRow(row) ? null : waveCore.nearestTransitionTime(
+            seriesForSignal(row), time, minimum, maximum, isBusBitRow(row) ? row.bitIndex : undefined,
+        );
+        // The clicked signal wins even when another row has a closer edge.
+        const preferred = edgeForRow(items[clickedRow]);
+        if (preferred !== null) return preferred;
+        const first = Math.floor(waveScrollTop / ROW_HEIGHT);
+        const last = Math.min(items.length, Math.ceil((waveScrollTop + canvas.clientHeight - HEADER_HEIGHT) / ROW_HEIGHT));
+        let nearest = null;
+        for (let row = first; row < last; row++) {
+            if (row === clickedRow) continue;
+            const candidate = edgeForRow(items[row]);
+            if (candidate !== null && (nearest === null || Math.abs(candidate - time) < Math.abs(nearest - time))) {
+                nearest = candidate;
+            }
+        }
+        if (nearest !== null) return nearest;
+    }
+    return waveCore.snapSelectionTime(time, range, Number(vcd.startTime) || 0, Number(vcd.endTime) || 1, canvas.clientWidth);
 }
 
 function snap(value) {
@@ -3341,7 +3365,7 @@ waveCanvasPane.addEventListener('mousedown', (event) => {
     }
     dragMode = 'box';
     boxStart = { x: localX, y: clamp(localY, HEADER_HEIGHT, canvas.clientHeight) };
-    setActiveCursorTime(selectionTimeAtX(localX));
+    setActiveCursorTime(selectionTimeAtX(localX, localY));
     if (isBusBitRow(displayItem)) {
         selectBusBit(displayItem);
     } else if (rowIndex >= 0 && rowIndex < waveSignals.length) {

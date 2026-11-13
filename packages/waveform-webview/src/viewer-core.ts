@@ -21,7 +21,8 @@ type DecodedWindow = DecodedRawWindow | DecodedSummaryWindow;
 interface WaveCoreApi {
     readonly LAYOUT_VERSION: number;
     majorTickStep(range: number): number;
-    snapSelectionTime(time: number, range: number, minimum: number, maximum: number): number;
+    snapSelectionTime(time: number, range: number, minimum: number, maximum: number, pixelWidth: number): number;
+    nearestTransitionTime(series: DecodedWindow | null, time: number, minimum: number, maximum: number, bitIndex?: number): number | null;
     calculateVirtualWindow(totalRows: number, viewportHeight: number, scrollTop: number, rowHeight: number, overscan: number): { firstRow: number; renderedCount: number; totalHeight: number; overflow: boolean };
     signalMatchesSelectedScope(signalScope: string, selectedScope: string): boolean;
     WindowCache: new (capacity?: number) => { readonly size: number; has(key: string): boolean; get(key: string): unknown; set(key: string, value: unknown): void; clear(): void };
@@ -60,10 +61,45 @@ const api = (function (): WaveCoreApi {
         return Math.max(1, (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude);
     }
 
-    function snapSelectionTime(time: number, range: number, minimum: number, maximum: number): number {
+    function snapSelectionTime(time: number, range: number, minimum: number, maximum: number, pixelWidth: number): number {
         const step = Math.max(1, majorTickStep(range) / 4);
-        // Round to a VCD tick when a quarter division falls between samples.
-        return Math.max(minimum, Math.min(maximum, Math.round(Math.round(time / step) * step)));
+        const snapped = Math.round(Math.round(time / step) * step);
+        // Keep the magnetic zone small and independent of zoom and panel width.
+        const nearGrid = Number.isFinite(pixelWidth) && pixelWidth > 0
+            && Math.abs(snapped - time) <= 3 * Math.max(1, range) / pixelWidth;
+        return Math.max(minimum, Math.min(maximum, nearGrid ? snapped : Math.round(time)));
+    }
+
+    function nearestTransitionTime(series: DecodedWindow | null, time: number, minimum: number, maximum: number, bitIndex?: number): number | null {
+        if (!series) return null;
+        const raw = series.kind === 'raw';
+        const records = raw ? series.changes : series.records;
+        if (records.length < 2) return null;
+        const timeAt = index => raw ? records[index].time : records[index].firstTime;
+        let lo = 0;
+        let hi = records.length;
+        while (lo < hi) {
+            const mid = Math.floor((lo + hi) / 2);
+            if (timeAt(mid) < time) lo = mid + 1;
+            else hi = mid;
+        }
+        // Search outward from the click, stopping as soon as the nearest real
+        // transition is found. Record zero is an initial value, not an edge.
+        let left = lo - 1;
+        let right = Math.max(1, lo);
+        const target = { bitIndex };
+        while (left >= 1 || right < records.length) {
+            const leftDistance = left >= 1 && timeAt(left) >= minimum ? time - timeAt(left) : Infinity;
+            const rightDistance = right < records.length && timeAt(right) <= maximum ? timeAt(right) - time : Infinity;
+            if (leftDistance === Infinity && rightDistance === Infinity) break;
+            const index = leftDistance <= rightDistance ? left-- : right++;
+            const current = raw ? records[index].value : records[index].firstValue;
+            const previous = raw ? records[index - 1].value : records[index - 1].lastValue;
+            // Summary endpoints inside a dense block do not identify an exact
+            // edge. Only a proven change between adjacent records is eligible.
+            if (targetValue(target, current) !== targetValue(target, previous)) return timeAt(index);
+        }
+        return null;
     }
     const TIME_UNITS = [
         { unit: 'fs', seconds: 1e-15 },
@@ -770,6 +806,7 @@ const api = (function (): WaveCoreApi {
         LAYOUT_VERSION,
         majorTickStep,
         snapSelectionTime,
+        nearestTransitionTime,
         calculateVirtualWindow,
         signalMatchesSelectedScope,
         WindowCache,

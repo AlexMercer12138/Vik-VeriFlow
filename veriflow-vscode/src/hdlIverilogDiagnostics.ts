@@ -60,8 +60,12 @@ export async function compileIverilogDiagnostics(
         });
         const combinedOutput = result.combinedOutput
             || `${result.stdout}${result.stderr}`;
-        for (const entry of parser.parse(combinedOutput)) {
+        const entries = parser.parse(combinedOutput);
+        const hasMissingModules = entries.some(entry => /^Unknown module type\s*:/i.test(entry.message));
+        for (const entry of entries) {
             if (entry.level === 'INFO') continue;
+            if (/^Unknown module type\s*:/i.test(entry.message)
+                || hasMissingModules && /^\d+\s+error\(s\) during elaboration\.?$/i.test(entry.message)) continue;
             const hostPath = resolveVirtualPath(entry.fileRef, result.hostPathByVirtualPath);
             if (hostPath && canonicalizeSourceUri(vscode.Uri.file(hostPath).toString()) !== sourceUri) {
                 continue;

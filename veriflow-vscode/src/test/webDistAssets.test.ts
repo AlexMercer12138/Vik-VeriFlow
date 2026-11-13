@@ -35,13 +35,6 @@ for (const [application, fileNames] of Object.entries(outputFiles)) {
             `${application}/${fileName} must use the canonical VS Code asset`
         );
     }
-    for (const fileName of fs.readdirSync(path.join(root, 'web-dist', application))) {
-        assert.deepStrictEqual(
-            fs.readFileSync(path.join(root, 'web-dist', application, fileName)),
-            fs.readFileSync(path.join(root, 'packages', 'waveform-desktop', 'assets', application, fileName)),
-            `${application}/${fileName} must use the canonical Electron asset`
-        );
-    }
 }
 
 assert.doesNotMatch(

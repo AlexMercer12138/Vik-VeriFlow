@@ -95,7 +95,19 @@ async function main() {
         assert.equal(last.configuration.bindings[0].port.name, 'tx');
         await page.locator('[data-page="library"]').click();
         await page.getByRole('button',{name:'Edit template tx',exact:true}).click();
-        await page.locator('#template-text').fill('set_io {signal name} A2\n');
+        await session.dispatch({ type: 'source-refresh' });
+        const delayedRefresh = structuredClone(last);
+        // Deliver an earlier host refresh after input, before its acknowledgement.
+        await page.evaluate((data: any) => {
+            const target = globalThis as any;
+            const input = target.document.querySelector('#template-text');
+            input.value = 'set_io {signal name} A2\n';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            target.dispatchEvent(new MessageEvent('message', { data }));
+            target.document.querySelector('#template-list button').click();
+        }, delayedRefresh);
+        assert.equal(await page.locator('#template-text').inputValue(), 'set_io {signal name} A2\n',
+            'a delayed source refresh must retain the unacknowledged template edit');
         await page.locator('[data-page="bindings"]').click();
         await page.locator('[data-page="library"]').click();
         await page.waitForFunction(() => (globalThis as any).document.querySelector('#template-text')?.value.includes('A2'));

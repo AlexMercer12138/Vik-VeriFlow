@@ -11,7 +11,7 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
     type WorkbenchMessage = { type: string; sourcePath?: string; [key: string]: unknown };
     type WorkbenchViewState = { section?: string };
     const transport=createWebviewTransport<WorkbenchMessage,WorkbenchMessage,WorkbenchViewState>(window);
-    let editId=0;
+    let editId=0,acknowledgedEditId=0;
     const viewState=transport.getState()??{};
     const savedViews=new Map();
     let state,draft,page='library',section=viewState.section??'pins',pinName='',selectedKey='',dragPorts=[],filter='all',toastTimer,portAnchor;
@@ -573,7 +573,9 @@ import { portKey, portLabel, selectedPortBits, portGroups, groupLabel } from './
         const signature=JSON.stringify([next.draft,next.boards]);
         if(signature!==librarySignature)libraryNeedsRender=true;
         librarySignature=signature;
-        state=next;applyPendingSelections();indexBindings();page=state.page; const focused=document.activeElement; const keep=next.reason==='board-change'&&draft?.id===next.draft?.id; if(!keep)
+        if(next.reason==='board-change')acknowledgedEditId=Math.max(acknowledgedEditId,next.editId??0);
+        // Host refreshes can arrive while newer local edits are still in flight.
+        state=next;applyPendingSelections();indexBindings();page=state.page; const focused=document.activeElement; const keep=draft?.id===next.draft?.id&&(next.reason==='board-change'||acknowledgedEditId<editId); if(!keep)
             draft=structuredClone(next.draft);
         if(page==='library'&&!keep&&libraryNeedsRender){renderLibrary();libraryNeedsRender=false;}
         else if(page==='library'&&keep){

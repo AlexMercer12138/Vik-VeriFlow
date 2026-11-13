@@ -19768,7 +19768,7 @@
     const iconAliases = { board: "circuit-board", warning: "triangle-alert", right: "undo-2", arrow: "redo-2", chevron: "chevron-down", input: "log-in", output: "log-out", import: "download", export: "upload", grip: "grip-vertical", edit: "pencil", trash: "trash-2", close: "x" };
     const icon = (name) => renderIcon(iconAliases[name] ?? name).outerHTML;
     const transport = createWebviewTransport(window);
-    let editId = 0;
+    let editId = 0, acknowledgedEditId = 0;
     const viewState = transport.getState() ?? {};
     const savedViews = /* @__PURE__ */ new Map();
     let state, draft, page = "library", section = viewState.section ?? "pins", pinName = "", selectedKey = "", dragPorts = [], filter = "all", toastTimer, portAnchor;
@@ -20560,12 +20560,13 @@
       const signature = JSON.stringify([next.draft, next.boards]);
       if (signature !== librarySignature) libraryNeedsRender = true;
       librarySignature = signature;
+      if (next.reason === "board-change") acknowledgedEditId = Math.max(acknowledgedEditId, next.editId ?? 0);
       state = next;
       applyPendingSelections();
       indexBindings();
       page = state.page;
       const focused = document.activeElement;
-      const keep = next.reason === "board-change" && draft?.id === next.draft?.id;
+      const keep = draft?.id === next.draft?.id && (next.reason === "board-change" || acknowledgedEditId < editId);
       if (!keep)
         draft = structuredClone(next.draft);
       if (page === "library" && !keep && libraryNeedsRender) {
